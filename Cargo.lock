@@ -237,7 +237,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "batmonic"
-version = "0.2.75"
+version = "0.2.76"
 dependencies = [
  "claxon",
  "console_error_panic_hook",
@@ -258,7 +258,7 @@ dependencies = [
 
 [[package]]
 name = "batmonic-desktop"
-version = "0.2.75"
+version = "0.2.76"
 dependencies = [
  "chrono",
  "claxon",

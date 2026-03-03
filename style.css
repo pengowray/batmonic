@@ -1454,6 +1454,35 @@ body.sidebar-resizing {
     line-height: 1.2;
 }
 
+/* ── Combo button (split toggle + dropdown) ──────────────────────────── */
+
+.combo-btn-row {
+    position: relative;
+    display: flex;
+}
+
+.combo-btn-left {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.combo-btn-right {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 7px 5px;
+    min-width: 0;
+}
+
+.combo-btn-arrow {
+    font-size: 9px;
+    opacity: 0.55;
+    line-height: 1;
+}
+
 .layer-btn:hover {
     background: rgba(45, 45, 45, 0.95);
     border-color: rgba(130, 130, 130, 0.6);

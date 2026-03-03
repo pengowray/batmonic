@@ -13,7 +13,6 @@ use crate::components::analysis_panel::AnalysisPanel;
 use crate::components::overview::OverviewPanel;
 use crate::components::play_controls::{PlayControls, ToastDisplay};
 use crate::components::hfr_button::HfrButton;
-use crate::components::hfr_mode_button::HfrModeButton;
 use crate::components::tool_button::ToolButton;
 use crate::components::freq_range_button::FreqRangeButton;
 use crate::components::xc_browser::XcBrowser;
@@ -395,7 +394,6 @@ fn MainArea() -> impl IntoView {
                                 <MainViewButton />
                                 <FreqRangeButton />
                                 <HfrButton />
-                                <HfrModeButton />
                                 <ToolButton />
                             </div>
                         </div>
@@ -436,8 +434,31 @@ fn layer_opt_class(active: bool) -> &'static str {
 /// down-arrow opens a dropdown with all view modes.
 #[component]
 fn MainViewButton() -> impl IntoView {
+    use crate::components::combo_button::ComboButton;
     let state = expect_context::<AppState>();
-    let is_open = move || state.layer_panel_open.get() == Some(LayerPanel::MainView);
+    let is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::MainView));
+
+    let left_class = Signal::derive(move || {
+        if is_open.get() { "layer-btn combo-btn-left open" } else { "layer-btn combo-btn-left" }
+    });
+    let right_class = Signal::derive(move || {
+        if is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+    });
+
+    let left_click = Callback::new(move |_: web_sys::MouseEvent| {
+        state.main_view.update(|v| {
+            *v = match *v {
+                MainView::Spectrogram => MainView::Waveform,
+                _ => MainView::Spectrogram,
+            };
+        });
+    });
+
+    let right_value = Signal::derive(move || state.main_view.get().short_label().to_string());
+
+    let toggle_menu = Callback::new(move |()| {
+        toggle_panel(&state, LayerPanel::MainView);
+    });
 
     let set_view = move |mode: MainView| {
         move |_: web_sys::MouseEvent| {
@@ -450,86 +471,59 @@ fn MainViewButton() -> impl IntoView {
         <div
             style=move || format!("position: absolute; top: 10px; left: 56px; pointer-events: none; opacity: {}; transition: opacity 0.1s;",
                 if state.mouse_in_label_area.get() { "0" } else { "1" })
-            on:click=|ev: web_sys::MouseEvent| ev.stop_propagation()
         >
-            <div style=move || format!(
-                "position: relative; display: flex; pointer-events: {};",
-                if state.mouse_in_label_area.get() { "none" } else { "auto" }
-            )>
-                // Main button: click cycles Spec <-> Wave
-                <button
-                    class=move || if is_open() { "layer-btn open" } else { "layer-btn" }
-                    style="border-top-right-radius: 0; border-bottom-right-radius: 0;"
-                    title="Toggle view (Spectrogram / Waveform)"
-                    on:click=move |_| {
-                        state.main_view.update(|v| {
-                            *v = match *v {
-                                MainView::Spectrogram => MainView::Waveform,
-                                _ => MainView::Spectrogram,
-                            };
-                        });
-                    }
-                >
-                    <span class="layer-btn-category">"View"</span>
-                    <span class="layer-btn-value">{move || state.main_view.get().short_label()}</span>
-                </button>
-                // Dropdown arrow
-                <button
-                    class=move || if is_open() { "layer-btn open" } else { "layer-btn" }
-                    style="border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: none; padding: 2px 6px; min-width: 0;"
-                    title="View mode menu"
-                    on:click=move |_| toggle_panel(&state, LayerPanel::MainView)
-                >
-                    "\u{25BE}"
-                </button>
-                // Dropdown panel
-                {move || is_open().then(|| {
-                    let current = state.main_view.get();
+            <ComboButton
+                left_label="View"
+                left_value=Signal::derive(|| String::new())
+                left_click=left_click
+                left_class=left_class
+                right_value=right_value
+                right_class=right_class
+                is_open=is_open
+                toggle_menu=toggle_menu
+                left_title="Toggle view (Spectrogram / Waveform)"
+                right_title="View mode menu"
+                panel_style="min-width: 140px;"
+            >
+                <div class="layer-panel-title">"View Mode"</div>
+                {MainView::ALL.iter().map(|&mode| {
                     view! {
-                        <div class="layer-panel" style="top: 34px; left: 0; min-width: 140px;">
-                            <div class="layer-panel-title">"View Mode"</div>
-                            {MainView::ALL.iter().map(|&mode| {
-                                view! {
-                                    <button
-                                        class=layer_opt_class(current == mode)
-                                        on:click=set_view(mode)
-                                    >
-                                        {mode.label()}
-                                    </button>
-                                }
-                            }).collect_view()}
-                            // Flow algorithm options (when Flow is active)
-                            {(current == MainView::Flow).then(|| {
-                                let display = state.spectrogram_display.get();
-                                view! {
-                                    <hr />
-                                    <div class="layer-panel-title">"Algorithm"</div>
-                                    <button
-                                        class=layer_opt_class(display == SpectrogramDisplay::FlowOptical)
-                                        on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::FlowOptical)
-                                    >"Optical"</button>
-                                    <button
-                                        class=layer_opt_class(display == SpectrogramDisplay::PhaseCoherence)
-                                        on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::PhaseCoherence)
-                                    >"Phase Coherence"</button>
-                                    <button
-                                        class=layer_opt_class(display == SpectrogramDisplay::FlowCentroid)
-                                        on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::FlowCentroid)
-                                    >"Centroid"</button>
-                                    <button
-                                        class=layer_opt_class(display == SpectrogramDisplay::FlowGradient)
-                                        on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::FlowGradient)
-                                    >"Gradient"</button>
-                                    <button
-                                        class=layer_opt_class(display == SpectrogramDisplay::Phase)
-                                        on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::Phase)
-                                    >"Phase"</button>
-                                }
-                            })}
-                        </div>
+                        <button
+                            class=move || layer_opt_class(state.main_view.get() == mode)
+                            on:click=set_view(mode)
+                        >
+                            {mode.label()}
+                        </button>
+                    }
+                }).collect_view()}
+                // Flow algorithm options (when Flow is active)
+                {move || (state.main_view.get() == MainView::Flow).then(|| {
+                    view! {
+                        <hr />
+                        <div class="layer-panel-title">"Algorithm"</div>
+                        <button
+                            class=move || layer_opt_class(state.spectrogram_display.get() == SpectrogramDisplay::FlowOptical)
+                            on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::FlowOptical)
+                        >"Optical"</button>
+                        <button
+                            class=move || layer_opt_class(state.spectrogram_display.get() == SpectrogramDisplay::PhaseCoherence)
+                            on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::PhaseCoherence)
+                        >"Phase Coherence"</button>
+                        <button
+                            class=move || layer_opt_class(state.spectrogram_display.get() == SpectrogramDisplay::FlowCentroid)
+                            on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::FlowCentroid)
+                        >"Centroid"</button>
+                        <button
+                            class=move || layer_opt_class(state.spectrogram_display.get() == SpectrogramDisplay::FlowGradient)
+                            on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::FlowGradient)
+                        >"Gradient"</button>
+                        <button
+                            class=move || layer_opt_class(state.spectrogram_display.get() == SpectrogramDisplay::Phase)
+                            on:click=move |_| state.spectrogram_display.set(SpectrogramDisplay::Phase)
+                        >"Phase"</button>
                     }
                 })}
-            </div>
+            </ComboButton>
         </div>
     }
 }

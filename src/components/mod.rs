@@ -1,4 +1,5 @@
 pub mod app;
+pub mod combo_button;
 pub mod file_sidebar;
 pub mod right_sidebar;
 pub mod spectrogram;
@@ -8,7 +9,6 @@ pub mod analysis_panel;
 pub mod overview;
 pub mod play_controls;
 pub mod hfr_button;
-pub mod hfr_mode_button;
 pub mod tool_button;
 pub mod freq_range_button;
 pub mod xc_browser;
