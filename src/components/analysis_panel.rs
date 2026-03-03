@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use crate::state::AppState;
+use crate::state::{AppState, CanvasTool};
 
 #[component]
 pub fn AnalysisPanel() -> impl IntoView {
@@ -43,10 +43,14 @@ pub fn AnalysisPanel() -> impl IntoView {
                     }.into_any();
                 }
 
-                // Selection drag in progress
+                // Drag in progress
                 if state.is_dragging.get() {
+                    let msg = match state.canvas_tool.get() {
+                        CanvasTool::Hand => "Panning...",
+                        CanvasTool::Selection => "Selecting...",
+                    };
                     return view! {
-                        <span style="color: #888">"Selecting..."</span>
+                        <span style="color: #888">{msg}</span>
                     }.into_any();
                 }
 
