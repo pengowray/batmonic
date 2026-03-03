@@ -260,7 +260,8 @@ pub async fn query_mic_info(state: &AppState) {
 
 /// Resolve Auto mode to either RawUsb or Cpal based on USB device availability.
 /// Requests USB permission proactively if a USB audio device is found.
-pub async fn resolve_auto_mode(state: &AppState) -> MicMode {
+/// Returns `None` when USB is present but permission was denied (caller should not proceed).
+pub async fn resolve_auto_mode(state: &AppState) -> Option<MicMode> {
     state.log_debug("info", "resolve_auto_mode: checking for USB devices...");
 
     // Check for USB audio devices
@@ -302,7 +303,7 @@ pub async fn resolve_auto_mode(state: &AppState) -> MicMode {
                 state.mic_effective_mode.set(MicMode::RawUsb);
                 state.mic_needs_permission.set(false);
                 state.show_info_toast(format!("USB mic: {}", product_name));
-                return MicMode::RawUsb;
+                return Some(MicMode::RawUsb);
             }
 
             // Request permission proactively
@@ -320,29 +321,38 @@ pub async fn resolve_auto_mode(state: &AppState) -> MicMode {
                             state.mic_effective_mode.set(MicMode::RawUsb);
                             state.mic_needs_permission.set(false);
                             state.show_info_toast(format!("USB mic: {}", product_name));
-                            return MicMode::RawUsb;
+                            return Some(MicMode::RawUsb);
                         } else {
-                            state.log_debug("warn", "resolve_auto_mode: USB permission denied");
-                            state.show_info_toast("USB permission denied, using native audio");
+                            state.log_debug("warn", "resolve_auto_mode: USB permission denied, not falling back");
+                            state.show_error_toast("Raw USB mic permission denied");
+                            state.mic_effective_mode.set(MicMode::RawUsb);
+                            state.mic_needs_permission.set(true);
+                            return None;
                         }
                     }
                     Err(e) => {
                         state.log_debug("error", format!("resolve_auto_mode: USB permission request failed: {}", e));
+                        state.show_error_toast("USB permission request failed");
+                        state.mic_effective_mode.set(MicMode::RawUsb);
+                        state.mic_needs_permission.set(true);
+                        return None;
                     }
                 }
             } else {
                 state.log_debug("warn", "resolve_auto_mode: no deviceName, cannot request permission");
+                state.mic_effective_mode.set(MicMode::RawUsb);
+                state.mic_needs_permission.set(true);
+                return None;
             }
-
-            // Permission denied or failed — fall through to Cpal
-            break;
         }
     }
 
-    state.log_debug("info", "resolve_auto_mode: falling back to Cpal (native audio)");
+    // No USB audio device found — fall back to native audio
+    state.log_debug("info", "resolve_auto_mode: no USB audio device, falling back to Cpal (native audio)");
     state.mic_usb_connected.set(false);
+    state.mic_needs_permission.set(false);
     state.mic_effective_mode.set(MicMode::Cpal);
-    MicMode::Cpal
+    Some(MicMode::Cpal)
 }
 
 /// Check for USB devices and permission state WITHOUT requesting permission.
@@ -1468,26 +1478,33 @@ async fn stop_all_usb(state: &AppState) {
 // ── Public API (routes by mic_mode) ─────────────────────────────────────
 
 /// Resolve the effective mic mode, handling Auto by resolving on first use.
-async fn effective_mode(state: &AppState) -> MicMode {
+/// Returns `None` when USB is present but permission was denied (caller should not proceed).
+async fn effective_mode(state: &AppState) -> Option<MicMode> {
     let mode = state.mic_mode.get_untracked();
     if mode == MicMode::Auto && state.is_tauri {
         // If a mic is already open, use whichever backend is active
         if usb_mic_is_open() {
-            return MicMode::RawUsb;
+            return Some(MicMode::RawUsb);
         }
         if tauri_mic_is_open() {
-            return MicMode::Cpal;
+            return Some(MicMode::Cpal);
         }
-        // Resolve: check for USB device, request permission, fall back to Cpal
+        // Resolve: check for USB device, request permission; None if denied
         resolve_auto_mode(state).await
     } else {
-        mode
+        Some(mode)
     }
 }
 
 /// Toggle live HET listening on/off.
 pub async fn toggle_listen(state: &AppState) {
-    let mode = effective_mode(state).await;
+    let mode = match effective_mode(state).await {
+        Some(m) => m,
+        None => {
+            state.log_debug("info", "toggle_listen: permission denied, aborting");
+            return;
+        }
+    };
     state.log_debug("info", format!("toggle_listen: mode={:?}, listening={}", mode, state.mic_listening.get_untracked()));
     match mode {
         MicMode::RawUsb if state.is_tauri => toggle_listen_usb(state).await,
@@ -1508,7 +1525,13 @@ pub async fn toggle_listen(state: &AppState) {
 
 /// Toggle recording on/off. When stopping, finalizes the recording.
 pub async fn toggle_record(state: &AppState) {
-    let mode = effective_mode(state).await;
+    let mode = match effective_mode(state).await {
+        Some(m) => m,
+        None => {
+            state.log_debug("info", "toggle_record: permission denied, aborting");
+            return;
+        }
+    };
     state.log_debug("info", format!("toggle_record: mode={:?}, recording={}", mode, state.mic_recording.get_untracked()));
     match mode {
         MicMode::RawUsb if state.is_tauri => toggle_record_usb(state).await,

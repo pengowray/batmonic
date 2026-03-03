@@ -60,20 +60,23 @@ pub(super) fn ConfigPanel() -> impl IntoView {
             _ => MicMode::Browser,
         };
         state.mic_mode.set(mode);
-        // Query actual supported rates when switching to cpal
-        if (mode == MicMode::Cpal || mode == MicMode::Auto) && state.is_tauri {
+        if mode == MicMode::Auto && state.is_tauri {
+            // Resolve auto mode first (checks USB, requests permission), then query info
+            spawn_local(async move {
+                let resolved = crate::audio::microphone::resolve_auto_mode(&state).await;
+                if resolved == Some(MicMode::Cpal) {
+                    crate::audio::microphone::query_cpal_supported_rates(&state).await;
+                }
+                crate::audio::microphone::query_mic_info(&state).await;
+            });
+        } else if mode == MicMode::Cpal && state.is_tauri {
+            // Query cpal rates when switching to native audio
             spawn_local(async move {
                 crate::audio::microphone::query_cpal_supported_rates(&state).await;
                 crate::audio::microphone::query_mic_info(&state).await;
             });
-        }
-        if mode == MicMode::Auto && state.is_tauri {
-            spawn_local(async move {
-                crate::audio::microphone::resolve_auto_mode(&state).await;
-            });
-        }
-        // Request RECORD_AUDIO permission when switching to Browser mode on Tauri (Android)
-        if mode == MicMode::Browser && state.is_tauri {
+        } else if mode == MicMode::Browser && state.is_tauri {
+            // Request RECORD_AUDIO permission when switching to Browser mode on Tauri (Android)
             spawn_local(async move {
                 crate::audio::microphone::request_audio_permission_tauri(&state).await;
             });
@@ -167,7 +170,9 @@ pub(super) fn ConfigPanel() -> impl IntoView {
                         return None;
                     }
                     let eff = state.mic_effective_mode.get();
+                    let needs_perm = state.mic_needs_permission.get();
                     let label = match eff {
+                        MicMode::RawUsb if needs_perm => "USB detected (needs permission)",
                         MicMode::RawUsb => "Using: USB (Raw)",
                         MicMode::Cpal => "Using: Native audio",
                         _ => "Using: Browser",
@@ -255,8 +260,17 @@ pub(super) fn ConfigPanel() -> impl IntoView {
                             }}
                             <button class="setting-btn mic-info-refresh" on:click=move |_| {
                                 spawn_local(async move {
+                                    let mode = state.mic_mode.get_untracked();
+                                    if mode == MicMode::Auto && state.is_tauri {
+                                        // Resolve auto mode (checks USB, requests permission)
+                                        let resolved = crate::audio::microphone::resolve_auto_mode(&state).await;
+                                        if resolved == Some(MicMode::Cpal) {
+                                            crate::audio::microphone::query_cpal_supported_rates(&state).await;
+                                        }
+                                    } else if (mode == MicMode::Cpal || mode == MicMode::Auto) && state.is_tauri {
+                                        crate::audio::microphone::query_cpal_supported_rates(&state).await;
+                                    }
                                     crate::audio::microphone::query_mic_info(&state).await;
-                                    crate::audio::microphone::query_cpal_supported_rates(&state).await;
                                 });
                             }>{move || if has_info { "Refresh" } else { "Get mic info" }}</button>
                         </div>
