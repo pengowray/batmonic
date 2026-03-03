@@ -130,7 +130,7 @@ pub(super) fn ConfigPanel() -> impl IntoView {
                         class="setting-select"
                         on:change=on_max_sr_change
                     >
-                        <option value="0" selected=move || state.mic_max_sample_rate.get() == 0>"Auto"</option>
+                        <option value="0" selected=move || state.mic_max_sample_rate.get() == 0>"Auto (native)"</option>
                         <option value="44100" selected=move || state.mic_max_sample_rate.get() == 44100
                             disabled=move || !rate_available(44100)
                         >"44.1 kHz"</option>

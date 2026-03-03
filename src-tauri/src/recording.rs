@@ -260,25 +260,39 @@ pub fn open_mic(requested_max_rate: u32) -> Result<MicState, String> {
     let device_name = device.name().unwrap_or_else(|_| "Unknown".into());
     let supported_rates = collect_supported_rates(&device);
 
-    // Auto (0) = highest available rate — this is a bat recording app,
-    // so we always want the highest sample rate the device supports.
-    let effective_max = if requested_max_rate == 0 { u32::MAX } else { requested_max_rate };
-    let config = match negotiate_sample_rate(&device, effective_max) {
-        Some(cfg) => {
-            eprintln!(
-                "Mic rate negotiation: requested max {}Hz, got {}Hz",
-                if requested_max_rate == 0 { "auto".to_string() } else { requested_max_rate.to_string() },
-                cfg.sample_rate().0
-            );
-            cfg
-        }
-        None => {
-            eprintln!(
-                "Mic rate negotiation: no config found, using default"
-            );
-            device
-                .default_input_config()
-                .map_err(|e| format!("Failed to get mic config: {}", e))?
+    let config = if requested_max_rate == 0 {
+        // Auto mode: use the device's preferred/native sample rate.
+        // This avoids Android's Oboe backend reporting inflated max rates
+        // (e.g. 192kHz for built-in mic) that trigger silent resampling.
+        let default_cfg = device
+            .default_input_config()
+            .map_err(|e| format!("Failed to get mic config: {}", e))?;
+        eprintln!(
+            "Mic rate negotiation: auto mode, using device default {}Hz (supported: {:?})",
+            default_cfg.sample_rate().0,
+            supported_rates
+        );
+        default_cfg
+    } else {
+        // User explicitly requested a max rate — negotiate the best match
+        match negotiate_sample_rate(&device, requested_max_rate) {
+            Some(cfg) => {
+                eprintln!(
+                    "Mic rate negotiation: requested max {}Hz, got {}Hz",
+                    requested_max_rate,
+                    cfg.sample_rate().0
+                );
+                cfg
+            }
+            None => {
+                eprintln!(
+                    "Mic rate negotiation: no config for max {}Hz, using device default",
+                    requested_max_rate
+                );
+                device
+                    .default_input_config()
+                    .map_err(|e| format!("Failed to get mic config: {}", e))?
+            }
         }
     };
 
