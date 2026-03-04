@@ -1,9 +1,35 @@
+use std::cell::RefCell;
 use leptos::prelude::*;
 use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, MouseEvent};
 use crate::canvas::waveform_renderer;
 use crate::state::{AppState, LayerPanel, NavEntry, OverviewFreqMode, OverviewView};
 use crate::types::PreviewImage;
+
+thread_local! {
+    /// Reusable off-screen canvas for the overview preview blit.
+    static OVERVIEW_TMP: RefCell<Option<(HtmlCanvasElement, CanvasRenderingContext2d)>> =
+        const { RefCell::new(None) };
+}
+
+fn get_overview_tmp_canvas(w: u32, h: u32) -> Option<(HtmlCanvasElement, CanvasRenderingContext2d)> {
+    OVERVIEW_TMP.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if let Some((ref c, ref ctx)) = *slot {
+            if c.width() >= w && c.height() >= h {
+                return Some((c.clone(), ctx.clone()));
+            }
+        }
+        let doc = web_sys::window()?.document()?;
+        let c = doc.create_element("canvas").ok()?
+            .dyn_into::<HtmlCanvasElement>().ok()?;
+        c.set_width(w);
+        c.set_height(h);
+        let ctx = c.get_context("2d").ok()??.dyn_into::<CanvasRenderingContext2d>().ok()?;
+        *slot = Some((c.clone(), ctx.clone()));
+        Some((c, ctx))
+    })
+}
 
 // ── Navigation helpers ────────────────────────────────────────────────────────
 
@@ -102,15 +128,7 @@ fn draw_overview_spectrogram(
         clamped, preview.width, preview.height,
     );
     if let Ok(img) = image_data {
-        let doc = web_sys::window().unwrap().document().unwrap();
-        let tmp = doc.create_element("canvas").unwrap()
-            .dyn_into::<HtmlCanvasElement>().unwrap();
-        tmp.set_width(preview.width);
-        tmp.set_height(preview.height);
-        if let Some(tc) = tmp.get_context("2d").ok()
-            .flatten()
-            .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
-        {
+        if let Some((tmp, tc)) = get_overview_tmp_canvas(preview.width, preview.height) {
             let _ = tc.put_image_data(&img, 0.0, 0.0);
             let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
                 &tmp,

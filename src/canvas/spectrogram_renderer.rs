@@ -578,21 +578,7 @@ pub fn blit_viewport(
 
     match image_data {
         Ok(img) => {
-            // Create a temporary canvas to hold the image data, then draw from it
-            let doc = web_sys::window().unwrap().document().unwrap();
-            let tmp = doc
-                .create_element("canvas")
-                .unwrap()
-                .dyn_into::<HtmlCanvasElement>()
-                .unwrap();
-            tmp.set_width(pre_rendered.width);
-            tmp.set_height(pre_rendered.height);
-            let tmp_ctx = tmp
-                .get_context("2d")
-                .unwrap()
-                .unwrap()
-                .dyn_into::<CanvasRenderingContext2d>()
-                .unwrap();
+            let Some((tmp, tmp_ctx)) = get_tmp_canvas(pre_rendered.width, pre_rendered.height) else { return };
             let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
             // Draw the visible portion, proportionally sized to match overlay coordinate space
@@ -683,14 +669,7 @@ pub fn blit_preview_as_background(
         clamped, preview.width, preview.height,
     ) else { return };
 
-    let doc = web_sys::window().unwrap().document().unwrap();
-    let tmp = doc.create_element("canvas").unwrap()
-        .dyn_into::<HtmlCanvasElement>().unwrap();
-    tmp.set_width(preview.width);
-    tmp.set_height(preview.height);
-    let Some(tmp_ctx) = tmp.get_context("2d").ok().flatten()
-        .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
-    else { return };
+    let Some((tmp, tmp_ctx)) = get_tmp_canvas(preview.width, preview.height) else { return };
     let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
     let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
@@ -954,10 +933,8 @@ pub fn blit_tiles_viewport(
         ) else { return };
 
         let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height) else { return };
-        if tmp.width() != tile.rendered.width || tmp.height() != tile.rendered.height {
-            tmp.set_width(tile.rendered.width);
-            tmp.set_height(tile.rendered.height);
-        }
+        // Note: tmp canvas may be larger than the tile — that's fine.
+        // put_image_data writes at (0,0) and draw_image reads only src_x..src_w.
         let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
         // Enable smoothing when scaling (fallback tiles are upscaled)
@@ -1186,10 +1163,8 @@ pub fn blit_flow_tiles_viewport(
         ) else { return };
 
         let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height) else { return };
-        if tmp.width() != tile.rendered.width || tmp.height() != tile.rendered.height {
-            tmp.set_width(tile.rendered.width);
-            tmp.set_height(tile.rendered.height);
-        }
+        // Note: tmp canvas may be larger than the tile — that's fine.
+        // put_image_data writes at (0,0) and draw_image reads only src_x..src_w.
         let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
         // Enable smoothing when upscaling fallback tiles
