@@ -468,7 +468,9 @@ pub fn OverviewPanel() -> impl IntoView {
         let cw = rect.width();
         if let Some(t) = x_to_time(canvas_x, cw) {
             push_nav(&state);
-            let centered = (t - half_visible_time()).max(0.0);
+            let visible = half_visible_time() * 2.0;
+            let max_scroll = (file_duration() - visible).max(0.0);
+            let centered = (t - half_visible_time()).clamp(0.0, max_scroll);
             state.suspend_follow();
             state.scroll_offset.set(centered);
         }
@@ -519,7 +521,9 @@ pub fn OverviewPanel() -> impl IntoView {
         let cw = rect.width();
         if let Some(t) = x_to_time(canvas_x, cw) {
             push_nav(&state);
-            let centered = (t - half_visible_time()).max(0.0);
+            let visible = half_visible_time() * 2.0;
+            let max_scroll = (file_duration() - visible).max(0.0);
+            let centered = (t - half_visible_time()).clamp(0.0, max_scroll);
             state.suspend_follow();
             state.scroll_offset.set(centered);
         }

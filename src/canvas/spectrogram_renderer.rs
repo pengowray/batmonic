@@ -628,7 +628,9 @@ pub fn blit_preview_as_background(
     // The preview spans the entire file: column 0 = time 0, column W = total_duration.
     let pw = preview.width as f64;
     let src_x = (scroll_offset / total_duration * pw).clamp(0.0, pw);
-    let src_w = (visible_time / total_duration * pw).clamp(1.0, pw - src_x);
+    let remaining = pw - src_x;
+    if remaining < 0.5 { return; } // nothing meaningful left to draw
+    let src_w = (visible_time / total_duration * pw).max(0.5).min(remaining);
 
     // Scale destination width so the preview only covers the portion of the
     // canvas that has actual file data.  This handles both short files that fit
