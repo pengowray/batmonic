@@ -4,9 +4,12 @@ use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, DragEvent, HtmlCanvasElement, HtmlInputElement, ImageData, MouseEvent};
 use crate::audio::playback;
 use crate::audio::microphone;
+use crate::audio::streaming_source::StreamingWavSource;
 use crate::canvas::tile_cache;
 use crate::state::AppState;
 use crate::types::PreviewImage;
+
+use super::file_groups;
 
 use super::loading::{read_and_load_file, DemoEntry, fetch_demo_index, load_single_demo};
 
@@ -198,12 +201,25 @@ pub(super) fn FilesPanel() -> impl IntoView {
                     }.into_any()
                 } else {
                     let is_tauri = state.is_tauri;
+                    let names: Vec<String> = file_vec.iter().map(|f| f.name.clone()).collect();
+                    let groups = file_groups::compute_file_groups(&names);
+                    let active_group_key: Option<String> = current_idx.get()
+                        .and_then(|idx| groups.get(idx))
+                        .and_then(|g| g.as_ref())
+                        .map(|ti| ti.group_key.clone());
                     let items: Vec<_> = file_vec.iter().enumerate().map(|(i, f)| {
                         let name = f.name.clone();
                         let dur = f.audio.duration_secs;
                         let sr = f.audio.sample_rate;
                         let preview = f.preview.clone();
                         let is_rec = f.is_recording;
+                        let track_badge = groups.get(i).cloned().flatten();
+                        let is_group_highlighted = track_badge.as_ref()
+                            .map(|ti| Some(&ti.group_key) == active_group_key.as_ref())
+                            .unwrap_or(false);
+                        let is_streaming = f.audio.source.as_any()
+                            .downcast_ref::<StreamingWavSource>()
+                            .is_some();
                         let is_active = move || current_idx.get() == Some(i);
                         let on_click = move |_| {
                             // Clear navigation history and bookmarks when switching files
@@ -262,6 +278,19 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                     <div class="file-item-name">
                                         {if show_unsaved {
                                             Some(view! { <span class="file-unsaved-badge" title="Unsaved recording"></span> })
+                                        } else {
+                                            None
+                                        }}
+                                        {track_badge.map(|ti| {
+                                            let cls = if is_group_highlighted {
+                                                "file-badge file-badge-track highlighted"
+                                            } else {
+                                                "file-badge file-badge-track"
+                                            };
+                                            view! { <span class=cls>{format!("[{}]", ti.label)}</span> }
+                                        })}
+                                        {if is_streaming {
+                                            Some(view! { <span class="file-badge file-badge-streaming" title="Streaming (large file)">"[~]"</span> })
                                         } else {
                                             None
                                         }}

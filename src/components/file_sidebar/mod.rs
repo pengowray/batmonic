@@ -1,3 +1,4 @@
+mod file_groups;
 mod files_panel;
 mod config_panel;
 pub mod settings_panel;

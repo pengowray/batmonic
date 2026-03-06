@@ -1697,6 +1697,36 @@ body.sidebar-resizing {
     50% { background: rgba(220, 60, 60, 0.22); }
 }
 
+/* File badges (track groups, streaming) */
+.file-badge {
+    font-size: 10px;
+    padding: 0 3px;
+    margin-right: 4px;
+    border-radius: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.file-badge-track {
+    color: #668;
+    background: #222;
+}
+.file-badge-track.highlighted {
+    color: #adf;
+    background: #1a3a5a;
+}
+.file-item.active .file-badge-track {
+    color: #adf;
+    background: #255080;
+}
+.file-badge-streaming {
+    color: #a90;
+    background: #221800;
+}
+.file-item.active .file-badge-streaming {
+    color: #fc8;
+    background: #332200;
+}
+
 /* Unsaved recording indicators */
 .file-unsaved-badge {
     display: inline-block;
