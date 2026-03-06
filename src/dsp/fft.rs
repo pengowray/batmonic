@@ -207,7 +207,13 @@ pub fn compute_spectrogram(
 ) -> SpectrogramData {
     let fft = FFT_PLANNER.with(|p| p.borrow_mut().plan_fft_forward(fft_size));
 
-    let total = audio.source.total_samples() as usize;
+    // Use loaded samples only — for streaming files, total_samples() could be
+    // billions while only 30s are in memory.
+    let total = if audio.source.is_fully_loaded() {
+        audio.source.total_samples() as usize
+    } else {
+        audio.samples.len()
+    };
     let samples = audio.source.read_region(ChannelView::MonoMix, 0, total);
 
     let mut columns = Vec::new();
@@ -267,7 +273,11 @@ pub fn compute_spectrogram_partial(
     col_start: usize,
     col_count: usize,
 ) -> Vec<SpectrogramColumn> {
-    let total = audio.source.total_samples() as usize;
+    let total = if audio.source.is_fully_loaded() {
+        audio.source.total_samples() as usize
+    } else {
+        audio.samples.len()
+    };
     let samples = audio.source.read_region(ChannelView::MonoMix, 0, total);
     compute_stft_columns(&samples, audio.sample_rate, fft_size, hop_size, col_start, col_count)
 }
@@ -319,7 +329,13 @@ pub fn compute_stft_columns(
 /// Compute a fast low-resolution preview spectrogram as an RGBA pixel buffer.
 /// Uses FFT=256 with a dynamic hop to produce roughly `target_width` columns.
 pub fn compute_preview(audio: &AudioData, target_width: u32, target_height: u32) -> PreviewImage {
-    let total = audio.source.total_samples() as usize;
+    // For streaming files, only the head samples are in memory — don't try to
+    // read the entire multi-GB file. audio.samples contains the loaded portion.
+    let total = if audio.source.is_fully_loaded() {
+        audio.source.total_samples() as usize
+    } else {
+        audio.samples.len()
+    };
     if total < 256 {
         // Too short for even one FFT frame
         return PreviewImage {
