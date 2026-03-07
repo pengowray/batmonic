@@ -48,12 +48,16 @@ pub fn ComboButton(
 
     // -- press-and-hold timer --
     let hold_timer: RwSignal<Option<i32>> = RwSignal::new(None);
+    // Tracks whether the hold timer already fired (long press opened the menu)
+    let hold_fired: RwSignal<bool> = RwSignal::new(false);
 
     let start_hold = move || {
         cancel_hold_inner(hold_timer);
+        hold_fired.set(false);
         let window = web_sys::window().unwrap();
         let toggle = toggle_menu;
         let cb = Closure::wrap(Box::new(move || {
+            hold_fired.set(true);
             toggle.run(());
         }) as Box<dyn Fn()>);
         if let Ok(id) = window.set_timeout_with_callback_and_timeout_and_arguments_0(
@@ -105,7 +109,16 @@ pub fn ComboButton(
                     ev.prevent_default();
                     start_hold();
                 }
-                on:touchend=move |_| cancel_hold()
+                on:touchend=move |ev: web_sys::TouchEvent| {
+                    cancel_hold();
+                    // Short tap: fire the primary action (click is suppressed by preventDefault)
+                    if !hold_fired.get_untracked() {
+                        // Synthesize a MouseEvent for the callback
+                        let me = web_sys::MouseEvent::new("click").unwrap();
+                        left_click.run(me);
+                    }
+                    ev.prevent_default();
+                }
                 on:touchmove=move |_| cancel_hold()
                 on:contextmenu=move |ev: web_sys::MouseEvent| ev.prevent_default()
             >
@@ -132,7 +145,14 @@ pub fn ComboButton(
                     ev.prevent_default();
                     start_hold();
                 }
-                on:touchend=move |_| cancel_hold()
+                on:touchend=move |ev: web_sys::TouchEvent| {
+                    cancel_hold();
+                    // Short tap: toggle the menu (click is suppressed by preventDefault)
+                    if !hold_fired.get_untracked() {
+                        toggle_menu.run(());
+                    }
+                    ev.prevent_default();
+                }
                 on:touchmove=move |_| cancel_hold()
                 on:contextmenu=move |ev: web_sys::MouseEvent| ev.prevent_default()
             >
