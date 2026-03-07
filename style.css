@@ -878,35 +878,33 @@ body.sidebar-resizing {
 .file-sort-bar {
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding: 2px 8px 4px;
+    gap: 4px;
+    padding: 3px 8px;
     border-bottom: 1px solid #222;
 }
 
 .file-sort-label {
-    font-size: 10px;
+    font-size: 11px;
     color: #666;
-    margin-right: 2px;
 }
 
-.file-sort-btn {
-    background: none;
-    border: 1px solid transparent;
-    color: #777;
-    font-size: 10px;
-    padding: 1px 5px;
+.file-sort-select {
+    background: #222;
+    color: #aaa;
+    border: 1px solid #444;
     border-radius: 3px;
+    font-size: 11px;
+    padding: 1px 4px;
     cursor: pointer;
+    outline: none;
 }
 
-.file-sort-btn:hover {
-    color: #bbb;
-    background: #333;
+.file-sort-select:hover {
+    border-color: #666;
+    color: #ccc;
 }
 
-.file-sort-btn.active {
-    color: #ddd;
-    background: #335;
+.file-sort-select:focus {
     border-color: #557;
 }
 

@@ -390,24 +390,28 @@ fn SortBar(sort_mode: FileSortMode) -> impl IntoView {
     let state = expect_context::<AppState>();
     let sort_signal = state.file_sort_mode;
 
-    let buttons: Vec<_> = FileSortMode::ALL.iter().map(|&mode| {
+    let options: Vec<_> = FileSortMode::ALL.iter().map(|&mode| {
         let label = mode.label();
-        let is_active = mode == sort_mode;
-        let cls = if is_active { "file-sort-btn active" } else { "file-sort-btn" };
+        let is_selected = mode == sort_mode;
         view! {
-            <button
-                class=cls
-                on:click=move |_| { sort_signal.set(mode); }
-            >
-                {label}
-            </button>
+            <option value=label selected=is_selected>{label}</option>
         }
     }).collect();
+
+    let on_change = move |ev: web_sys::Event| {
+        let target = ev.target().unwrap();
+        let select: web_sys::HtmlSelectElement = target.unchecked_into();
+        let val = select.value();
+        let mode = FileSortMode::ALL.iter().find(|m| m.label() == val).copied().unwrap_or_default();
+        sort_signal.set(mode);
+    };
 
     view! {
         <div class="file-sort-bar">
             <span class="file-sort-label">"Sort:"</span>
-            {buttons}
+            <select class="file-sort-select" on:change=on_change>
+                {options}
+            </select>
         </div>
     }
 }
