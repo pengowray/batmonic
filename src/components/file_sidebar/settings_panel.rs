@@ -483,6 +483,7 @@ pub(crate) fn SelectionPanel() -> impl IntoView {
         let selection = state.selection.get_untracked();
         let file_idx = state.current_file_index.get_untracked();
         if let (Some(sel), Some(idx)) = (selection, file_idx) {
+            state.snapshot_annotations();
             let annotation = Annotation {
                 id: generate_uuid(),
                 kind: AnnotationKind::Selection(SavedSelection {
@@ -678,6 +679,16 @@ fn SavedSelectionsList() -> impl IntoView {
                             {render_tree_nodes(tree, state)}
                         </div>
                         <div class="setting-row" style="gap: 4px; padding: 4px 8px;">
+                            <button class="sidebar-btn annotation-toolbar-btn"
+                                title="Undo (Ctrl+Z)"
+                                on:click=move |_| state.undo_annotations()
+                                disabled=move || !state.can_undo()
+                            >"\u{21B6}"</button>
+                            <button class="sidebar-btn annotation-toolbar-btn"
+                                title="Redo (Ctrl+Shift+Z)"
+                                on:click=move |_| state.redo_annotations()
+                                disabled=move || !state.can_redo()
+                            >"\u{21B7}"</button>
                             <button class="sidebar-btn annotation-toolbar-btn"
                                 title="Group selected"
                                 on:click=on_group
@@ -928,6 +939,7 @@ fn delete_annotation(state: AppState, annotation_id: &str) {
         Some(i) => i,
         None => return,
     };
+    state.snapshot_annotations();
     // Also delete all descendants
     let descendants = {
         let store = state.annotation_store.get_untracked();
@@ -953,6 +965,7 @@ fn update_annotation_label(state: AppState, annotation_id: &str, label: Option<S
         Some(i) => i,
         None => return,
     };
+    state.snapshot_annotations();
     state.annotation_store.update(|store| {
         if let Some(Some(ref mut set)) = store.sets.get_mut(idx) {
             if let Some(a) = set.annotations.iter_mut().find(|a| a.id == annotation_id) {
@@ -996,6 +1009,8 @@ fn group_selected(state: AppState) {
         Some(i) => i,
         None => return,
     };
+
+    state.snapshot_annotations();
 
     // Create a new group and move the selected annotation into it
     let group_id = generate_uuid();
@@ -1052,6 +1067,7 @@ fn ungroup_selected(state: AppState) {
         None => return,
     };
 
+    state.snapshot_annotations();
     state.annotation_store.update(|store| {
         if let Some(Some(ref mut set)) = store.sets.get_mut(idx) {
             // Verify it's a group
@@ -1099,6 +1115,7 @@ fn perform_drop(state: AppState) {
         None => return,
     };
 
+    state.snapshot_annotations();
     state.annotation_store.update(|store| {
         if let Some(Some(ref mut set)) = store.sets.get_mut(idx) {
             // Don't allow dropping into own descendants
@@ -1193,6 +1210,7 @@ fn import_annotations(state: AppState) {
             match yaml_serde::from_str::<AnnotationSet>(&text) {
                 Ok(imported) => {
                     let idx = state.current_file_index.get_untracked().unwrap_or(0);
+                    state.snapshot_annotations();
                     state.annotation_store.update(|store| {
                         store.ensure_len(idx + 1);
                         if let Some(Some(ref mut existing)) = store.sets.get_mut(idx) {

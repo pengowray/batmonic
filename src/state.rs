@@ -345,6 +345,32 @@ pub struct NavEntry {
     pub zoom_level: f64,
 }
 
+/// A snapshot of a file's annotation set for undo/redo.
+#[derive(Clone, Debug)]
+pub struct UndoEntry {
+    pub file_idx: usize,
+    pub snapshot: Option<crate::annotations::AnnotationSet>,
+}
+
+/// Undo/redo stack for annotation operations.
+#[derive(Clone, Debug, Default)]
+pub struct UndoStack {
+    pub undo: Vec<UndoEntry>,
+    pub redo: Vec<UndoEntry>,
+}
+
+impl UndoStack {
+    const MAX_SIZE: usize = 100;
+
+    pub fn push_undo(&mut self, entry: UndoEntry) {
+        self.undo.push(entry);
+        if self.undo.len() > Self::MAX_SIZE {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
+    }
+}
+
 /// A time-position bookmark created during or after playback.
 #[derive(Clone, Copy, Debug)]
 pub struct Bookmark {
@@ -692,6 +718,8 @@ pub struct AppState {
     pub dragging_annotation_id: RwSignal<Option<AnnotationId>>,
     /// Drop target: (target_id, position) where position is "before", "after", or "inside" (for groups).
     pub drop_target: RwSignal<Option<(AnnotationId, String)>>,
+    /// Undo/redo stack for annotation operations.
+    pub undo_stack: RwSignal<UndoStack>,
 
     // Display-affecting checkboxes (spectrogram intensity settings)
     pub display_auto_gain: RwSignal<bool>,
@@ -909,6 +937,7 @@ impl AppState {
             selected_annotation_id: RwSignal::new(None),
             dragging_annotation_id: RwSignal::new(None),
             drop_target: RwSignal::new(None),
+            undo_stack: RwSignal::new(UndoStack::default()),
 
             display_auto_gain: RwSignal::new(false),
             display_eq: RwSignal::new(false),
@@ -966,6 +995,86 @@ impl AppState {
         });
         let new_len = self.nav_history.get_untracked().len();
         self.nav_index.set(new_len.saturating_sub(1));
+    }
+
+    /// Snapshot the current file's annotation set onto the undo stack.
+    /// Call this BEFORE making any annotation mutation.
+    pub fn snapshot_annotations(&self) {
+        let idx = match self.current_file_index.get_untracked() {
+            Some(i) => i,
+            None => return,
+        };
+        let store = self.annotation_store.get_untracked();
+        let snapshot = store.sets.get(idx).cloned().flatten();
+        self.undo_stack.update(|stack| {
+            stack.push_undo(UndoEntry { file_idx: idx, snapshot });
+        });
+    }
+
+    /// Undo the last annotation operation.
+    pub fn undo_annotations(&self) {
+        let entry = {
+            let mut popped = None;
+            self.undo_stack.update(|stack| {
+                popped = stack.undo.pop();
+            });
+            match popped {
+                Some(e) => e,
+                None => return,
+            }
+        };
+
+        // Save current state to redo before restoring
+        let store = self.annotation_store.get_untracked();
+        let current = store.sets.get(entry.file_idx).cloned().flatten();
+        self.undo_stack.update(|stack| {
+            stack.redo.push(UndoEntry { file_idx: entry.file_idx, snapshot: current });
+        });
+
+        // Restore the snapshot
+        self.annotation_store.update(|store| {
+            store.ensure_len(entry.file_idx + 1);
+            store.sets[entry.file_idx] = entry.snapshot;
+        });
+        self.annotations_dirty.set(true);
+    }
+
+    /// Redo the last undone annotation operation.
+    pub fn redo_annotations(&self) {
+        let entry = {
+            let mut popped = None;
+            self.undo_stack.update(|stack| {
+                popped = stack.redo.pop();
+            });
+            match popped {
+                Some(e) => e,
+                None => return,
+            }
+        };
+
+        // Save current state to undo before restoring
+        let store = self.annotation_store.get_untracked();
+        let current = store.sets.get(entry.file_idx).cloned().flatten();
+        self.undo_stack.update(|stack| {
+            stack.undo.push(UndoEntry { file_idx: entry.file_idx, snapshot: current });
+        });
+
+        // Restore the snapshot
+        self.annotation_store.update(|store| {
+            store.ensure_len(entry.file_idx + 1);
+            store.sets[entry.file_idx] = entry.snapshot;
+        });
+        self.annotations_dirty.set(true);
+    }
+
+    /// Whether there's something to undo.
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.get().undo.is_empty()
+    }
+
+    /// Whether there's something to redo.
+    pub fn can_redo(&self) -> bool {
+        !self.undo_stack.get().redo.is_empty()
     }
 
     pub fn show_info_toast(&self, msg: impl Into<String>) {

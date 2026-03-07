@@ -325,6 +325,19 @@ pub fn App() -> impl IntoView {
             ev.prevent_default();
             state_kb.bat_book_open.update(|v| *v = !*v);
         }
+        // Ctrl+Z / Cmd+Z = Undo, Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y = Redo
+        if (ev.key() == "z" || ev.key() == "Z") && (ev.ctrl_key() || ev.meta_key()) && !ev.alt_key() {
+            ev.prevent_default();
+            if ev.shift_key() {
+                state_kb.redo_annotations();
+            } else {
+                state_kb.undo_annotations();
+            }
+        }
+        if ev.key() == "y" && (ev.ctrl_key() || ev.meta_key()) && !ev.shift_key() && !ev.alt_key() {
+            ev.prevent_default();
+            state_kb.redo_annotations();
+        }
         if ev.key() == "Escape" {
             if state_kb.bat_book_ref_open.get_untracked() {
                 state_kb.bat_book_ref_open.set(false);
