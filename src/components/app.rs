@@ -363,6 +363,24 @@ pub fn App() -> impl IntoView {
             ev.prevent_default();
             state_kb.redo_annotations();
         }
+        // Arrow left/right: pan the view
+        if ev.key() == "ArrowLeft" || ev.key() == "ArrowRight" {
+            ev.prevent_default();
+            let files = state_kb.files.get_untracked();
+            let idx = state_kb.current_file_index.get_untracked().unwrap_or(0);
+            if let Some(file) = files.get(idx) {
+                let zoom = state_kb.zoom_level.get_untracked();
+                let canvas_w = state_kb.spectrogram_canvas_width.get_untracked();
+                let visible_time = (canvas_w / zoom) * file.spectrogram.time_resolution;
+                let step = visible_time * 0.2;
+                let delta = if ev.key() == "ArrowLeft" { -step } else { step };
+                let max_scroll = (file.audio.duration_secs - visible_time).max(0.0);
+                state_kb.suspend_follow();
+                state_kb.scroll_offset.update(|s| {
+                    *s = (*s + delta).clamp(0.0, max_scroll);
+                });
+            }
+        }
         if ev.key() == "Escape" {
             if state_kb.bat_book_ref_open.get_untracked() {
                 state_kb.bat_book_ref_open.set(false);
