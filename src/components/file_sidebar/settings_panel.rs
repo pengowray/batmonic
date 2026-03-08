@@ -678,7 +678,7 @@ fn AnnotationsList() -> impl IntoView {
                         >
                             {render_tree_nodes(tree, state)}
                         </div>
-                        <div class="setting-row" style="gap: 4px; padding: 4px 8px;">
+                        <div class="setting-row" style="gap: 2px; padding: 2px 8px; justify-content: flex-end;">
                             <button class="sidebar-btn annotation-toolbar-btn"
                                 title="Undo (Ctrl+Z)"
                                 on:click=move |_| state.undo_annotations()
