@@ -251,9 +251,15 @@ pub fn App() -> impl IntoView {
                 });
             }
 
-            // Clear annotation selection when switching files
+            // Clear annotation selection and save outgoing file's sidecar when switching
             if old_idx != new_idx {
                 state.selected_annotation_id.set(None);
+                // Save outgoing file's annotations+NR to OPFS
+                if let Some(oi) = old_idx {
+                    if !state.is_tauri {
+                        crate::opfs::save_annotations_to_opfs(state, oi);
+                    }
+                }
             }
 
             // Restore settings from the incoming file

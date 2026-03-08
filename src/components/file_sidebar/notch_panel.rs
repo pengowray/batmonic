@@ -193,82 +193,6 @@ pub(crate) fn NotchPanel() -> impl IntoView {
         state.notch_enabled.set(false);
     };
 
-    // Export profile
-    let on_export = move |_: web_sys::MouseEvent| {
-        let Some((profile, profile_name)) = build_current_profile(state) else {
-            state.show_error_toast("Nothing to export");
-            return;
-        };
-
-        let Ok(yaml) = yaml_serde::to_string(&profile) else {
-            state.show_error_toast("Failed to serialize profile");
-            return;
-        };
-
-        // Trigger browser download via JS interop
-        let arr = js_sys::Array::of1(&JsValue::from_str(&yaml));
-        let Ok(blob) = web_sys::Blob::new_with_str_sequence(&arr) else {
-            return;
-        };
-        let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else {
-            return;
-        };
-
-        let doc = web_sys::window().unwrap().document().unwrap();
-        let a: web_sys::HtmlAnchorElement = doc
-            .create_element("a")
-            .unwrap()
-            .unchecked_into();
-        a.set_href(&url);
-        let filename = format!("{}.batm", profile_name.replace(' ', "_").to_lowercase());
-        a.set_download(&filename);
-        a.click();
-        let _ = web_sys::Url::revoke_object_url(&url);
-    };
-
-    // Import profile
-    let on_import = move |_: web_sys::MouseEvent| {
-        let doc = web_sys::window().unwrap().document().unwrap();
-        let input: web_sys::HtmlInputElement = doc
-            .create_element("input")
-            .unwrap()
-            .unchecked_into();
-        input.set_type("file");
-        input.set_attribute("accept", ".batm,.yaml,.yml,.json").unwrap();
-
-        let on_change = Closure::<dyn FnMut(web_sys::Event)>::new(move |ev: web_sys::Event| {
-            let target: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
-            let Some(file_list) = target.files() else { return };
-            let Some(file) = file_list.get(0) else { return };
-
-            let reader = web_sys::FileReader::new().unwrap();
-            let reader_clone = reader.clone();
-            let filename = file.name();
-            let on_load = Closure::<dyn FnMut(web_sys::Event)>::new(move |_: web_sys::Event| {
-                let result = reader_clone.result().unwrap();
-                let text = result.as_string().unwrap_or_default();
-                // Try YAML first, fall back to JSON for legacy .json files
-                let parsed = if filename.ends_with(".json") {
-                    serde_json::from_str::<NoiseProfile>(&text).map_err(|e| e.to_string())
-                } else {
-                    yaml_serde::from_str::<NoiseProfile>(&text).map_err(|e| e.to_string())
-                };
-                match parsed {
-                    Ok(profile) => apply_noise_profile(state, profile),
-                    Err(e) => {
-                        state.show_error_toast(format!("Invalid profile: {e}"));
-                    }
-                }
-            });
-            reader.set_onload(Some(on_load.as_ref().unchecked_ref()));
-            on_load.forget();
-            let _ = reader.read_as_text(&file);
-        });
-        input.set_onchange(Some(on_change.as_ref().unchecked_ref()));
-        on_change.forget();
-        input.click();
-    };
-
     // Learn noise floor for spectral subtraction
     let on_learn_floor = move |_: web_sys::MouseEvent| {
         let files = state.files.get_untracked();
@@ -696,24 +620,6 @@ pub(crate) fn NotchPanel() -> impl IntoView {
                         on:input=on_name_change
                     />
                 </div>
-                <div class="setting-row" style="gap: 4px;">
-                    <button
-                        class="sidebar-btn"
-                        style="flex: 1;"
-                        on:click=on_export
-                        disabled=move || state.notch_bands.get().is_empty() && state.noise_reduce_floor.get().is_none()
-                    >
-                        "Export"
-                    </button>
-                    <button
-                        class="sidebar-btn"
-                        style="flex: 1;"
-                        on:click=on_import
-                    >
-                        "Import"
-                    </button>
-                </div>
-
                 // Tauri-only: Save Preset + preset list
                 {if state.is_tauri {
                     Some(view! {

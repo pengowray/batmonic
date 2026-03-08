@@ -92,9 +92,58 @@ pub async fn opfs_load(key: &str) -> Result<Option<String>, String> {
     Ok(text.as_string())
 }
 
+/// Build a NoiseProfile from current app state, or None if there's nothing to save.
+fn sync_noise_profile_from_state(state: crate::state::AppState) -> Option<crate::dsp::notch::NoiseProfile> {
+    use leptos::prelude::GetUntracked;
+
+    let bands = state.notch_bands.get_untracked();
+    let noise_floor = state.noise_reduce_floor.get_untracked();
+    if bands.is_empty() && noise_floor.is_none() {
+        return None;
+    }
+
+    let files = state.files.get_untracked();
+    let idx = state.current_file_index.get_untracked();
+    let sample_rate = idx
+        .and_then(|i| files.get(i))
+        .map(|f| f.audio.sample_rate)
+        .unwrap_or(0);
+
+    let name = state.notch_profile_name.get_untracked();
+    let profile_name = if name.is_empty() {
+        idx.and_then(|i| files.get(i))
+            .map(|f| {
+                let base = f.name.rsplit('/').next().unwrap_or(&f.name);
+                let base = base.rsplit('\\').next().unwrap_or(base);
+                base.rsplit_once('.').map(|(n, _)| n).unwrap_or(base).to_string()
+            })
+            .unwrap_or_else(|| "Noise Profile".to_string())
+    } else {
+        name
+    };
+
+    Some(crate::dsp::notch::NoiseProfile {
+        name: profile_name,
+        bands,
+        source_sample_rate: sample_rate,
+        created: crate::annotations::now_iso8601(),
+        noise_floor,
+        harmonic_suppression: state.notch_harmonic_suppression.get_untracked(),
+    })
+}
+
 /// Save annotations for a specific file index to OPFS.
 pub fn save_annotations_to_opfs(state: crate::state::AppState, file_idx: usize) {
-    use leptos::prelude::GetUntracked;
+    use leptos::prelude::{GetUntracked, Update};
+
+    // Sync noise profile and touch modified_at before saving
+    state.annotation_store.update(|store| {
+        if let Some(Some(ref mut set)) = store.sets.get_mut(file_idx) {
+            // Capture current NR state into the sidecar
+            set.noise_profile = sync_noise_profile_from_state(state);
+            set.touch();
+        }
+    });
 
     let store = state.annotation_store.get_untracked();
     let set = match store.sets.get(file_idx).and_then(|s| s.as_ref()) {
@@ -120,10 +169,38 @@ pub fn save_annotations_to_opfs(state: crate::state::AppState, file_idx: usize) 
     });
 }
 
+/// Apply a loaded sidecar to the annotation store and restore NR profile to file settings.
+fn apply_loaded_sidecar(state: crate::state::AppState, file_idx: usize, loaded: crate::annotations::AnnotationSet) {
+    use leptos::prelude::Update;
+
+    // If the sidecar has a noise profile, store it in the file's per-file settings
+    if let Some(ref profile) = loaded.noise_profile {
+        state.files.update(|files| {
+            if let Some(f) = files.get_mut(file_idx) {
+                f.settings.notch_bands = profile.bands.clone();
+                f.settings.notch_profile_name = profile.name.clone();
+                f.settings.notch_harmonic_suppression = profile.harmonic_suppression;
+                if !profile.bands.is_empty() {
+                    f.settings.notch_enabled = true;
+                }
+                if let Some(ref floor) = profile.noise_floor {
+                    f.settings.noise_reduce_floor = Some(floor.clone());
+                    f.settings.noise_reduce_enabled = true;
+                }
+            }
+        });
+    }
+
+    state.annotation_store.update(|store| {
+        store.ensure_len(file_idx + 1);
+        store.sets[file_idx] = Some(loaded);
+    });
+}
+
 /// Try to load annotations from OPFS for a file with the given identity.
 /// If found, merges into the annotation store at the given index.
 pub fn load_annotations_from_opfs(state: crate::state::AppState, file_idx: usize, identity: crate::annotations::FileIdentity) {
-    use leptos::prelude::{Update, GetUntracked};
+    use leptos::prelude::GetUntracked;
 
     let key = opfs_key(&identity);
 
@@ -132,17 +209,12 @@ pub fn load_annotations_from_opfs(state: crate::state::AppState, file_idx: usize
             Ok(Some(yaml)) => {
                 match yaml_serde::from_str::<crate::annotations::AnnotationSet>(&yaml) {
                     Ok(loaded) => {
-                        // Only apply if this file index still exists and has no annotations yet
                         let already_has = state.annotation_store.get_untracked()
                             .sets.get(file_idx)
                             .and_then(|s| s.as_ref())
-                            .map(|s| !s.annotations.is_empty())
-                            .unwrap_or(false);
+                            .is_some();
                         if !already_has {
-                            state.annotation_store.update(|store| {
-                                store.ensure_len(file_idx + 1);
-                                store.sets[file_idx] = Some(loaded);
-                            });
+                            apply_loaded_sidecar(state, file_idx, loaded);
                             log::debug!("OPFS loaded annotations for file {file_idx}: {key}");
                         }
                     }
@@ -166,13 +238,9 @@ pub fn load_annotations_from_opfs(state: crate::state::AppState, file_idx: usize
                                     let already_has = state.annotation_store.get_untracked()
                                         .sets.get(file_idx)
                                         .and_then(|s| s.as_ref())
-                                        .map(|s| !s.annotations.is_empty())
-                                        .unwrap_or(false);
+                                        .is_some();
                                     if !already_has {
-                                        state.annotation_store.update(|store| {
-                                            store.ensure_len(file_idx + 1);
-                                            store.sets[file_idx] = Some(loaded);
-                                        });
+                                        apply_loaded_sidecar(state, file_idx, loaded);
                                         log::debug!("OPFS loaded annotations (fallback key) for file {file_idx}: {fallback_key}");
                                         // Re-save under the spot_hash key for faster future lookups
                                         save_annotations_to_opfs(state, file_idx);

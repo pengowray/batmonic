@@ -504,20 +504,17 @@ pub(crate) fn SelectionPanel() -> impl IntoView {
                 store.ensure_len(idx + 1);
                 if store.sets[idx].is_none() {
                     // Create a new AnnotationSet for this file
-                    let identity = state.files.with_untracked(|files| {
-                        files.get(idx).and_then(|f| f.identity.clone())
-                    }).unwrap_or_else(|| {
-                        let name = state.files.with_untracked(|files| {
-                            files.get(idx).map(|f| f.name.clone()).unwrap_or_default()
-                        });
-                        crate::file_identity::identity_layer1(&name, 0)
+                    let new_set = state.files.with_untracked(|files| {
+                        files.get(idx).map(|f| {
+                            let id = f.identity.clone().unwrap_or_else(|| {
+                                crate::file_identity::identity_layer1(&f.name, 0)
+                            });
+                            AnnotationSet::new_with_metadata(id, &f.audio)
+                        })
                     });
-                    store.sets[idx] = Some(AnnotationSet {
-                        version: 1,
-                        file_identity: identity,
-                        annotations: Vec::new(),
-                        app_version: env!("CARGO_PKG_VERSION").to_string(),
-                    });
+                    if let Some(set) = new_set {
+                        store.sets[idx] = Some(set);
+                    }
                 }
                 if let Some(ref mut set) = store.sets[idx] {
                     set.annotations.push(annotation);

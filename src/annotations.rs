@@ -154,13 +154,86 @@ pub struct Annotation {
     pub sort_order: Option<f64>,
 }
 
+/// Basic audio file metadata stored in the sidecar for reference.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AudioFileMetadata {
+    pub sample_rate: u32,
+    pub total_samples: u64,
+    pub channels: u32,
+    pub duration_secs: f64,
+    pub format: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub bits_per_sample: Option<u16>,
+}
+
 /// Per-file annotation collection — serialized to .batm sidecar files (YAML).
+/// Field order matters: serde serializes in declaration order, and we want
+/// noise_profile (with its large bin_magnitudes) at the end for readability.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnnotationSet {
+    /// Sidecar format version.
     pub version: u32,
-    pub file_identity: FileIdentity,
-    pub annotations: Vec<Annotation>,
+    /// Unique ID for this sidecar file (UUID v4).
+    #[serde(default = "generate_uuid")]
+    pub id: String,
+    /// App version that last wrote this file.
+    #[serde(default)]
     pub app_version: String,
+    /// When this sidecar was created.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub created_at: Option<String>,
+    /// When this sidecar was last modified.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub modified_at: Option<String>,
+
+    pub file_identity: FileIdentity,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub audio_metadata: Option<AudioFileMetadata>,
+
+    #[serde(default)]
+    pub annotations: Vec<Annotation>,
+
+    /// Noise reduction profile (notch bands + spectral floor). Kept near the end
+    /// because noise_floor.bin_magnitudes can be very long.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub noise_profile: Option<crate::dsp::notch::NoiseProfile>,
+}
+
+impl AnnotationSet {
+    /// Create a new empty AnnotationSet for a file.
+    pub fn new(file_identity: FileIdentity) -> Self {
+        Self {
+            version: 1,
+            id: generate_uuid(),
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            created_at: Some(now_iso8601()),
+            modified_at: Some(now_iso8601()),
+            file_identity,
+            audio_metadata: None,
+            annotations: Vec::new(),
+            noise_profile: None,
+        }
+    }
+
+    /// Create a new AnnotationSet with audio metadata populated from a LoadedFile.
+    pub fn new_with_metadata(file_identity: FileIdentity, audio: &crate::types::AudioData) -> Self {
+        let mut set = Self::new(file_identity);
+        set.audio_metadata = Some(AudioFileMetadata {
+            sample_rate: audio.sample_rate,
+            total_samples: audio.source.total_samples(),
+            channels: audio.channels,
+            duration_secs: audio.duration_secs,
+            format: audio.metadata.format.to_string(),
+            bits_per_sample: Some(audio.metadata.bits_per_sample),
+        });
+        set
+    }
+
+    /// Touch the modified_at timestamp and app_version.
+    pub fn touch(&mut self) {
+        self.modified_at = Some(now_iso8601());
+        self.app_version = env!("CARGO_PKG_VERSION").to_string();
+    }
 }
 
 /// In-memory annotation store, indexed parallel to AppState::files.
