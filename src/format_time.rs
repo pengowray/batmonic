@@ -50,7 +50,7 @@ pub fn format_relative_label(offset: f64, interval: f64) -> String {
 
     if abs < 1.0 && interval < 0.1 {
         let ms = abs * 1000.0;
-        if interval < 0.01 {
+        if interval < 0.001 {
             format!("{}{:.1}ms", sign, ms)
         } else {
             format!("{}{:.0}ms", sign, ms)
