@@ -227,10 +227,10 @@ pub fn HfrButton() -> impl IntoView {
         let hfr = state.hfr_enabled.get();
         let open = is_open.get();
         match (hfr, open) {
-            (true, true) => "layer-btn combo-btn-left active open",
-            (true, false) => "layer-btn combo-btn-left active",
-            (false, true) => "layer-btn combo-btn-left open",
-            (false, false) => "layer-btn combo-btn-left",
+            (true, true) => "layer-btn combo-btn-left no-annotation active open",
+            (true, false) => "layer-btn combo-btn-left no-annotation active",
+            (false, true) => "layer-btn combo-btn-left no-annotation open",
+            (false, false) => "layer-btn combo-btn-left no-annotation",
         }
     });
     let right_class = Signal::derive(move || {

@@ -219,8 +219,8 @@ pub fn BottomToolbar() -> impl IntoView {
                     match (active, open) {
                         (true, true) => "layer-btn combo-btn-left active open",
                         (true, false) => "layer-btn combo-btn-left active",
-                        (false, true) => "layer-btn combo-btn-left open",
-                        (false, false) => "layer-btn combo-btn-left",
+                        (false, true) => "layer-btn combo-btn-left no-annotation open",
+                        (false, false) => "layer-btn combo-btn-left no-annotation",
                     }
                 });
                 let gain_right_class = Signal::derive(move || {

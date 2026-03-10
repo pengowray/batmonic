@@ -1730,9 +1730,17 @@ body.sidebar-resizing {
     white-space: nowrap;
     letter-spacing: 0.2px;
     display: flex;
-    flex-direction: column;
     align-items: center;
+    justify-content: center;
     line-height: 1.2;
+}
+
+.combo-btn-text {
+    display: grid;
+    grid-template-rows: 9px 16px;
+    align-items: end;
+    justify-items: center;
+    min-height: 25px;
 }
 
 .layer-btn-category {
@@ -1741,18 +1749,20 @@ body.sidebar-resizing {
     letter-spacing: 0.8px;
     text-transform: uppercase;
     opacity: 0.55;
-    line-height: 1.1;
+    line-height: 1;
+    min-height: 9px;
 }
 
 .layer-btn-value {
-    font-size: 11px;
+    font-size: 15px;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1;
+    color: #ddd;
 }
 
-.combo-btn-left .layer-btn-value {
-    font-size: 15px;
-    color: #ddd;
+/* Don't force uppercase on combo-left categories (e.g. "with" for DSP) */
+.combo-btn-left .layer-btn-category {
+    text-transform: none;
 }
 
 /* ── Combo button (split toggle + dropdown) ──────────────────────────── */
@@ -1765,6 +1775,7 @@ body.sidebar-resizing {
 .combo-btn-left {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
+    min-height: 42px;
 }
 
 .combo-btn-right {
@@ -1772,20 +1783,27 @@ body.sidebar-resizing {
     border-bottom-left-radius: 0;
     border-left: none;
     flex-direction: row;
-    align-items: center;
-    gap: 3px;
+    align-items: flex-end;
+    gap: 5px;
     padding: 4px 7px 5px;
     min-width: 0;
+    min-height: 42px;
 }
 
 .combo-btn-right.dim .layer-btn-value {
-    opacity: 0.45;
+    opacity: 0.55;
+}
+
+.combo-btn-right .combo-btn-text {
+    justify-items: end;
 }
 
 .combo-btn-arrow {
     font-size: 9px;
     opacity: 0.55;
     line-height: 1;
+    align-self: flex-end;
+    margin-bottom: 2px;
 }
 
 .layer-btn:hover {
@@ -1840,9 +1858,14 @@ body.sidebar-resizing {
 
 .bottom-toolbar.mobile .layer-btn {
     padding: 6px 12px 7px;
-    min-height: 44px;
+    min-height: 48px;
     font-size: 13px;
     justify-content: center;
+}
+
+.bottom-toolbar.mobile .combo-btn-text {
+    grid-template-rows: 10px 19px;
+    min-height: 29px;
 }
 
 .bottom-toolbar.mobile .layer-btn-category {
@@ -1850,16 +1873,12 @@ body.sidebar-resizing {
 }
 
 .bottom-toolbar.mobile .layer-btn-value {
-    font-size: 13px;
-}
-
-.bottom-toolbar.mobile .combo-btn-left .layer-btn-value {
     font-size: 19px;
 }
 
 .bottom-toolbar.mobile .combo-btn-right {
     padding: 6px 10px 7px;
-    min-height: 44px;
+    min-height: 48px;
 }
 
 .bottom-toolbar.mobile .combo-btn-arrow {

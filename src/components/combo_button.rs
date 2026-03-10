@@ -73,8 +73,6 @@ pub fn ComboButton(
         cancel_hold_inner(hold_timer);
     };
 
-    let show_left_value = true;
-
     // Pre-render children so we can use FnOnce Children inside a reactive context
     let panel_content = children();
 
@@ -122,13 +120,26 @@ pub fn ComboButton(
                 on:touchmove=move |_| cancel_hold()
                 on:contextmenu=move |ev: web_sys::MouseEvent| ev.prevent_default()
             >
-                <span class="layer-btn-category">{left_label}</span>
-                {show_left_value.then(|| view! {
-                    <span class="layer-btn-value">{move || {
-                        let v = left_value.get();
-                        if v.is_empty() { "\u{00A0}".to_string() } else { v }
+                <span class="combo-btn-text combo-btn-text-left">
+                    <span class="layer-btn-category">{move || {
+                        let value = left_value.get();
+                        if value.is_empty() || left_label.is_empty() {
+                            "\u{00A0}".to_string()
+                        } else {
+                            left_label.to_string()
+                        }
                     }}</span>
-                })}
+                    <span class="layer-btn-value">{move || {
+                        let value = left_value.get();
+                        if !value.is_empty() {
+                            value
+                        } else if !left_label.is_empty() {
+                            left_label.to_string()
+                        } else {
+                            "\u{00A0}".to_string()
+                        }
+                    }}</span>
+                </span>
             </button>
 
             // ── Right button ──
@@ -156,7 +167,10 @@ pub fn ComboButton(
                 on:touchmove=move |_| cancel_hold()
                 on:contextmenu=move |ev: web_sys::MouseEvent| ev.prevent_default()
             >
-                <span class="layer-btn-value">{move || right_value.get()}</span>
+                <span class="combo-btn-text combo-btn-text-right">
+                    <span class="layer-btn-category">{"\u{00A0}"}</span>
+                    <span class="layer-btn-value">{move || right_value.get()}</span>
+                </span>
                 <span class="combo-btn-arrow">{"\u{25BE}"}</span>
             </button>
 

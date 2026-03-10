@@ -103,7 +103,10 @@ pub fn DisplayFilterButton() -> impl IntoView {
         enabled.update(|v| *v = !*v);
     });
 
-    // Summary: count of non-Off stages, or "OFF" when master is disabled
+    // Left value is always "DSP"; the category label "with" sits above it
+    let left_value = Signal::derive(|| "DSP".to_string());
+
+    // Right side: "OFF" when disabled, count when enabled
     let right_value = Signal::derive(move || {
         if !enabled.get() {
             return "OFF".to_string();
@@ -139,8 +142,8 @@ pub fn DisplayFilterButton() -> impl IntoView {
 
     view! {
         <ComboButton
-            left_label="DSP"
-            left_value=Signal::derive(|| String::new())
+            left_label="with"
+            left_value=left_value
             left_click=left_click
             left_class=left_class
             right_value=right_value
