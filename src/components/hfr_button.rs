@@ -234,15 +234,18 @@ pub fn HfrButton() -> impl IntoView {
         }
     });
     let right_class = Signal::derive(move || {
-        if is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+        let dim = if !state.hfr_enabled.get() { " dim" } else { "" };
+        if is_open.get() {
+            if dim.is_empty() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right dim open" }
+        } else {
+            if dim.is_empty() { "layer-btn combo-btn-right" } else { "layer-btn combo-btn-right dim" }
+        }
     });
 
-    let left_value = Signal::derive(move || {
-        if state.hfr_enabled.get() { "ON".to_string() } else { "OFF".to_string() }
-    });
+    let left_value = Signal::derive(|| String::new());
     let right_value = Signal::derive(move || {
         if !state.hfr_enabled.get() {
-            "\u{2014}".to_string()
+            "OFF".to_string()
         } else {
             match state.playback_mode.get() {
                 PlaybackMode::Heterodyne   => "HET".to_string(),

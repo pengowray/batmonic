@@ -768,7 +768,7 @@ fn MainViewButton() -> impl IntoView {
         if is_open.get() { "layer-btn combo-btn-left open" } else { "layer-btn combo-btn-left" }
     });
     let right_class = Signal::derive(move || {
-        if is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+        if is_open.get() { "layer-btn combo-btn-right dim open" } else { "layer-btn combo-btn-right dim" }
     });
 
     let left_click = Callback::new(move |_: web_sys::MouseEvent| {
@@ -780,7 +780,8 @@ fn MainViewButton() -> impl IntoView {
         });
     });
 
-    let right_value = Signal::derive(move || state.main_view.get().short_label().to_string());
+    let left_value = Signal::derive(move || state.main_view.get().short_label().to_string());
+    let right_value = Signal::derive(move || "View".to_string());
 
     let toggle_menu = Callback::new(move |()| {
         toggle_panel(&state, LayerPanel::MainView);
@@ -795,8 +796,8 @@ fn MainViewButton() -> impl IntoView {
 
     view! {
         <ComboButton
-            left_label="View"
-            left_value=Signal::derive(|| String::new())
+            left_label=""
+            left_value=left_value
             left_click=left_click
             left_class=left_class
             right_value=right_value

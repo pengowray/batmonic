@@ -91,17 +91,22 @@ pub fn DisplayFilterButton() -> impl IntoView {
     });
 
     let right_class = Signal::derive(move || {
-        if is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+        let dim = if !enabled.get() { " dim" } else { "" };
+        if is_open.get() {
+            if dim.is_empty() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right dim open" }
+        } else {
+            if dim.is_empty() { "layer-btn combo-btn-right" } else { "layer-btn combo-btn-right dim" }
+        }
     });
 
     let left_click = Callback::new(move |_: web_sys::MouseEvent| {
         enabled.update(|v| *v = !*v);
     });
 
-    // Summary: count of non-Off stages, or "off" when master is disabled
+    // Summary: count of non-Off stages, or "OFF" when master is disabled
     let right_value = Signal::derive(move || {
         if !enabled.get() {
-            return "off".to_string();
+            return "OFF".to_string();
         }
         let count = [
             state.display_filter_eq.get(),

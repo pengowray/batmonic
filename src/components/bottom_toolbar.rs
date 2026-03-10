@@ -224,14 +224,19 @@ pub fn BottomToolbar() -> impl IntoView {
                     }
                 });
                 let gain_right_class = Signal::derive(move || {
-                    if gain_is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+                    let dim = if state.gain_mode.get() == GainMode::Off { " dim" } else { "" };
+                    if gain_is_open.get() {
+                        if dim.is_empty() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right dim open" }
+                    } else {
+                        if dim.is_empty() { "layer-btn combo-btn-right" } else { "layer-btn combo-btn-right dim" }
+                    }
                 });
 
                 let gain_left_value = Signal::derive(move || {
                     let mode = state.gain_mode.get();
                     let manual_db = state.gain_db.get();
                     match mode {
-                        GainMode::Off => "Off".to_string(),
+                        GainMode::Off => String::new(),
                         GainMode::Manual => {
                             if manual_db > 0.0 { format!("+{:.0}dB", manual_db) }
                             else { format!("{:.0}dB", manual_db) }
@@ -248,7 +253,10 @@ pub fn BottomToolbar() -> impl IntoView {
                     }
                 });
                 let gain_right_value = Signal::derive(move || {
-                    state.gain_mode.get().label().to_string()
+                    match state.gain_mode.get() {
+                        GainMode::Off => "OFF".to_string(),
+                        mode => mode.label().to_string(),
+                    }
                 });
 
                 let gain_left_click = Callback::new(move |_: web_sys::MouseEvent| {

@@ -1778,6 +1778,10 @@ body.sidebar-resizing {
     min-width: 0;
 }
 
+.combo-btn-right.dim .layer-btn-value {
+    opacity: 0.45;
+}
+
 .combo-btn-arrow {
     font-size: 9px;
     opacity: 0.55;
