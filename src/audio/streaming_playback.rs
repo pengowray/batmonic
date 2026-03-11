@@ -27,6 +27,13 @@ const CHUNK_SAMPLES: usize = 96_000;
 /// actual chunk data, avoiding clicks at boundaries.
 const FILTER_WARMUP: usize = 4096;
 
+/// Overlap samples for PV HQ mode. Each chunk extends by this amount past
+/// its nominal end. The trailing overlap gets a Hann fade-out, while the
+/// next chunk's leading overlap (same size) gets a Hann fade-in. Web Audio
+/// sums them → smooth crossfade, eliminating boundary clicks without
+/// needing the warmup-trim hack.
+const PV_HQ_OVERLAP: usize = 8192;
+
 /// How far ahead (in seconds) to stay buffered beyond current playback time.
 const LOOKAHEAD_SECS: f64 = 1.5;
 
@@ -51,6 +58,7 @@ pub(crate) struct PlaybackParams {
     pub te_factor: f64,
     pub ps_factor: f64,
     pub pv_factor: f64,
+    pub pv_hq: bool,
     pub zc_factor: f64,
     pub gain_db: f64,
     pub gain_mode: GainMode,
@@ -208,6 +216,7 @@ async fn chunk_loop(
     params: PlaybackParams,
 ) {
     let mut pos = start_sample;
+    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder);
 
     // Gain computation depends on mode:
     // - Off: no gain at all (0 dB)
@@ -283,9 +292,13 @@ async fn chunk_loop(
         let _ = param.linear_ramp_to_value_at_time(1.0, scheduled_time + FADE_IN_MS / 1000.0);
     }
 
+    // In PV HQ mode, stride duration is CHUNK_SAMPLES/rate (the overlap is
+    // extra audio that blends with the next chunk via crossfade).
+    let stride_duration = CHUNK_SAMPLES as f64 / final_rate as f64;
+
     for buf in prebuf {
         if !buf.samples.is_empty() {
-            if stereo_out {
+            if stereo_out && !pv_hq_mode {
                 if let (Some(left), Some(right)) = (buf.left, buf.right) {
                     schedule_buffer_stereo(&ctx, &gain_node, &left, &right, final_rate, scheduled_time);
                     let chunk_duration = left.len() as f64 / final_rate as f64;
@@ -293,8 +306,14 @@ async fn chunk_loop(
                 }
             } else {
                 schedule_buffer(&ctx, &gain_node, &buf.samples, final_rate, scheduled_time);
-                let chunk_duration = buf.samples.len() as f64 / final_rate as f64;
-                scheduled_time += chunk_duration;
+                if pv_hq_mode {
+                    // Advance by stride only; the trailing overlap will be summed
+                    // with the next chunk's fade-in by Web Audio.
+                    scheduled_time += stride_duration;
+                } else {
+                    let chunk_duration = buf.samples.len() as f64 / final_rate as f64;
+                    scheduled_time += chunk_duration;
+                }
             }
         }
     }
@@ -313,7 +332,7 @@ async fn chunk_loop(
         pos = new_pos;
 
         if !final_samples.is_empty() {
-            if stereo_out {
+            if stereo_out && !pv_hq_mode {
                 if let (Some(left), Some(right)) = (left, right) {
                     schedule_buffer_stereo(&ctx, &gain_node, &left, &right, final_rate, scheduled_time);
                     let chunk_duration = left.len() as f64 / final_rate as f64;
@@ -321,8 +340,12 @@ async fn chunk_loop(
                 }
             } else {
                 schedule_buffer(&ctx, &gain_node, &final_samples, final_rate, scheduled_time);
-                let chunk_duration = final_samples.len() as f64 / final_rate as f64;
-                scheduled_time += chunk_duration;
+                if pv_hq_mode {
+                    scheduled_time += stride_duration;
+                } else {
+                    let chunk_duration = final_samples.len() as f64 / final_rate as f64;
+                    scheduled_time += chunk_duration;
+                }
             }
         }
 
@@ -354,6 +377,8 @@ async fn process_one_chunk(
     start_sample: usize,
     end_sample: usize,
 ) -> (Vec<f32>, Option<Vec<f32>>, Option<Vec<f32>>, usize) {
+    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder);
+
     let warmup_start = if pos > start_sample {
         pos.saturating_sub(FILTER_WARMUP)
     } else {
@@ -362,7 +387,12 @@ async fn process_one_chunk(
     let chunk_end = (pos + CHUNK_SAMPLES).min(end_sample);
     let warmup_len = pos - warmup_start;
 
-    let trailing_end = if matches!(params.mode, PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder) {
+    // In PV HQ mode, extend the chunk past its nominal end by PV_HQ_OVERLAP.
+    // The trailing overlap will be crossfaded with the next chunk's leading
+    // overlap instead of being trimmed.
+    let trailing_end = if pv_hq_mode {
+        (chunk_end + PV_HQ_OVERLAP).min(end_sample)
+    } else if matches!(params.mode, PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder) {
         (chunk_end + FILTER_WARMUP).min(end_sample)
     } else {
         chunk_end
@@ -376,36 +406,82 @@ async fn process_one_chunk(
     let filtered = apply_filters(&chunk_with_warmup, source_rate, params);
     let processed = apply_dsp_mode(&filtered, source_rate, params);
 
-    let trim_start = warmup_len;
-    let trim_end = processed.len().saturating_sub(trailing_len);
-    let trimmed = if trim_start < trim_end {
-        &processed[trim_start..trim_end]
+    if pv_hq_mode {
+        // HQ mode: trim warmup but keep trailing overlap with crossfade envelope.
+        let trim_start = warmup_len;
+        let mut final_samples = if trim_start < processed.len() {
+            processed[trim_start..].to_vec()
+        } else {
+            processed.to_vec()
+        };
+
+        let core_len = chunk_end - pos; // nominal chunk length (without overlap)
+
+        // Apply Hann fade-in on leading overlap (first chunk's start is clean)
+        if pos > start_sample {
+            let fade_in_len = PV_HQ_OVERLAP.min(core_len).min(final_samples.len());
+            for i in 0..fade_in_len {
+                let t = i as f32 / fade_in_len as f32;
+                // Hann fade-in: 0.5 * (1 - cos(π*t))
+                let w = 0.5 * (1.0 - (std::f32::consts::PI * t).cos());
+                final_samples[i] *= w;
+            }
+        }
+
+        // Apply Hann fade-out on trailing overlap
+        if trailing_len > 0 {
+            let fade_out_start = final_samples.len().saturating_sub(trailing_len);
+            let fade_out_len = final_samples.len() - fade_out_start;
+            for i in 0..fade_out_len {
+                let t = i as f32 / fade_out_len as f32;
+                // Hann fade-out: 0.5 * (1 + cos(π*t))
+                let w = 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
+                final_samples[fade_out_start + i] *= w;
+            }
+        }
+
+        let chunk_gain = if is_adaptive {
+            // Compute gain on the core region only (excluding fades)
+            let core_end = core_len.min(final_samples.len());
+            compute_adaptive_gain(&final_samples[..core_end]) + global_gain
+        } else {
+            global_gain
+        };
+        apply_gain(&mut final_samples, chunk_gain);
+
+        (final_samples, None, None, chunk_end)
     } else {
-        &processed[..]
-    };
+        // Standard mode: trim warmup and trailing
+        let trim_start = warmup_len;
+        let trim_end = processed.len().saturating_sub(trailing_len);
+        let trimmed = if trim_start < trim_end {
+            &processed[trim_start..trim_end]
+        } else {
+            &processed[..]
+        };
 
-    let mut final_samples = trimmed.to_vec();
+        let mut final_samples = trimmed.to_vec();
 
-    let chunk_gain = if is_adaptive {
-        // Adaptive auto-gain + manual slider on top
-        compute_adaptive_gain(&final_samples) + global_gain
-    } else {
-        global_gain
-    };
-    apply_gain(&mut final_samples, chunk_gain);
+        let chunk_gain = if is_adaptive {
+            compute_adaptive_gain(&final_samples) + global_gain
+        } else {
+            global_gain
+        };
+        apply_gain(&mut final_samples, chunk_gain);
 
-    let (left, right) = if stereo_out {
-        let chunk_len = chunk_end - pos;
-        let mut l = source.read_region(ChannelView::Channel(0), pos as u64, chunk_len);
-        let mut r = source.read_region(ChannelView::Channel(1), pos as u64, chunk_len);
-        apply_gain(&mut l, chunk_gain);
-        apply_gain(&mut r, chunk_gain);
-        (Some(l), Some(r))
-    } else {
-        (None, None)
-    };
+        let (left, right) = if stereo_out {
+            let chunk_len = chunk_end - pos;
+            let mut l = source.read_region(ChannelView::Channel(0), pos as u64, chunk_len);
+            let mut r = source.read_region(ChannelView::Channel(1), pos as u64, chunk_len);
+            apply_gain(&mut l, chunk_gain);
+            apply_gain(&mut r, chunk_gain);
+            (Some(l), Some(r))
+        } else {
+            (None, None)
+        };
 
-    (final_samples, left, right, chunk_end)
+        (final_samples, left, right, chunk_end)
+    }
 }
 
 /// Compute per-chunk adaptive gain with noise gate.

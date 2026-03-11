@@ -464,6 +464,17 @@ pub fn HfrButton() -> impl IntoView {
                                         title="Toggle auto PV factor"
                                     >"A"</button>
                                 </div>
+                                <div class="layer-panel-slider-row">
+                                    <label>"Quality"</label>
+                                    <button class=move || if !state.pv_hq.get() { "auto-toggle on" } else { "auto-toggle" }
+                                        on:click=move |_| state.pv_hq.set(false)
+                                        title="Standard mode \u{2014} uses filter warmup to reduce boundary clicks"
+                                    >"Std"</button>
+                                    <button class=move || if state.pv_hq.get() { "auto-toggle on" } else { "auto-toggle" }
+                                        on:click=move |_| state.pv_hq.set(true)
+                                        title="HQ mode \u{2014} overlapping crossfade eliminates boundary clicks"
+                                    >"HQ"</button>
+                                </div>
                             }.into_any(),
                             PlaybackMode::ZeroCrossing => view! {
                                 <div class="layer-panel-slider-row">
