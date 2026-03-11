@@ -764,11 +764,7 @@ pub struct AppState {
     // XC browser
     pub xc_browser_open: RwSignal<bool>,
 
-    // HFR saved settings (restored when toggling HFR back on)
-    pub hfr_saved_ff_lo: RwSignal<Option<f64>>,
-    pub hfr_saved_ff_hi: RwSignal<Option<f64>>,
-    pub hfr_saved_playback_mode: RwSignal<Option<PlaybackMode>>,
-    pub hfr_saved_bandpass_mode: RwSignal<Option<BandpassMode>>,
+    // (hfr_saved_* signals removed — now in FocusStack)
 
     // Axis drag (left axis frequency range selection)
     pub axis_drag_start_freq: RwSignal<Option<f64>>,
@@ -867,21 +863,16 @@ pub struct AppState {
     /// Currently selected bat book entry IDs (supports multi-select via shift-click).
     pub bat_book_selected_ids: RwSignal<Vec<String>>,
     pub bat_book_ref_open: RwSignal<bool>,
-    /// Saved FF state before bat book selection, for restoring on deselect.
-    pub bat_book_saved_ff_lo: RwSignal<f64>,
-    pub bat_book_saved_ff_hi: RwSignal<f64>,
-    pub bat_book_saved_hfr: RwSignal<bool>,
-    /// Saved hfr_saved_ff values before bat book overwrote them.
-    pub bat_book_saved_hfr_ff_lo: RwSignal<Option<f64>>,
-    pub bat_book_saved_hfr_ff_hi: RwSignal<Option<f64>>,
+    // (bat_book_saved_* signals removed — now in FocusStack)
     /// Last-clicked bat book entry ID, used for shift-click range selection.
     pub bat_book_last_clicked_id: RwSignal<Option<String>>,
-    /// True when user manually turned off HFR while bat book had a selection.
-    /// While set, bat book selections update hfr_saved but don't enable HFR.
-    pub bat_book_hfr_suppressed: RwSignal<bool>,
+    // (bat_book_hfr_suppressed removed — now handled by FocusStack)
 
     // Timeline display: show wall-clock time instead of file-relative time
     pub show_clock_time: RwSignal<bool>,
+
+    // Layered frequency focus stack
+    pub focus_stack: RwSignal<crate::focus_stack::FocusStack>,
 }
 
 fn detect_tauri() -> bool {
@@ -1034,10 +1025,6 @@ impl AppState {
             is_mobile: RwSignal::new(detect_mobile()),
             is_tauri: detect_tauri(),
             xc_browser_open: RwSignal::new(false),
-            hfr_saved_ff_lo: RwSignal::new(None),
-            hfr_saved_ff_hi: RwSignal::new(None),
-            hfr_saved_playback_mode: RwSignal::new(None),
-            hfr_saved_bandpass_mode: RwSignal::new(None),
             axis_drag_start_freq: RwSignal::new(None),
             axis_drag_current_freq: RwSignal::new(None),
             cursor_time: RwSignal::new(None),
@@ -1102,14 +1089,9 @@ impl AppState {
             bat_book_region: RwSignal::new(crate::bat_book::types::BatBookRegion::Global),
             bat_book_selected_ids: RwSignal::new(Vec::new()),
             bat_book_ref_open: RwSignal::new(false),
-            bat_book_saved_ff_lo: RwSignal::new(0.0),
-            bat_book_saved_ff_hi: RwSignal::new(0.0),
-            bat_book_saved_hfr: RwSignal::new(false),
-            bat_book_saved_hfr_ff_lo: RwSignal::new(None),
-            bat_book_saved_hfr_ff_hi: RwSignal::new(None),
             bat_book_last_clicked_id: RwSignal::new(None),
-            bat_book_hfr_suppressed: RwSignal::new(false),
             show_clock_time: RwSignal::new(false),
+            focus_stack: RwSignal::new(crate::focus_stack::FocusStack::new()),
         };
 
         // On mobile, start with sidebar collapsed
@@ -1302,5 +1284,168 @@ impl AppState {
         let peak_db = 20.0 * (peak as f64).log10();
         // Cap at +30 dB to avoid extreme amplification of very quiet recordings
         (-3.0 - peak_db).min(30.0)
+    }
+
+    // ── Focus Stack helpers ─────────────────────────────────────────────
+
+    /// Called by drag handles, axis drag, input fields.
+    /// Updates the focus stack and syncs output signals immediately.
+    pub fn set_ff_range(&self, lo: f64, hi: f64) {
+        use crate::focus_stack::FocusRange;
+        self.focus_stack.update(|s| {
+            s.set_user_range(FocusRange::new(lo, hi));
+        });
+        self.sync_focus_outputs();
+    }
+
+    /// Set only the lower FF bound (for drag handles).
+    pub fn set_ff_lo(&self, lo: f64) {
+        let hi = self.ff_freq_hi.get_untracked();
+        self.set_ff_range(lo, hi);
+    }
+
+    /// Set only the upper FF bound (for drag handles).
+    pub fn set_ff_hi(&self, hi: f64) {
+        let lo = self.ff_freq_lo.get_untracked();
+        self.set_ff_range(lo, hi);
+    }
+
+    /// Push a bat book FF override. Enables HFR if not already on.
+    pub fn push_bat_book_ff(&self, lo: f64, hi: f64) {
+        use crate::focus_stack::{FocusRange, FocusSource};
+        self.focus_stack.update(|s| {
+            s.push_override(FocusSource::BatBook, FocusRange::new(lo, hi));
+            if !s.hfr_enabled() {
+                s.set_hfr_enabled(true);
+            }
+        });
+        // Ensure playback mode is not Normal when HFR is on
+        if self.playback_mode.get_untracked() == PlaybackMode::Normal {
+            let saved = self.focus_stack.get_untracked().saved_playback_mode();
+            self.playback_mode.set(saved.unwrap_or(PlaybackMode::PitchShift));
+        }
+        if self.bandpass_mode.get_untracked() == BandpassMode::Off {
+            let saved = self.focus_stack.get_untracked().saved_bandpass_mode();
+            self.bandpass_mode.set(saved.unwrap_or(BandpassMode::Auto));
+        }
+        self.min_display_freq.set(None);
+        self.max_display_freq.set(None);
+        self.sync_focus_outputs();
+    }
+
+    /// Pop the bat book FF override. Restores previous state if not adopted.
+    pub fn pop_bat_book_ff(&self) {
+        use crate::focus_stack::{FocusRange, FocusSource};
+        let mut restore: Option<FocusRange> = None;
+        self.focus_stack.update(|s| {
+            restore = s.pop_override(FocusSource::BatBook);
+        });
+        if let Some(range) = restore {
+            if !range.is_active() {
+                // No active focus to restore — turn off HFR
+                self.focus_stack.update(|s| s.set_hfr_enabled(false));
+                self.playback_mode.set(PlaybackMode::Normal);
+                self.bandpass_mode.set(BandpassMode::Off);
+            }
+        }
+        // If adopted (restore is None): user range is correct, HFR stays as-is
+        self.min_display_freq.set(None);
+        self.max_display_freq.set(None);
+        self.sync_focus_outputs();
+    }
+
+    /// Push an annotation FF override. Only for annotations with freq bounds.
+    pub fn push_annotation_ff(&self, lo: f64, hi: f64) {
+        use crate::focus_stack::{FocusRange, FocusSource};
+        self.focus_stack.update(|s| {
+            s.push_override(FocusSource::Annotation, FocusRange::new(lo, hi));
+            if !s.hfr_enabled() {
+                s.set_hfr_enabled(true);
+            }
+        });
+        if self.playback_mode.get_untracked() == PlaybackMode::Normal {
+            let saved = self.focus_stack.get_untracked().saved_playback_mode();
+            self.playback_mode.set(saved.unwrap_or(PlaybackMode::PitchShift));
+        }
+        if self.bandpass_mode.get_untracked() == BandpassMode::Off {
+            let saved = self.focus_stack.get_untracked().saved_bandpass_mode();
+            self.bandpass_mode.set(saved.unwrap_or(BandpassMode::Auto));
+        }
+        self.min_display_freq.set(None);
+        self.max_display_freq.set(None);
+        self.sync_focus_outputs();
+    }
+
+    /// Pop the annotation FF override.
+    pub fn pop_annotation_ff(&self) {
+        use crate::focus_stack::{FocusRange, FocusSource};
+        let mut restore: Option<FocusRange> = None;
+        self.focus_stack.update(|s| {
+            restore = s.pop_override(FocusSource::Annotation);
+        });
+        if let Some(range) = restore {
+            if !range.is_active() && !self.focus_stack.get_untracked().has_override(FocusSource::BatBook) {
+                self.focus_stack.update(|s| s.set_hfr_enabled(false));
+                self.playback_mode.set(PlaybackMode::Normal);
+                self.bandpass_mode.set(BandpassMode::Off);
+            }
+        }
+        self.min_display_freq.set(None);
+        self.max_display_freq.set(None);
+        self.sync_focus_outputs();
+    }
+
+    /// Toggle HFR on/off. Saves/restores playback mode and bandpass.
+    pub fn toggle_hfr(&self) {
+        let stack = self.focus_stack.get_untracked();
+        if stack.hfr_enabled() {
+            // Turning off: save current mode
+            let current_mode = self.playback_mode.get_untracked();
+            let current_bp = self.bandpass_mode.get_untracked();
+            self.focus_stack.update(|s| {
+                s.set_saved_playback_mode(Some(current_mode));
+                s.set_saved_bandpass_mode(Some(current_bp));
+                s.set_hfr_enabled(false);
+            });
+            self.bandpass_mode.set(BandpassMode::Off);
+            self.playback_mode.set(PlaybackMode::Normal);
+        } else {
+            // Turning on
+            self.focus_stack.update(|s| {
+                s.set_hfr_enabled(true);
+            });
+            let stack = self.focus_stack.get_untracked();
+            match stack.saved_playback_mode() {
+                Some(mode) => self.playback_mode.set(mode),
+                None => {
+                    if self.playback_mode.get_untracked() == PlaybackMode::Normal {
+                        self.playback_mode.set(PlaybackMode::PitchShift);
+                    }
+                }
+            }
+            self.bandpass_mode.set(
+                stack.saved_bandpass_mode().unwrap_or(BandpassMode::Auto),
+            );
+        }
+        self.min_display_freq.set(None);
+        self.max_display_freq.set(None);
+        self.sync_focus_outputs();
+    }
+
+    /// Sync the focus stack's effective range to the output signals
+    /// (ff_freq_lo, ff_freq_hi, hfr_enabled).
+    fn sync_focus_outputs(&self) {
+        let stack = self.focus_stack.get_untracked();
+        let eff = stack.effective_range();
+        let hfr = stack.hfr_enabled();
+        if self.ff_freq_lo.get_untracked() != eff.lo {
+            self.ff_freq_lo.set(eff.lo);
+        }
+        if self.ff_freq_hi.get_untracked() != eff.hi {
+            self.ff_freq_hi.set(eff.hi);
+        }
+        if self.hfr_enabled.get_untracked() != hfr {
+            self.hfr_enabled.set(hfr);
+        }
     }
 }

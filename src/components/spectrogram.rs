@@ -1399,12 +1399,12 @@ pub fn Spectrogram() -> impl IntoView {
                         SpectrogramHandle::FfUpper => {
                             let lo = state.ff_freq_lo.get_untracked();
                             let clamped = freq_at_mouse.clamp(lo + 500.0, file_max_freq);
-                            state.ff_freq_hi.set(clamped);
+                            state.set_ff_hi(clamped);
                         }
                         SpectrogramHandle::FfLower => {
                             let hi = state.ff_freq_hi.get_untracked();
                             let clamped = freq_at_mouse.clamp(0.0, hi - 500.0);
-                            state.ff_freq_lo.set(clamped);
+                            state.set_ff_lo(clamped);
                         }
                         SpectrogramHandle::FfMiddle => {
                             let lo = state.ff_freq_lo.get_untracked();
@@ -1414,8 +1414,7 @@ pub fn Spectrogram() -> impl IntoView {
                             let delta = freq_at_mouse - mid;
                             let new_lo = (lo + delta).clamp(0.0, file_max_freq - bw);
                             let new_hi = new_lo + bw;
-                            state.ff_freq_lo.set(new_lo);
-                            state.ff_freq_hi.set(new_hi);
+                            state.set_ff_range(new_lo, new_hi);
                         }
                         SpectrogramHandle::HetCenter => {
                             state.het_freq_auto.set(false);
@@ -1460,8 +1459,7 @@ pub fn Spectrogram() -> impl IntoView {
                     let lo = snapped_start.min(snapped_end);
                     let hi = snapped_start.max(snapped_end);
                     if hi - lo > 500.0 {
-                        state.ff_freq_lo.set(lo);
-                        state.ff_freq_hi.set(hi);
+                        state.set_ff_range(lo, hi);
                     }
                     return;
                 }
@@ -1549,12 +1547,9 @@ pub fn Spectrogram() -> impl IntoView {
         if state.axis_drag_start_freq.get_untracked().is_some() {
             let lo = state.ff_freq_lo.get_untracked();
             let hi = state.ff_freq_hi.get_untracked();
-            if hi - lo > 500.0 && !state.hfr_enabled.get_untracked() {
-                // Save dragged bounds before enabling HFR so the effect
-                // restores them instead of resetting to defaults.
-                state.hfr_saved_ff_lo.set(Some(lo));
-                state.hfr_saved_ff_hi.set(Some(hi));
-                state.hfr_enabled.set(true);
+            if hi - lo > 500.0 && !state.focus_stack.get_untracked().hfr_enabled() {
+                // Enable HFR — the focus stack already has the user's range
+                state.toggle_hfr();
             }
             state.axis_drag_start_freq.set(None);
             state.axis_drag_current_freq.set(None);
@@ -1577,8 +1572,7 @@ pub fn Spectrogram() -> impl IntoView {
                 // Update frequency focus to match selection's frequency range
                 if let (Some(lo), Some(hi)) = (sel.freq_low, sel.freq_high) {
                     if hi - lo > 100.0 {
-                        state.ff_freq_lo.set(lo);
-                        state.ff_freq_hi.set(hi);
+                        state.set_ff_range(lo, hi);
                     }
                 }
             } else {
@@ -1761,11 +1755,11 @@ pub fn Spectrogram() -> impl IntoView {
                 match handle {
                     SpectrogramHandle::FfUpper => {
                         let lo = state.ff_freq_lo.get_untracked();
-                        state.ff_freq_hi.set(freq_at_touch.clamp(lo + 500.0, file_max_freq));
+                        state.set_ff_hi(freq_at_touch.clamp(lo + 500.0, file_max_freq));
                     }
                     SpectrogramHandle::FfLower => {
                         let hi = state.ff_freq_hi.get_untracked();
-                        state.ff_freq_lo.set(freq_at_touch.clamp(0.0, hi - 500.0));
+                        state.set_ff_lo(freq_at_touch.clamp(0.0, hi - 500.0));
                     }
                     SpectrogramHandle::FfMiddle => {
                         let lo = state.ff_freq_lo.get_untracked();
@@ -1775,8 +1769,7 @@ pub fn Spectrogram() -> impl IntoView {
                         let delta = freq_at_touch - mid;
                         let new_lo = (lo + delta).clamp(0.0, file_max_freq - bw);
                         let new_hi = new_lo + bw;
-                        state.ff_freq_lo.set(new_lo);
-                        state.ff_freq_hi.set(new_hi);
+                        state.set_ff_range(new_lo, new_hi);
                     }
                     SpectrogramHandle::HetCenter => {
                         state.het_freq_auto.set(false);
@@ -1815,8 +1808,7 @@ pub fn Spectrogram() -> impl IntoView {
                 let lo = snapped_start.min(snapped_end);
                 let hi = snapped_start.max(snapped_end);
                 if hi - lo > 500.0 {
-                    state.ff_freq_lo.set(lo);
-                    state.ff_freq_hi.set(hi);
+                    state.set_ff_range(lo, hi);
                 }
             }
             return;
@@ -1874,10 +1866,8 @@ pub fn Spectrogram() -> impl IntoView {
             if state.axis_drag_start_freq.get_untracked().is_some() {
                 let lo = state.ff_freq_lo.get_untracked();
                 let hi = state.ff_freq_hi.get_untracked();
-                if hi - lo > 500.0 && !state.hfr_enabled.get_untracked() {
-                    state.hfr_saved_ff_lo.set(Some(lo));
-                    state.hfr_saved_ff_hi.set(Some(hi));
-                    state.hfr_enabled.set(true);
+                if hi - lo > 500.0 && !state.focus_stack.get_untracked().hfr_enabled() {
+                    state.toggle_hfr();
                 }
                 state.axis_drag_start_freq.set(None);
                 state.axis_drag_current_freq.set(None);
@@ -1891,8 +1881,7 @@ pub fn Spectrogram() -> impl IntoView {
                 if let Some(sel) = state.selection.get_untracked() {
                     if let (Some(lo), Some(hi)) = (sel.freq_low, sel.freq_high) {
                         if hi - lo > 100.0 {
-                            state.ff_freq_lo.set(lo);
-                            state.ff_freq_hi.set(hi);
+                            state.set_ff_range(lo, hi);
                         }
                     }
                 }
@@ -1911,7 +1900,7 @@ pub fn Spectrogram() -> impl IntoView {
                     if now - prev_time < 400.0 && in_label && prev_in_label {
                         let has_range = state.ff_freq_hi.get_untracked() > state.ff_freq_lo.get_untracked();
                         if has_range {
-                            state.hfr_enabled.set(false);
+                            state.toggle_hfr();
                         }
                     }
                 }
@@ -1931,7 +1920,7 @@ pub fn Spectrogram() -> impl IntoView {
                 Some(SpectrogramHandle::FfUpper | SpectrogramHandle::FfLower | SpectrogramHandle::FfMiddle)
             );
             if in_label || on_handle {
-                state.hfr_enabled.set(false);
+                state.toggle_hfr();
                 ev.prevent_default();
             }
         }

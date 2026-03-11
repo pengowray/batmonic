@@ -123,15 +123,11 @@ fn combined_ff_range(state: &AppState) -> Option<(f64, f64)> {
 
 /// Apply the combined FF range from selected bat book entries.
 /// Shows toasts for out-of-range conditions.
-/// If all selected entries lack echolocation (e.g. flying foxes), clears HFR.
+/// Uses the focus stack to push/update the BatBook override layer.
 fn apply_bat_book_ff(state: &AppState) {
     let Some((lo, hi)) = combined_ff_range(state) else {
-        // No valid frequency range — clear HFR if it was set by the bat book
-        if !state.bat_book_hfr_suppressed.get_untracked() {
-            state.ff_freq_lo.set(0.0);
-            state.ff_freq_hi.set(0.0);
-            state.hfr_enabled.set(false);
-        }
+        // No valid frequency range — pop the bat book override
+        state.pop_bat_book_ff();
         return;
     };
 
@@ -142,7 +138,6 @@ fn apply_bat_book_ff(state: &AppState) {
     let nyquist = file.audio.sample_rate as f64 / 2.0;
 
     if lo >= nyquist {
-        // Entirely out of range
         state.show_info_toast(format!(
             "Frequency range {}\u{2013}{} kHz is above this file's Nyquist ({} kHz)",
             (lo / 1000.0) as u32,
@@ -162,26 +157,7 @@ fn apply_bat_book_ff(state: &AppState) {
         ));
     }
 
-    if state.bat_book_hfr_suppressed.get_untracked() {
-        // HFR was manually turned off while bat book is active.
-        // Update hfr_saved so re-enabling HFR will apply this range,
-        // but don't touch ff or hfr_enabled.
-        state.hfr_saved_ff_lo.set(Some(lo));
-        state.hfr_saved_ff_hi.set(Some(clamped_hi));
-        return;
-    }
-
-    // Save the user's previous hfr_saved values before we overwrite them,
-    // so deselecting the bat book entry can restore them.
-    state.bat_book_saved_hfr_ff_lo.set(state.hfr_saved_ff_lo.get_untracked());
-    state.bat_book_saved_hfr_ff_hi.set(state.hfr_saved_ff_hi.get_untracked());
-    // Set saved HFR values so that Effect A in HfrButton picks them up
-    // instead of using defaults (18 kHz–nyquist).
-    state.hfr_saved_ff_lo.set(Some(lo));
-    state.hfr_saved_ff_hi.set(Some(clamped_hi));
-    state.ff_freq_lo.set(lo);
-    state.ff_freq_hi.set(clamped_hi);
-    state.hfr_enabled.set(true);
+    state.push_bat_book_ff(lo, clamped_hi);
 }
 
 #[component]
@@ -210,28 +186,11 @@ fn BatBookChip(entry: BatBookEntry) -> impl IntoView {
 
         if was_selected && !ctrl && !shift {
             // Click selected bat again: deselect and restore previous FF
-            let was_suppressed = state.bat_book_hfr_suppressed.get_untracked();
             state.bat_book_selected_ids.set(Vec::new());
             state.bat_book_ref_open.set(false);
             state.bat_book_last_clicked_id.set(None);
-            state.bat_book_hfr_suppressed.set(false);
-            // Restore saved FF state
-            if state.current_file_index.get_untracked().is_some() {
-                // Always restore hfr_saved to the user's original values.
-                state.hfr_saved_ff_lo.set(state.bat_book_saved_hfr_ff_lo.get_untracked());
-                state.hfr_saved_ff_hi.set(state.bat_book_saved_hfr_ff_hi.get_untracked());
-                if was_suppressed {
-                    // HFR was manually turned off — keep it off, ff stays 0/0.
-                    // The restored hfr_saved values are ready if they re-enable HFR.
-                } else {
-                    let saved_lo = state.bat_book_saved_ff_lo.get_untracked();
-                    let saved_hi = state.bat_book_saved_ff_hi.get_untracked();
-                    let saved_hfr = state.bat_book_saved_hfr.get_untracked();
-                    state.ff_freq_lo.set(saved_lo);
-                    state.ff_freq_hi.set(saved_hi);
-                    state.hfr_enabled.set(saved_hfr);
-                }
-            }
+            // Pop the bat book override — restores user's previous FF if not adopted
+            state.pop_bat_book_ff();
             return;
         }
 
@@ -239,34 +198,15 @@ fn BatBookChip(entry: BatBookEntry) -> impl IntoView {
             // Ctrl/Cmd-click an already-selected bat: remove from selection
             state.bat_book_selected_ids.update(|ids| ids.retain(|id| id != &eid));
             if state.bat_book_selected_ids.get_untracked().is_empty() {
-                let was_suppressed = state.bat_book_hfr_suppressed.get_untracked();
                 state.bat_book_ref_open.set(false);
                 state.bat_book_last_clicked_id.set(None);
-                state.bat_book_hfr_suppressed.set(false);
-                // Restore saved FF state
-                if state.current_file_index.get_untracked().is_some() {
-                    state.hfr_saved_ff_lo.set(state.bat_book_saved_hfr_ff_lo.get_untracked());
-                    state.hfr_saved_ff_hi.set(state.bat_book_saved_hfr_ff_hi.get_untracked());
-                    if !was_suppressed {
-                        state.ff_freq_lo.set(state.bat_book_saved_ff_lo.get_untracked());
-                        state.ff_freq_hi.set(state.bat_book_saved_ff_hi.get_untracked());
-                        state.hfr_enabled.set(state.bat_book_saved_hfr.get_untracked());
-                    }
-                }
+                state.pop_bat_book_ff();
             } else {
                 // Recalculate combined range
                 apply_bat_book_ff(&state);
             }
             state.bat_book_last_clicked_id.set(Some(eid));
             return;
-        }
-
-        // Save current FF state before first selection
-        let currently_empty = state.bat_book_selected_ids.get_untracked().is_empty();
-        if currently_empty {
-            state.bat_book_saved_ff_lo.set(state.ff_freq_lo.get_untracked());
-            state.bat_book_saved_ff_hi.set(state.ff_freq_hi.get_untracked());
-            state.bat_book_saved_hfr.set(state.hfr_enabled.get_untracked());
         }
 
         if shift {
@@ -321,7 +261,12 @@ fn BatBookChip(entry: BatBookEntry) -> impl IntoView {
 
     let class = move || {
         if is_selected() {
-            "bat-book-chip selected"
+            use crate::focus_stack::FocusSource;
+            if state.focus_stack.get().is_adopted(FocusSource::BatBook) {
+                "bat-book-chip selected adopted"
+            } else {
+                "bat-book-chip selected"
+            }
         } else {
             "bat-book-chip"
         }

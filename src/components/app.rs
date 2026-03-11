@@ -213,6 +213,23 @@ pub fn App() -> impl IntoView {
         state.flow_enabled.set(is_flow);
     });
 
+    // Sync focus_stack → ff_freq_lo/hi + hfr_enabled output signals.
+    // This keeps downstream Effects (B, C, D in hfr_button) working unchanged.
+    Effect::new(move |_| {
+        let stack = state.focus_stack.get();
+        let eff = stack.effective_range();
+        let hfr = stack.hfr_enabled();
+        if state.ff_freq_lo.get_untracked() != eff.lo {
+            state.ff_freq_lo.set(eff.lo);
+        }
+        if state.ff_freq_hi.get_untracked() != eff.hi {
+            state.ff_freq_hi.set(eff.hi);
+        }
+        if state.hfr_enabled.get_untracked() != hfr {
+            state.hfr_enabled.set(hfr);
+        }
+    });
+
     // Resolve display filter modes → effective display_* booleans.
     // When the DSP panel is enabled, the per-stage modes drive the existing
     // display_auto_gain / display_eq / display_noise_filter signals.
@@ -406,6 +423,7 @@ pub fn App() -> impl IntoView {
             // Clear annotation selection and save outgoing file's sidecar when switching
             if old_idx != new_idx {
                 state.selected_annotation_id.set(None);
+                state.pop_annotation_ff();
                 // Save outgoing file's annotations+NR to OPFS
                 if let Some(oi) = old_idx {
                     if !state.is_tauri {

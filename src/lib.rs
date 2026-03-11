@@ -4,6 +4,7 @@ pub mod audio;
 pub mod canvas;
 pub mod components;
 pub mod state;
+pub mod focus_stack;
 pub mod tauri_bridge;
 pub mod bat_book;
 pub mod annotations;

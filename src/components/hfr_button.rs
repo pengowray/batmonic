@@ -16,67 +16,26 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
 pub fn HfrButton() -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    // ── Effect A: HFR toggle → set ff range, playback mode, display freq ──
+    // Effect A (HFR toggle) has been removed — its logic now lives in
+    // AppState::toggle_hfr() and the focus stack sync Effect in app.rs.
+
+    // ── Ensure default user range when HFR is first enabled with no range ──
+    // If the focus stack has no user range set yet when HFR turns on,
+    // set a sensible default (18kHz–Nyquist).
     Effect::new(move || {
-        let enabled = state.hfr_enabled.get();
-        let files = state.files.get();
-        let idx = state.current_file_index.get();
-        let nyquist = idx
-            .and_then(|i| files.get(i))
-            .map(|f| f.spectrogram.max_freq)
-            .unwrap_or(96_000.0);
-
-        if enabled {
-            // Clear suppression — user is re-enabling HFR (bat book range
-            // is already in hfr_saved_ff if a bat is still selected).
-            state.bat_book_hfr_suppressed.set(false);
-
-            let saved_lo = state.hfr_saved_ff_lo.get_untracked();
-            let saved_hi = state.hfr_saved_ff_hi.get_untracked();
-            let saved_mode = state.hfr_saved_playback_mode.get_untracked();
-            let saved_bp = state.hfr_saved_bandpass_mode.get_untracked();
-
-            state.ff_freq_lo.set(saved_lo.unwrap_or(18_000.0));
-            state.ff_freq_hi.set(saved_hi.unwrap_or(nyquist));
-
-            match saved_mode {
-                Some(mode) => state.playback_mode.set(mode),
-                None => {
-                    if state.playback_mode.get_untracked() == PlaybackMode::Normal {
-                        state.playback_mode.set(PlaybackMode::PitchShift);
-                    }
-                }
+        let stack = state.focus_stack.get();
+        if stack.hfr_enabled() {
+            let eff = stack.effective_range();
+            if !eff.is_active() {
+                // No range set yet — provide default
+                let files = state.files.get();
+                let idx = state.current_file_index.get();
+                let nyquist = idx
+                    .and_then(|i| files.get(i))
+                    .map(|f| f.spectrogram.max_freq)
+                    .unwrap_or(96_000.0);
+                state.set_ff_range(18_000.0, nyquist);
             }
-
-            state.bandpass_mode.set(saved_bp.unwrap_or(BandpassMode::Auto));
-            state.min_display_freq.set(None);
-            state.max_display_freq.set(None);
-        } else {
-            // If bat book has a selection, suppress future bat book FF pushes
-            // until either HFR is re-enabled or bat book selection is cleared.
-            let has_bat_sel = !state.bat_book_selected_ids.get_untracked().is_empty();
-            if has_bat_sel {
-                state.bat_book_hfr_suppressed.set(true);
-            }
-
-            let current_lo = state.ff_freq_lo.get_untracked();
-            let current_hi = state.ff_freq_hi.get_untracked();
-            let current_mode = state.playback_mode.get_untracked();
-            let current_bp = state.bandpass_mode.get_untracked();
-
-            if current_hi > current_lo {
-                state.hfr_saved_ff_lo.set(Some(current_lo));
-                state.hfr_saved_ff_hi.set(Some(current_hi));
-                state.hfr_saved_playback_mode.set(Some(current_mode));
-                state.hfr_saved_bandpass_mode.set(Some(current_bp));
-                state.bandpass_mode.set(BandpassMode::Off);
-            }
-
-            state.ff_freq_lo.set(0.0);
-            state.ff_freq_hi.set(0.0);
-            state.playback_mode.set(PlaybackMode::Normal);
-            state.min_display_freq.set(None);
-            state.max_display_freq.set(None);
         }
     });
 
@@ -259,7 +218,7 @@ pub fn HfrButton() -> impl IntoView {
     });
 
     let left_click = Callback::new(move |_: web_sys::MouseEvent| {
-        state.hfr_enabled.update(|v| *v = !*v);
+        state.toggle_hfr();
     });
     let toggle_menu = Callback::new(move |()| {
         toggle_panel(&state, LayerPanel::HfrMode);
@@ -268,8 +227,10 @@ pub fn HfrButton() -> impl IntoView {
     // ── Dropdown closures (from hfr_mode_button) ──
     let set_mode = |state: AppState, mode: PlaybackMode| {
         move |_: web_sys::MouseEvent| {
-            state.hfr_saved_playback_mode.set(Some(mode));
-            state.hfr_enabled.set(true);
+            state.focus_stack.update(|s| s.set_saved_playback_mode(Some(mode)));
+            if !state.focus_stack.get_untracked().hfr_enabled() {
+                state.toggle_hfr(); // enables HFR with saved mode
+            }
             state.playback_mode.set(mode);
         }
     };
@@ -331,7 +292,9 @@ pub fn HfrButton() -> impl IntoView {
                 // ── OFF option ──
                 <button class=move || layer_opt_class(!state.hfr_enabled.get())
                     on:click=move |_: web_sys::MouseEvent| {
-                        state.hfr_enabled.set(false);
+                        if state.focus_stack.get_untracked().hfr_enabled() {
+                            state.toggle_hfr();
+                        }
                         state.layer_panel_open.set(None);
                     }
                 >"OFF"</button>

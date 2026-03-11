@@ -45,6 +45,44 @@ pub fn DebugPanel() -> impl IntoView {
 
     view! {
         <div class="sidebar-panel debug-panel">
+            // Focus Stack visualization
+            <div class="debug-focus-stack">
+                <div class="debug-section-title">"Focus Stack"</div>
+                {move || {
+                    let stack = state.focus_stack.get();
+                    let layers = stack.debug_layers();
+                    let hfr = stack.hfr_enabled();
+                    let items: Vec<_> = layers.iter().map(|layer| {
+                        let label = layer.source.label();
+                        let range = if layer.range.is_active() {
+                            format!("{:.1}\u{2013}{:.1} kHz", layer.range.lo / 1000.0, layer.range.hi / 1000.0)
+                        } else {
+                            "inactive".to_string()
+                        };
+                        let cls = if layer.is_effective && hfr {
+                            "debug-focus-layer active"
+                        } else {
+                            "debug-focus-layer"
+                        };
+                        let adopted = if layer.adopted { " (adopted)" } else { "" };
+                        view! {
+                            <div class=cls>
+                                <span class="debug-focus-source">{label}</span>
+                                <span class="debug-focus-range">{range}</span>
+                                <span class="debug-focus-adopted">{adopted}</span>
+                            </div>
+                        }
+                    }).collect();
+                    let hfr_label = if hfr { "HFR: ON" } else { "HFR: OFF" };
+                    view! {
+                        <div>
+                            <div class="debug-focus-hfr">{hfr_label}</div>
+                            {items}
+                        </div>
+                    }
+                }}
+            </div>
+            <hr style="border-color: #444; margin: 4px 0;" />
             <div class="debug-panel-toolbar">
                 <button class="setting-btn" on:click=on_copy>"Copy All"</button>
                 <button class="setting-btn" on:click=on_clear>"Clear"</button>

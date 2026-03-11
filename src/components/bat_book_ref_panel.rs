@@ -59,16 +59,9 @@ pub fn BatBookRefPanel() -> impl IntoView {
 
         let new_id = manifest.entries[next].id.to_string();
 
-        // Save FF state if this is the first selection
-        if ids.is_empty() {
-            state.bat_book_saved_ff_lo.set(state.ff_freq_lo.get_untracked());
-            state.bat_book_saved_ff_hi.set(state.ff_freq_hi.get_untracked());
-            state.bat_book_saved_hfr.set(state.hfr_enabled.get_untracked());
-        }
-
         state.bat_book_selected_ids.set(vec![new_id]);
 
-        // Apply FF for the new entry
+        // Apply FF for the new entry via focus stack
         let entry = &manifest.entries[next];
         if let Some(idx) = state.current_file_index.get_untracked() {
             let files = state.files.get_untracked();
@@ -76,13 +69,7 @@ pub fn BatBookRefPanel() -> impl IntoView {
                 let nyquist = file.audio.sample_rate as f64 / 2.0;
                 if entry.freq_lo_hz < nyquist {
                     let clamped_hi = entry.freq_hi_hz.min(nyquist);
-                    state.hfr_saved_ff_lo.set(Some(entry.freq_lo_hz));
-                    state.hfr_saved_ff_hi.set(Some(clamped_hi));
-                    if !state.bat_book_hfr_suppressed.get_untracked() {
-                        state.ff_freq_lo.set(entry.freq_lo_hz);
-                        state.ff_freq_hi.set(clamped_hi);
-                        state.hfr_enabled.set(true);
-                    }
+                    state.push_bat_book_ff(entry.freq_lo_hz, clamped_hi);
                 }
             }
         }

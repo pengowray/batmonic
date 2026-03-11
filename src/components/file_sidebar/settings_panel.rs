@@ -817,10 +817,24 @@ fn restore_selection(state: AppState, annotation_id: &str) {
                         freq_low: reg.freq_low,
                         freq_high: reg.freq_high,
                     }));
+                    // Push annotation FF override if it has frequency bounds
+                    if let (Some(lo), Some(hi)) = (reg.freq_low, reg.freq_high) {
+                        if hi - lo > 100.0 {
+                            state.push_annotation_ff(lo, hi);
+                        }
+                    }
                     Some((reg.time_start + reg.time_end) / 2.0)
                 }
                 AnnotationKind::Marker(m) => Some(m.time),
-                AnnotationKind::Measurement(m) => Some((m.start_time + m.end_time) / 2.0),
+                AnnotationKind::Measurement(m) => {
+                    // Push annotation FF override from measurement frequency range
+                    let f_lo = m.start_freq.min(m.end_freq);
+                    let f_hi = m.start_freq.max(m.end_freq);
+                    if f_hi - f_lo > 100.0 {
+                        state.push_annotation_ff(f_lo, f_hi);
+                    }
+                    Some((m.start_time + m.end_time) / 2.0)
+                }
                 _ => None,
             };
             if let Some(t) = jump_time {
@@ -871,6 +885,7 @@ fn delete_annotation(state: AppState, annotation_id: &str) {
     });
     if state.selected_annotation_id.get_untracked().as_deref() == Some(annotation_id) {
         state.selected_annotation_id.set(None);
+        state.pop_annotation_ff();
     }
     state.annotations_dirty.set(true);
 }
@@ -1023,6 +1038,7 @@ fn ungroup_selected(state: AppState) {
         }
     });
     state.selected_annotation_id.set(None);
+    state.pop_annotation_ff();
     state.annotations_dirty.set(true);
 }
 
