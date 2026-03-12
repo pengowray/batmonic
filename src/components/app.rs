@@ -248,9 +248,13 @@ pub fn App() -> impl IntoView {
     Effect::new(move |_| {
         let enabled = state.display_filter_enabled.get();
         if !enabled {
-            // Clear xform when DSP panel is turned off
+            // Reset all display processing signals when DSP is off
             state.display_transform.set(false);
-            return; // leave other display_* signals alone when DSP panel is off
+            state.display_eq.set(false);
+            state.display_noise_filter.set(false);
+            state.display_auto_gain.set(false);
+            state.display_gain_boost.set(0.0);
+            return;
         }
 
         // EQ
