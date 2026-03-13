@@ -556,6 +556,62 @@ body.sidebar-resizing {
     padding: 2px 0;
 }
 
+.psd-peak-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+    margin: 4px 0;
+}
+
+.psd-peak-table th {
+    color: #888;
+    font-weight: 500;
+    text-align: right;
+    padding: 2px 4px;
+    border-bottom: 1px solid #333;
+    white-space: nowrap;
+}
+
+.psd-peak-table th:first-child {
+    width: 12px;
+    text-align: center;
+}
+
+.psd-peak-row {
+    cursor: default;
+}
+
+.psd-peak-row:hover {
+    background: #1a2a3a;
+}
+
+.psd-peak-idx {
+    text-align: center;
+    padding: 2px 2px;
+}
+
+.psd-peak-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.psd-peak-freq,
+.psd-peak-power {
+    text-align: right;
+    padding: 2px 4px;
+    color: #ccc;
+    font-variant-numeric: tabular-nums;
+}
+
+.psd-peak-bw {
+    text-align: right;
+    padding: 2px 4px;
+    color: #999;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Pulse detection panel */
 .pulse-list {
     max-height: 400px;

@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 use js_sys;
 use std::cell::Cell;
@@ -1002,6 +1003,35 @@ pub fn Spectrogram() -> impl IntoView {
                         display_w as f64,
                         display_h as f64,
                     );
+                }
+            }
+
+            // Draw PSD hover frequency overlays
+            {
+                let psd_hovers = state.psd_hover_freqs.get();
+                if !psd_hovers.is_empty() && max_freq > min_freq {
+                    let dh = display_h as f64;
+                    let dw = display_w as f64;
+                    for (freq, label, color) in &psd_hovers {
+                        if *freq < min_freq || *freq > max_freq { continue; }
+                        let y = dh * (1.0 - (freq - min_freq) / (max_freq - min_freq));
+                        // Horizontal line
+                        ctx.set_stroke_style_str(color);
+                        ctx.set_line_width(1.5);
+                        let _ = ctx.set_line_dash(&js_sys::Array::of2(
+                            &JsValue::from(4.0),
+                            &JsValue::from(3.0),
+                        ));
+                        ctx.begin_path();
+                        ctx.move_to(0.0, y);
+                        ctx.line_to(dw, y);
+                        ctx.stroke();
+                        let _ = ctx.set_line_dash(&js_sys::Array::new());
+                        // Label
+                        ctx.set_fill_style_str(color);
+                        ctx.set_font("10px monospace");
+                        let _ = ctx.fill_text(label, 4.0, y - 3.0);
+                    }
                 }
             }
 

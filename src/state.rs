@@ -887,6 +887,8 @@ pub struct AppState {
     pub psd_apply_eq: RwSignal<bool>,
     pub psd_apply_notch: RwSignal<bool>,
     pub psd_apply_nr: RwSignal<bool>,
+    /// Temporary frequency overlays from PSD hover: Vec<(freq_hz, label, color_css)>.
+    pub psd_hover_freqs: RwSignal<Vec<(f64, String, String)>>,
 
     // Bat Book
     pub bat_book_open: RwSignal<bool>,
@@ -1130,6 +1132,7 @@ impl AppState {
             psd_apply_eq: RwSignal::new(false),
             psd_apply_notch: RwSignal::new(false),
             psd_apply_nr: RwSignal::new(false),
+            psd_hover_freqs: RwSignal::new(Vec::new()),
 
             bat_book_open: RwSignal::new(false),
             bat_book_region: RwSignal::new(crate::bat_book::types::BatBookRegion::Global),

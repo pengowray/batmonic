@@ -12,6 +12,23 @@ use crate::annotations::{
 };
 use std::sync::Arc;
 
+/// Colors for peak markers (primary, then secondary peaks).
+const PEAK_COLORS: &[&str] = &[
+    "#ff4444", "#ff8844", "#ffaa44", "#44aaff", "#aa44ff", "#44ffaa", "#ff44aa", "#88ff44",
+];
+
+fn peak_color(i: usize) -> &'static str {
+    PEAK_COLORS[i.min(PEAK_COLORS.len() - 1)]
+}
+
+fn hex_to_rgba(hex: &str, alpha: f64) -> String {
+    let hex = hex.trim_start_matches('#');
+    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(255);
+    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(255);
+    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(255);
+    format!("rgba({},{},{},{})", r, g, b, alpha)
+}
+
 #[component]
 pub(crate) fn PsdPanel() -> impl IntoView {
     let state = expect_context::<AppState>();
@@ -123,6 +140,10 @@ pub(crate) fn PsdPanel() -> impl IntoView {
     Effect::new(move || {
         let tab = state.right_sidebar_tab.get();
         if tab != RightSidebarTab::Psd {
+            // Clear hover overlays when leaving the tab
+            if !state.psd_hover_freqs.get_untracked().is_empty() {
+                state.psd_hover_freqs.set(Vec::new());
+            }
             return;
         }
 
@@ -160,13 +181,13 @@ pub(crate) fn PsdPanel() -> impl IntoView {
         run_psd(false);
     });
 
-    // Annotate peak
-    let annotate_peak = move |_: web_sys::MouseEvent| {
+    // Annotate all peaks
+    let annotate_peaks = move |_: web_sys::MouseEvent| {
         let result = psd_result.get_untracked();
         let file_idx = state.current_file_index.get_untracked();
         let selection = state.selection.get_untracked();
         if let (Some(psd), Some(idx)) = (result, file_idx) {
-            let peak = &psd.peak;
+            if psd.peaks.is_empty() { return; }
             let time_start;
             let time_end;
             if let Some(sel) = selection {
@@ -181,7 +202,7 @@ pub(crate) fn PsdPanel() -> impl IntoView {
             state.snapshot_annotations();
 
             let group_id = generate_uuid();
-            let group = Annotation {
+            let mut annotations = vec![Annotation {
                 id: group_id.clone(),
                 kind: AnnotationKind::Group(Group {
                     label: Some("PSD Analysis".to_string()),
@@ -191,74 +212,77 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                 created_at: now_iso8601(),
                 modified_at: now_iso8601(),
                 notes: Some(format!(
-                    "NFFT={}, {} frames averaged",
-                    psd.nfft, psd.frame_count
+                    "NFFT={}, {} frames, {} peaks",
+                    psd.nfft, psd.frame_count, psd.peaks.len()
                 )),
                 parent_id: None,
                 sort_order: None,
                 tags: Vec::new(),
-            };
+            }];
 
-            // Peak frequency region (narrow band)
-            let peak_half_bw = psd.freq_resolution;
-            let peak_ann = Annotation {
-                id: generate_uuid(),
-                kind: AnnotationKind::Region(Region {
-                    time_start,
-                    time_end,
-                    freq_low: Some((peak.freq_hz - peak_half_bw).max(0.0)),
-                    freq_high: Some(peak.freq_hz + peak_half_bw),
-                    label: Some(format!("Peak {:.1} kHz ({:.1} dB)", peak.freq_hz / 1000.0, peak.power_db)),
-                    color: Some("#ff4444".to_string()),
-                }),
-                created_at: now_iso8601(),
-                modified_at: now_iso8601(),
-                notes: None,
-                parent_id: Some(group_id.clone()),
-                sort_order: Some(0.0),
-                tags: Vec::new(),
-            };
+            for (i, peak) in psd.peaks.iter().enumerate() {
+                let sort = i as f64 * 3.0;
+                let color = peak_color(i).to_string();
 
-            let mut annotations = vec![group, peak_ann];
-
-            if let Some((lo, hi)) = peak.bw_6db {
+                // Peak frequency region
+                let peak_half_bw = psd.freq_resolution;
                 annotations.push(Annotation {
                     id: generate_uuid(),
                     kind: AnnotationKind::Region(Region {
                         time_start,
                         time_end,
-                        freq_low: Some(lo),
-                        freq_high: Some(hi),
-                        label: Some(format!("-6 dB BW: {:.1} kHz", (hi - lo) / 1000.0)),
-                        color: Some("#44aa66".to_string()),
+                        freq_low: Some((peak.freq_hz - peak_half_bw).max(0.0)),
+                        freq_high: Some(peak.freq_hz + peak_half_bw),
+                        label: Some(format!("F{} {:.1} kHz ({:.1} dB)", i + 1, peak.freq_hz / 1000.0, peak.power_db)),
+                        color: Some(color.clone()),
                     }),
                     created_at: now_iso8601(),
                     modified_at: now_iso8601(),
                     notes: None,
                     parent_id: Some(group_id.clone()),
-                    sort_order: Some(1.0),
+                    sort_order: Some(sort),
                     tags: Vec::new(),
                 });
-            }
 
-            if let Some((lo, hi)) = peak.bw_10db {
-                annotations.push(Annotation {
-                    id: generate_uuid(),
-                    kind: AnnotationKind::Region(Region {
-                        time_start,
-                        time_end,
-                        freq_low: Some(lo),
-                        freq_high: Some(hi),
-                        label: Some(format!("-10 dB BW: {:.1} kHz", (hi - lo) / 1000.0)),
-                        color: Some("#aaaa44".to_string()),
-                    }),
-                    created_at: now_iso8601(),
-                    modified_at: now_iso8601(),
-                    notes: None,
-                    parent_id: Some(group_id.clone()),
-                    sort_order: Some(2.0),
-                    tags: Vec::new(),
-                });
+                if let Some((lo, hi)) = peak.bw_6db {
+                    annotations.push(Annotation {
+                        id: generate_uuid(),
+                        kind: AnnotationKind::Region(Region {
+                            time_start,
+                            time_end,
+                            freq_low: Some(lo),
+                            freq_high: Some(hi),
+                            label: Some(format!("F{} -6 dB: {:.1} kHz", i + 1, (hi - lo) / 1000.0)),
+                            color: Some("#44aa66".to_string()),
+                        }),
+                        created_at: now_iso8601(),
+                        modified_at: now_iso8601(),
+                        notes: None,
+                        parent_id: Some(group_id.clone()),
+                        sort_order: Some(sort + 1.0),
+                        tags: Vec::new(),
+                    });
+                }
+
+                if let Some((lo, hi)) = peak.bw_10db {
+                    annotations.push(Annotation {
+                        id: generate_uuid(),
+                        kind: AnnotationKind::Region(Region {
+                            time_start,
+                            time_end,
+                            freq_low: Some(lo),
+                            freq_high: Some(hi),
+                            label: Some(format!("F{} -10 dB: {:.1} kHz", i + 1, (hi - lo) / 1000.0)),
+                            color: Some("#aaaa44".to_string()),
+                        }),
+                        created_at: now_iso8601(),
+                        modified_at: now_iso8601(),
+                        notes: None,
+                        parent_id: Some(group_id.clone()),
+                        sort_order: Some(sort + 2.0),
+                        tags: Vec::new(),
+                    });
+                }
             }
 
             state.annotation_store.update(|store| {
@@ -283,12 +307,17 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                 }
             });
             state.annotations_dirty.set(true);
-            state.show_info_toast("PSD peak annotated");
+            state.show_info_toast("PSD peaks annotated");
         }
     };
 
+    // Clear hover when mouse leaves the panel
+    let on_panel_leave = move |_: web_sys::MouseEvent| {
+        state.psd_hover_freqs.set(Vec::new());
+    };
+
     view! {
-        <div class="sidebar-panel">
+        <div class="sidebar-panel" on:mouseleave=on_panel_leave>
             // Controls: NFFT selector + log scale toggle
             <div class="setting-group">
                 <div class="setting-group-title">"Power Spectral Density"</div>
@@ -430,54 +459,93 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                 }
             }}
 
-            // Peak stats + annotate button
+            // Peak table + annotate button
             {move || {
                 let result = psd_result.get();
                 match result {
                     None => view! { <span></span> }.into_any(),
                     Some(psd) => {
-                        let peak = &psd.peak;
-                        let peak_freq_text = format!("{:.1} kHz", peak.freq_hz / 1000.0);
-                        let peak_power_text = format!("{:.1} dB", peak.power_db);
-                        let bw_6_text = match peak.bw_6db {
-                            Some((lo, hi)) => format!("{:.1} kHz ({:.1}\u{2013}{:.1})", (hi - lo) / 1000.0, lo / 1000.0, hi / 1000.0),
-                            None => "\u{2014}".to_string(),
-                        };
-                        let bw_10_text = match peak.bw_10db {
-                            Some((lo, hi)) => format!("{:.1} kHz ({:.1}\u{2013}{:.1})", (hi - lo) / 1000.0, lo / 1000.0, hi / 1000.0),
-                            None => "\u{2014}".to_string(),
-                        };
                         let frames_text = format!("{} frames, {:.1} Hz/bin", psd.frame_count, psd.freq_resolution);
+
+                        let peak_rows: Vec<_> = psd.peaks.iter().enumerate().map(|(i, peak)| {
+                            let color = peak_color(i).to_string();
+                            let freq_hz = peak.freq_hz;
+                            let power_db = peak.power_db;
+
+                            // Build hover overlays for this peak
+                            let hover_color = color.clone();
+                            let bw_6 = peak.bw_6db;
+                            let bw_10 = peak.bw_10db;
+
+                            let on_enter = {
+                                let hover_color = hover_color.clone();
+                                move |_: web_sys::MouseEvent| {
+                                    let mut freqs = vec![
+                                        (freq_hz, format!("{:.1}k", freq_hz / 1000.0), hover_color.clone()),
+                                    ];
+                                    if let Some((lo, hi)) = bw_6 {
+                                        freqs.push((lo, format!("-6dB lo"), "#44aa66".to_string()));
+                                        freqs.push((hi, format!("-6dB hi"), "#44aa66".to_string()));
+                                    }
+                                    if let Some((lo, hi)) = bw_10 {
+                                        freqs.push((lo, format!("-10dB lo"), "#aaaa44".to_string()));
+                                        freqs.push((hi, format!("-10dB hi"), "#aaaa44".to_string()));
+                                    }
+                                    state.psd_hover_freqs.set(freqs);
+                                }
+                            };
+                            let on_leave = move |_: web_sys::MouseEvent| {
+                                state.psd_hover_freqs.set(Vec::new());
+                            };
+
+                            let bw_6_text = match peak.bw_6db {
+                                Some((lo, hi)) => format!("{:.1}k ({:.1}\u{2013}{:.1})", (hi - lo) / 1000.0, lo / 1000.0, hi / 1000.0),
+                                None => "\u{2014}".to_string(),
+                            };
+                            let bw_10_text = match peak.bw_10db {
+                                Some((lo, hi)) => format!("{:.1}k ({:.1}\u{2013}{:.1})", (hi - lo) / 1000.0, lo / 1000.0, hi / 1000.0),
+                                None => "\u{2014}".to_string(),
+                            };
+
+                            view! {
+                                <tr class="psd-peak-row"
+                                    on:mouseenter=on_enter
+                                    on:mouseleave=on_leave
+                                >
+                                    <td class="psd-peak-idx">
+                                        <span class="psd-peak-dot" style=format!("background:{}", color)></span>
+                                    </td>
+                                    <td class="psd-peak-freq">{format!("{:.1}", freq_hz / 1000.0)}</td>
+                                    <td class="psd-peak-power">{format!("{:.1}", power_db)}</td>
+                                    <td class="psd-peak-bw">{bw_6_text}</td>
+                                    <td class="psd-peak-bw">{bw_10_text}</td>
+                                </tr>
+                            }
+                        }).collect();
 
                         view! {
                             <div class="setting-group">
-                                <div class="setting-group-title">"Peak Analysis"</div>
-                                <div class="analysis-stats">
-                                    <div class="analysis-stat">
-                                        <span class="analysis-stat-value">{peak_freq_text}</span>
-                                        <span class="analysis-stat-label">"Peak Freq"</span>
-                                    </div>
-                                    <div class="analysis-stat">
-                                        <span class="analysis-stat-value">{peak_power_text}</span>
-                                        <span class="analysis-stat-label">"Peak Power"</span>
-                                    </div>
-                                    <div class="analysis-stat">
-                                        <span class="analysis-stat-value">{bw_6_text}</span>
-                                        <span class="analysis-stat-label">"-6 dB BW"</span>
-                                    </div>
-                                    <div class="analysis-stat">
-                                        <span class="analysis-stat-value">{bw_10_text}</span>
-                                        <span class="analysis-stat-label">"-10 dB BW"</span>
-                                    </div>
-                                </div>
+                                <div class="setting-group-title">"Peaks"</div>
+                                <table class="psd-peak-table">
+                                    <thead>
+                                        <tr>
+                                            <th></th>
+                                            <th title="Peak frequency (kHz)">"kHz"</th>
+                                            <th title="Power (dB)">"dB"</th>
+                                            <th title="-6 dB bandwidth">"-6 dB"</th>
+                                            <th title="-10 dB bandwidth">"-10 dB"</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>{peak_rows}</tbody>
+                                </table>
                                 <div class="psd-meta-text">{frames_text}</div>
                                 <button
                                     class="analysis-full-btn"
                                     style="margin-top:4px"
-                                    on:click=annotate_peak
-                                    title="Add peak frequency and bandwidth annotations"
+                                    on:click=annotate_peaks
+                                    title="Add peak frequency and bandwidth annotations for all peaks"
                                 >
-                                    "Add peak annotation"
+                                    "Add peak annotations"
                                 </button>
                             </div>
                         }.into_any()
@@ -496,15 +564,12 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
     let power_db = psd.power_db.clone();
     let freq_res = psd.freq_resolution;
     let sample_rate = psd.sample_rate;
-    let peak = psd.peak.clone();
-    let bw_6 = peak.bw_6db;
-    let bw_10 = peak.bw_10db;
+    let peaks = psd.peaks.clone();
 
     Effect::new(move || {
         let Some(el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = el.as_ref();
 
-        // Get parent width for responsive sizing
         let parent_width = canvas.parent_element()
             .map(|p| p.client_width() as u32)
             .unwrap_or(250);
@@ -520,7 +585,6 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
             .dyn_into::<CanvasRenderingContext2d>()
             .unwrap();
 
-        // Background
         ctx.set_fill_style_str("#111");
         ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
 
@@ -528,7 +592,6 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
             return;
         }
 
-        // Layout
         let margin_left = 36.0;
         let margin_right = 8.0;
         let margin_top = 8.0;
@@ -539,14 +602,12 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
         let nyquist = sample_rate as f64 / 2.0;
         let n_bins = power_db.len();
 
-        // dB range: auto from peak
         let db_max = power_db.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let db_min = (db_max - 80.0).max(-200.0);
         let db_range = db_max - db_min;
         if db_range <= 0.0 { return; }
 
-        // Frequency to x coordinate
-        let min_log_freq = 100.0f64; // minimum freq for log scale
+        let min_log_freq = 100.0f64;
         let freq_to_x = |freq: f64| -> f64 {
             if log_scale {
                 if freq <= 0.0 { return margin_left; }
@@ -560,13 +621,12 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
             }
         };
 
-        // dB to y coordinate
         let db_to_y = |db: f64| -> f64 {
             let frac = (db - db_min) / db_range;
             margin_top + (1.0 - frac.clamp(0.0, 1.0)) * chart_h
         };
 
-        // Draw grid lines (dB)
+        // dB grid
         ctx.set_stroke_style_str("rgba(255,255,255,0.1)");
         ctx.set_fill_style_str("#666");
         ctx.set_font("9px monospace");
@@ -584,7 +644,7 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
             db_tick += db_step;
         }
 
-        // Draw grid lines (frequency)
+        // Frequency grid
         let freq_ticks: Vec<f64> = if log_scale {
             let mut ticks = Vec::new();
             for &base in &[100.0, 1000.0, 10000.0, 100000.0] {
@@ -646,23 +706,23 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
             }
         }
 
-        // Draw -10dB bandwidth shaded region
-        if let Some((lo, hi)) = bw_10 {
-            let x1 = freq_to_x(lo);
-            let x2 = freq_to_x(hi);
-            ctx.set_fill_style_str("rgba(170,170,68,0.15)");
-            ctx.fill_rect(x1, margin_top, x2 - x1, chart_h);
+        // Draw bandwidth shading for the primary peak only (to keep chart clean)
+        if let Some(peak) = peaks.first() {
+            if let Some((lo, hi)) = peak.bw_10db {
+                let x1 = freq_to_x(lo);
+                let x2 = freq_to_x(hi);
+                ctx.set_fill_style_str("rgba(170,170,68,0.15)");
+                ctx.fill_rect(x1, margin_top, x2 - x1, chart_h);
+            }
+            if let Some((lo, hi)) = peak.bw_6db {
+                let x1 = freq_to_x(lo);
+                let x2 = freq_to_x(hi);
+                ctx.set_fill_style_str("rgba(68,170,102,0.2)");
+                ctx.fill_rect(x1, margin_top, x2 - x1, chart_h);
+            }
         }
 
-        // Draw -6dB bandwidth shaded region
-        if let Some((lo, hi)) = bw_6 {
-            let x1 = freq_to_x(lo);
-            let x2 = freq_to_x(hi);
-            ctx.set_fill_style_str("rgba(68,170,102,0.2)");
-            ctx.fill_rect(x1, margin_top, x2 - x1, chart_h);
-        }
-
-        // Draw PSD curve
+        // PSD curve
         ctx.set_stroke_style_str("#4dd");
         ctx.set_line_width(1.5);
         ctx.begin_path();
@@ -681,34 +741,41 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
         }
         ctx.stroke();
 
-        // Draw peak marker
-        let peak_x = freq_to_x(peak.freq_hz);
-        let peak_y = db_to_y(peak.power_db);
+        // Draw all peak markers
+        for (i, peak) in peaks.iter().enumerate() {
+            let color = peak_color(i);
+            let px = freq_to_x(peak.freq_hz);
+            let py = db_to_y(peak.power_db);
 
-        // Dashed vertical line
-        ctx.set_stroke_style_str("rgba(255,68,68,0.6)");
-        ctx.set_line_width(1.0);
-        let _ = ctx.set_line_dash(&JsValue::from(js_sys::Array::of2(
-            &JsValue::from(3.0),
-            &JsValue::from(3.0),
-        )));
-        ctx.begin_path();
-        ctx.move_to(peak_x, margin_top);
-        ctx.line_to(peak_x, h as f64 - margin_bottom);
-        ctx.stroke();
-        let _ = ctx.set_line_dash(&JsValue::from(js_sys::Array::new()));
+            // Dashed vertical line
+            let alpha = if i == 0 { 0.6 } else { 0.35 };
+            ctx.set_stroke_style_str(&hex_to_rgba(color, alpha));
+            ctx.set_line_width(1.0);
+            let _ = ctx.set_line_dash(&JsValue::from(js_sys::Array::of2(
+                &JsValue::from(3.0),
+                &JsValue::from(3.0),
+            )));
+            ctx.begin_path();
+            ctx.move_to(px, margin_top);
+            ctx.line_to(px, h as f64 - margin_bottom);
+            ctx.stroke();
+            let _ = ctx.set_line_dash(&JsValue::from(js_sys::Array::new()));
 
-        // Red dot at peak
-        ctx.set_fill_style_str("#f44");
-        ctx.begin_path();
-        let _ = ctx.arc(peak_x, peak_y, 3.0, 0.0, std::f64::consts::TAU);
-        ctx.fill();
+            // Dot
+            ctx.set_fill_style_str(color);
+            ctx.begin_path();
+            let radius = if i == 0 { 3.0 } else { 2.5 };
+            let _ = ctx.arc(px, py, radius, 0.0, std::f64::consts::TAU);
+            ctx.fill();
 
-        // Peak label
-        ctx.set_fill_style_str("#faa");
-        ctx.set_font("9px monospace");
-        let peak_label = format!("{:.1}k", peak.freq_hz / 1000.0);
-        let _ = ctx.fill_text(&peak_label, peak_x + 5.0, peak_y - 4.0);
+            // Label (only for first 3 to avoid clutter)
+            if i < 3 {
+                ctx.set_fill_style_str(color);
+                ctx.set_font("9px monospace");
+                let label = format!("{:.1}k", peak.freq_hz / 1000.0);
+                let _ = ctx.fill_text(&label, px + 5.0, py - 4.0);
+            }
+        }
 
         // Chart border
         ctx.set_stroke_style_str("rgba(255,255,255,0.2)");

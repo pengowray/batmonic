@@ -54,8 +54,8 @@ pub struct PsdResult {
     pub nfft: usize,
     /// Number of frames averaged.
     pub frame_count: usize,
-    /// Peak analysis results.
-    pub peak: PsdPeak,
+    /// All detected peaks, sorted by power (strongest first).
+    pub peaks: Vec<PsdPeak>,
 }
 
 /// Peak frequency and bandwidth analysis from a PSD.
@@ -139,7 +139,7 @@ pub fn compute_psd(samples: &[f32], sample_rate: u32, nfft: usize) -> PsdResult 
     };
 
     let freq_resolution = sample_rate as f64 / nfft as f64;
-    let peak = find_peak(&power_db, freq_resolution);
+    let peaks = find_peaks(&power_db, freq_resolution);
 
     PsdResult {
         power_db,
@@ -147,7 +147,7 @@ pub fn compute_psd(samples: &[f32], sample_rate: u32, nfft: usize) -> PsdResult 
         sample_rate,
         nfft,
         frame_count,
-        peak,
+        peaks,
     }
 }
 
@@ -232,7 +232,7 @@ pub async fn compute_psd_async(
     };
 
     let freq_resolution = sample_rate as f64 / nfft as f64;
-    let peak = find_peak(&power_db, freq_resolution);
+    let peaks = find_peaks(&power_db, freq_resolution);
 
     Some(PsdResult {
         power_db,
@@ -240,44 +240,99 @@ pub async fn compute_psd_async(
         sample_rate,
         nfft,
         frame_count,
-        peak,
+        peaks,
     })
 }
 
 // ── Peak detection ──────────────────────────────────────────────────────────
 
-fn find_peak(power_db: &[f64], freq_resolution: f64) -> PsdPeak {
-    if power_db.is_empty() {
-        return PsdPeak {
-            freq_hz: 0.0,
-            power_db: -200.0,
-            bin_index: 0,
-            bw_6db: None,
-            bw_10db: None,
-        };
+/// Maximum number of peaks to return.
+const MAX_PEAKS: usize = 8;
+
+/// Minimum prominence (dB) a local maximum must have relative to the valleys
+/// on either side to be counted as a peak.
+const MIN_PROMINENCE_DB: f64 = 3.0;
+
+/// Find all significant local maxima in the PSD, sorted by power (strongest first).
+fn find_peaks(power_db: &[f64], freq_resolution: f64) -> Vec<PsdPeak> {
+    if power_db.len() < 3 {
+        return Vec::new();
     }
 
-    // Find peak bin (skip DC bin 0)
-    let start_bin = 1;
-    let (peak_bin, &peak_power) = power_db[start_bin..]
+    let n = power_db.len();
+
+    // Find local maxima (bins where power[i] > both neighbours), skip DC (bin 0)
+    let mut candidates: Vec<(usize, f64)> = Vec::new();
+    for i in 2..n - 1 {
+        if power_db[i] > power_db[i - 1] && power_db[i] >= power_db[i + 1] {
+            candidates.push((i, power_db[i]));
+        }
+    }
+
+    if candidates.is_empty() {
+        // Fallback: global max
+        let start_bin = 1;
+        let (peak_bin, &peak_power) = power_db[start_bin..]
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, v)| (i + start_bin, v))
+            .unwrap_or((0, &-200.0));
+        candidates.push((peak_bin, peak_power));
+    }
+
+    // Filter by prominence: for each candidate, walk left and right to find
+    // the lowest valley before reaching a higher peak.
+    let mut peaks: Vec<(usize, f64, f64)> = Vec::new(); // (bin, power, prominence)
+    for &(bin, power) in &candidates {
+        // Walk left to find minimum before a higher peak
+        let mut left_min = power;
+        for j in (1..bin).rev() {
+            left_min = left_min.min(power_db[j]);
+            if power_db[j] > power {
+                break;
+            }
+        }
+        // Walk right
+        let mut right_min = power;
+        for j in (bin + 1)..n {
+            right_min = right_min.min(power_db[j]);
+            if power_db[j] > power {
+                break;
+            }
+        }
+        let prominence = power - left_min.max(right_min);
+        if prominence >= MIN_PROMINENCE_DB {
+            peaks.push((bin, power, prominence));
+        }
+    }
+
+    // If no peaks passed prominence filter, use the single strongest candidate
+    if peaks.is_empty() {
+        if let Some(&(bin, power)) = candidates.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()) {
+            peaks.push((bin, power, 0.0));
+        }
+    }
+
+    // Sort by power descending, take top MAX_PEAKS
+    peaks.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    peaks.truncate(MAX_PEAKS);
+
+    peaks
         .iter()
-        .enumerate()
-        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(i, v)| (i + start_bin, v))
-        .unwrap_or((0, &-200.0));
-
-    let peak_freq = peak_bin as f64 * freq_resolution;
-
-    let bw_6db = find_bandwidth(power_db, peak_bin, peak_power, 6.0, freq_resolution);
-    let bw_10db = find_bandwidth(power_db, peak_bin, peak_power, 10.0, freq_resolution);
-
-    PsdPeak {
-        freq_hz: peak_freq,
-        power_db: peak_power,
-        bin_index: peak_bin,
-        bw_6db,
-        bw_10db,
-    }
+        .map(|&(bin, power, _)| {
+            let freq_hz = bin as f64 * freq_resolution;
+            let bw_6db = find_bandwidth(power_db, bin, power, 6.0, freq_resolution);
+            let bw_10db = find_bandwidth(power_db, bin, power, 10.0, freq_resolution);
+            PsdPeak {
+                freq_hz,
+                power_db: power,
+                bin_index: bin,
+                bw_6db,
+                bw_10db,
+            }
+        })
+        .collect()
 }
 
 /// Find bandwidth at `drop_db` below peak using linear interpolation.
