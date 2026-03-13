@@ -1562,9 +1562,9 @@ pub fn Spectrogram() -> impl IntoView {
 
         // End axis drag (FF range already updated live during drag)
         if state.axis_drag_start_freq.get_untracked().is_some() {
-            let lo = state.ff_freq_lo.get_untracked();
-            let hi = state.ff_freq_hi.get_untracked();
-            if hi - lo > 500.0 && !state.focus_stack.get_untracked().hfr_enabled() {
+            let stack = state.focus_stack.get_untracked();
+            let range = stack.effective_range_ignoring_hfr();
+            if range.hi - range.lo > 500.0 && !stack.hfr_enabled() {
                 // Enable HFR — the focus stack already has the user's range
                 state.toggle_hfr();
             }
@@ -1888,9 +1888,9 @@ pub fn Spectrogram() -> impl IntoView {
             }
             // Finalize axis drag — auto-enable HFR if a meaningful range was selected
             if state.axis_drag_start_freq.get_untracked().is_some() {
-                let lo = state.ff_freq_lo.get_untracked();
-                let hi = state.ff_freq_hi.get_untracked();
-                if hi - lo > 500.0 && !state.focus_stack.get_untracked().hfr_enabled() {
+                let stack = state.focus_stack.get_untracked();
+                let range = stack.effective_range_ignoring_hfr();
+                if range.hi - range.lo > 500.0 && !stack.hfr_enabled() {
                     state.toggle_hfr();
                 }
                 state.axis_drag_start_freq.set(None);

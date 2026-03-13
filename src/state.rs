@@ -1492,7 +1492,7 @@ impl AppState {
     /// (ff_freq_lo, ff_freq_hi, hfr_enabled).
     fn sync_focus_outputs(&self) {
         let stack = self.focus_stack.get_untracked();
-        let eff = stack.effective_range_ignoring_hfr();
+        let eff = stack.effective_range();
         let hfr = stack.hfr_enabled();
         if self.ff_freq_lo.get_untracked() != eff.lo {
             self.ff_freq_lo.set(eff.lo);

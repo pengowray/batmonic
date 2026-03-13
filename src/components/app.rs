@@ -229,7 +229,7 @@ pub fn App() -> impl IntoView {
     // This keeps downstream Effects (B, C, D in hfr_button) working unchanged.
     Effect::new(move |_| {
         let stack = state.focus_stack.get();
-        let eff = stack.effective_range_ignoring_hfr();
+        let eff = stack.effective_range();
         let hfr = stack.hfr_enabled();
         if state.ff_freq_lo.get_untracked() != eff.lo {
             state.ff_freq_lo.set(eff.lo);
