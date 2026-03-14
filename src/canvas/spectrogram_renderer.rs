@@ -566,6 +566,8 @@ pub fn blit_tiles_viewport(
     total_duration: f64,   // seconds (for preview mapping)
     tile_source: TileSource,
 ) -> bool {
+    use crate::canvas::tile_blit::{ViewportGeometry, compute_tile_blit_coords, for_each_visible_tile};
+
     let cw = canvas.width() as f64;
     let ch = canvas.height() as f64;
 
@@ -581,76 +583,18 @@ pub fn blit_tiles_viewport(
         ctx.fill_rect(0.0, 0.0, cw, ch);
     }
 
-    if total_cols == 0 || zoom <= 0.0 {
+    let Some(vg) = ViewportGeometry::new(cw, ch, total_cols, scroll_col, zoom, freq_crop_lo, freq_crop_hi)
+    else {
         return preview.is_some();
-    }
+    };
 
-    // Select ideal LOD for current zoom
-    let ideal_lod = tile_cache::select_lod(zoom);
-    let ratio = tile_cache::lod_ratio(ideal_lod);
-
-    // Visible range in LOD1 column space
-    let vis_start = scroll_col.max(0.0).min((total_cols as f64 - 1.0).max(0.0));
-    let vis_end = (vis_start + cw / zoom).min(total_cols as f64);
-
-    // Convert to ideal LOD column space for tile range computation
-    let vis_start_lod = vis_start * ratio;
-    let vis_end_lod = vis_end * ratio;
-
-    let first_tile = (vis_start_lod / TILE_COLS as f64).floor() as usize;
-    let last_tile = ((vis_end_lod - 0.001).max(0.0) / TILE_COLS as f64).floor() as usize;
-
-    let fc_lo = freq_crop_lo.max(0.0);
-    let fc_hi = freq_crop_hi.max(0.01);
-
-    let mut any_drawn = false;
-
-    // Universal tile blit closure — handles any LOD tile at the correct screen position.
-    // clip_lod1_start/end = the LOD1 column range to draw from this tile.
+    // Draw a tile to the canvas given its LOD and screen clip range.
     let blit_any_tile = |tile: &tile_cache::Tile, tile_lod: u8, tile_idx: usize,
-                         clip_lod1_start: f64, clip_lod1_end: f64| {
-        let tw = tile.rendered.width as f64;
-        let th = tile.rendered.height as f64;
-        if tw == 0.0 || th == 0.0 { return; }
-
-        let tile_ratio = tile_cache::lod_ratio(tile_lod);
-
-        // Tile's LOD1 column range
-        let tile_lod1_start = tile_idx as f64 * TILE_COLS as f64 / tile_ratio;
-        let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / tile_ratio;
-
-        // Clip to requested range
-        let c_start = clip_lod1_start.max(tile_lod1_start);
-        let c_end = clip_lod1_end.min(tile_lod1_end);
-        if c_end <= c_start { return; }
-
-        // Source coordinates in tile pixel space.
-        // pixel_scale maps LOD1 column offsets to actual tile pixels.
-        // When decimation is active, tw < TILE_COLS, so we must scale down
-        // to avoid overshooting the tile's actual pixel width.
-        let pixel_scale = tw * tile_ratio / TILE_COLS as f64;
-        let src_x = ((c_start - tile_lod1_start) * pixel_scale).max(0.0);
-        let src_x_end = ((c_end - tile_lod1_start) * pixel_scale).min(tw);
-        let src_w = (src_x_end - src_x).max(0.0);
-        if src_w <= 0.0 { return; }
-
-        // Vertical crop
-        let (src_y, src_h, dst_y, dst_h) = if fc_hi <= 1.0 {
-            let sy = th * (1.0 - fc_hi);
-            let sh = th * (fc_hi - fc_lo).max(0.001);
-            (sy, sh, 0.0, ch)
-        } else {
-            let fc_range = (fc_hi - fc_lo).max(0.001);
-            let data_frac = (1.0 - fc_lo) / fc_range;
-            let sh = th * (1.0 - fc_lo);
-            (0.0, sh, ch * (1.0 - data_frac), ch * data_frac)
-        };
-
-        // Destination on canvas
-        let dst_x_raw = (c_start - vis_start) * zoom;
-        let dst_x_end_raw = (c_end - vis_start) * zoom;
-        let dst_x = dst_x_raw.floor();
-        let dst_w = (dst_x_end_raw.ceil() - dst_x).max(1.0);
+                         clip_start: f64, clip_end: f64| {
+        let Some(coords) = compute_tile_blit_coords(
+            &vg, tile.rendered.width as f64, tile.rendered.height as f64,
+            tile_lod, tile_idx, clip_start, clip_end,
+        ) else { return };
 
         // Convert dB tile to RGBA
         let pixels = if !tile.rendered.db_data.is_empty() {
@@ -680,60 +624,36 @@ pub fn blit_tiles_viewport(
         ) else { return };
 
         let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height) else { return };
-        // Note: tmp canvas may be larger than the tile — that's fine.
-        // put_image_data writes at (0,0) and draw_image reads only src_x..src_w.
         let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
-        // Enable smoothing when scaling (fallback tiles are upscaled)
-        ctx.set_image_smoothing_enabled(tile_lod != ideal_lod);
+        ctx.set_image_smoothing_enabled(tile_lod != vg.ideal_lod);
         let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
             &tmp,
-            src_x, src_y, src_w, src_h,
-            dst_x, dst_y, dst_w, dst_h,
+            coords.src_x, coords.src_y, coords.src_w, coords.src_h,
+            coords.dst_x, coords.dst_y, coords.dst_w, coords.dst_h,
         );
     };
 
-    for tile_idx in first_tile..=last_tile {
-        // LOD1 column range this ideal-LOD tile covers
-        let tile_lod1_start = tile_idx as f64 * TILE_COLS as f64 / ratio;
-        let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / ratio;
-
-        // Clip to visible range
-        let clip_start = vis_start.max(tile_lod1_start);
-        let clip_end = vis_end.min(tile_lod1_end);
-        if clip_end <= clip_start { continue; }
-
-        let mut tile_drawn = false;
-
-        // Helper: borrow from the selected tile cache
-        let borrow_from = |fi: usize, lod: u8, ti: usize, f: &dyn Fn(&tile_cache::Tile)| -> Option<()> {
-            match tile_source {
-                TileSource::Reassigned => tile_cache::borrow_reassign_tile(fi, lod, ti, |t| f(t)),
-                TileSource::Normal => tile_cache::borrow_tile(fi, lod, ti, |t| f(t)),
-            }
-        };
-
-        // Try ideal LOD first
-        let r = borrow_from(file_idx, ideal_lod, tile_idx, &|tile| {
-            blit_any_tile(tile, ideal_lod, tile_idx, clip_start, clip_end);
-        });
-        if r.is_some() { tile_drawn = true; }
-
-        // Fallback to lower LODs (coarser, but covers the same time range)
-        if !tile_drawn {
-            for fb_lod in (0..ideal_lod).rev() {
-                let (fb_tile, _fb_src_start, _fb_src_end) =
-                    tile_cache::fallback_tile_info(ideal_lod, tile_idx, fb_lod);
-                // Fallback always uses normal tiles (cheaper, already cached)
-                let r = tile_cache::borrow_tile(file_idx, fb_lod, fb_tile, |tile| {
-                    blit_any_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
-                });
-                if r.is_some() { tile_drawn = true; break; }
-            }
-        }
-
-        if tile_drawn { any_drawn = true; }
-    }
+    let any_drawn = for_each_visible_tile(
+        &vg,
+        |tile_idx, clip_start, clip_end| {
+            let borrow_fn = |fi: usize, lod: u8, ti: usize, f: &dyn Fn(&tile_cache::Tile)| -> Option<()> {
+                match tile_source {
+                    TileSource::Reassigned => tile_cache::borrow_reassign_tile(fi, lod, ti, |t| f(t)),
+                    TileSource::Normal => tile_cache::borrow_tile(fi, lod, ti, |t| f(t)),
+                }
+            };
+            borrow_fn(file_idx, vg.ideal_lod, tile_idx, &|tile| {
+                blit_any_tile(tile, vg.ideal_lod, tile_idx, clip_start, clip_end);
+            }).is_some()
+        },
+        |fb_tile, fb_lod, clip_start, clip_end| {
+            // Fallback always uses normal tiles (cheaper, already cached)
+            tile_cache::borrow_tile(file_idx, fb_lod, fb_tile, |tile| {
+                blit_any_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
+            }).is_some()
+        },
+    );
 
     any_drawn || preview.is_some()
 }
@@ -810,6 +730,8 @@ pub fn blit_flow_tiles_viewport(
     visible_time: f64,
     total_duration: f64,
 ) -> bool {
+    use crate::canvas::tile_blit::{ViewportGeometry, compute_tile_blit_coords, for_each_visible_tile};
+
     let cw = canvas.width() as f64;
     let ch = canvas.height() as f64;
 
@@ -825,75 +747,18 @@ pub fn blit_flow_tiles_viewport(
         ctx.fill_rect(0.0, 0.0, cw, ch);
     }
 
-    if total_cols == 0 || zoom <= 0.0 {
+    let Some(vg) = ViewportGeometry::new(cw, ch, total_cols, scroll_col, zoom, freq_crop_lo, freq_crop_hi)
+    else {
         return preview.is_some();
-    }
+    };
 
-    // Select ideal LOD for current zoom (same as magnitude tiles)
-    let ideal_lod = tile_cache::select_lod(zoom);
-    let ratio = tile_cache::lod_ratio(ideal_lod);
-
-    // Visible range in LOD1 column space
-    let vis_start = scroll_col.max(0.0).min((total_cols as f64 - 1.0).max(0.0));
-    let vis_end = (vis_start + cw / zoom).min(total_cols as f64);
-
-    // Convert to ideal LOD column space for tile range computation
-    let vis_start_lod = vis_start * ratio;
-    let vis_end_lod = vis_end * ratio;
-
-    let first_tile = (vis_start_lod / TILE_COLS as f64).floor() as usize;
-    let last_tile = ((vis_end_lod - 0.001).max(0.0) / TILE_COLS as f64).floor() as usize;
-
-    let fc_lo = freq_crop_lo.max(0.0);
-    let fc_hi = freq_crop_hi.max(0.01);
-
-    let mut any_drawn = false;
-
-    // Closure to blit a flow tile at any LOD to the correct screen position.
+    // Draw a flow tile to the canvas.
     let blit_flow_tile = |tile: &tile_cache::Tile, tile_lod: u8, tile_idx: usize,
-                          clip_lod1_start: f64, clip_lod1_end: f64| {
-        let tw = tile.rendered.width as f64;
-        let th = tile.rendered.height as f64;
-        if tw == 0.0 || th == 0.0 { return; }
-
-        let tile_ratio = tile_cache::lod_ratio(tile_lod);
-
-        // Tile's LOD1 column range
-        let tile_lod1_start = tile_idx as f64 * TILE_COLS as f64 / tile_ratio;
-        let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / tile_ratio;
-
-        // Clip to requested range
-        let c_start = clip_lod1_start.max(tile_lod1_start);
-        let c_end = clip_lod1_end.min(tile_lod1_end);
-        if c_end <= c_start { return; }
-
-        // Source coordinates in tile pixel space.
-        // pixel_scale maps LOD1 column offsets to actual tile pixels.
-        // When decimation is active, tw < TILE_COLS, so we must scale down
-        // to avoid overshooting the tile's actual pixel width.
-        let pixel_scale = tw * tile_ratio / TILE_COLS as f64;
-        let src_x = ((c_start - tile_lod1_start) * pixel_scale).max(0.0);
-        let src_x_end = ((c_end - tile_lod1_start) * pixel_scale).min(tw);
-        let src_w = (src_x_end - src_x).max(0.0);
-        if src_w <= 0.0 { return; }
-
-        // Vertical crop
-        let (src_y, src_h, dst_y, dst_h) = if fc_hi <= 1.0 {
-            let sy = th * (1.0 - fc_hi);
-            let sh = th * (fc_hi - fc_lo).max(0.001);
-            (sy, sh, 0.0, ch)
-        } else {
-            let fc_range = (fc_hi - fc_lo).max(0.001);
-            let data_frac = (1.0 - fc_lo) / fc_range;
-            let sh = th * (1.0 - fc_lo);
-            (0.0, sh, ch * (1.0 - data_frac), ch * data_frac)
-        };
-
-        // Destination on canvas
-        let dst_x_raw = (c_start - vis_start) * zoom;
-        let dst_x_end_raw = (c_end - vis_start) * zoom;
-        let dst_x = dst_x_raw.floor();
-        let dst_w = (dst_x_end_raw.ceil() - dst_x).max(1.0);
+                          clip_start: f64, clip_end: f64| {
+        let Some(coords) = compute_tile_blit_coords(
+            &vg, tile.rendered.width as f64, tile.rendered.height as f64,
+            tile_lod, tile_idx, clip_start, clip_end,
+        ) else { return };
 
         // Composite dB+shift to RGBA at render time
         let rgba = if !tile.rendered.db_data.is_empty() {
@@ -914,50 +779,29 @@ pub fn blit_flow_tiles_viewport(
         ) else { return };
 
         let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height) else { return };
-        // Note: tmp canvas may be larger than the tile — that's fine.
-        // put_image_data writes at (0,0) and draw_image reads only src_x..src_w.
         let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
-        // Enable smoothing when upscaling fallback tiles
-        ctx.set_image_smoothing_enabled(tile_lod != ideal_lod);
+        ctx.set_image_smoothing_enabled(tile_lod != vg.ideal_lod);
         let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
             &tmp,
-            src_x, src_y, src_w, src_h,
-            dst_x, dst_y, dst_w, dst_h,
+            coords.src_x, coords.src_y, coords.src_w, coords.src_h,
+            coords.dst_x, coords.dst_y, coords.dst_w, coords.dst_h,
         );
     };
 
-    for tile_idx in first_tile..=last_tile {
-        // LOD1 column range this ideal-LOD tile covers
-        let tile_lod1_start = tile_idx as f64 * TILE_COLS as f64 / ratio;
-        let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / ratio;
-
-        let clip_start = vis_start.max(tile_lod1_start);
-        let clip_end = vis_end.min(tile_lod1_end);
-        if clip_end <= clip_start { continue; }
-
-        let mut tile_drawn = false;
-
-        // Try ideal LOD first
-        let r = tile_cache::borrow_flow_tile(file_idx, ideal_lod, tile_idx, |tile| {
-            blit_flow_tile(tile, ideal_lod, tile_idx, clip_start, clip_end);
-        });
-        if r.is_some() { tile_drawn = true; }
-
-        // Fallback to coarser LODs
-        if !tile_drawn {
-            for fb_lod in (0..ideal_lod).rev() {
-                let (fb_tile, _fb_src_start, _fb_src_end) =
-                    tile_cache::fallback_tile_info(ideal_lod, tile_idx, fb_lod);
-                let r = tile_cache::borrow_flow_tile(file_idx, fb_lod, fb_tile, |tile| {
-                    blit_flow_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
-                });
-                if r.is_some() { tile_drawn = true; break; }
-            }
-        }
-
-        if tile_drawn { any_drawn = true; }
-    }
+    let any_drawn = for_each_visible_tile(
+        &vg,
+        |tile_idx, clip_start, clip_end| {
+            tile_cache::borrow_flow_tile(file_idx, vg.ideal_lod, tile_idx, |tile| {
+                blit_flow_tile(tile, vg.ideal_lod, tile_idx, clip_start, clip_end);
+            }).is_some()
+        },
+        |fb_tile, fb_lod, clip_start, clip_end| {
+            tile_cache::borrow_flow_tile(file_idx, fb_lod, fb_tile, |tile| {
+                blit_flow_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
+            }).is_some()
+        },
+    );
 
     any_drawn || preview.is_some()
 }

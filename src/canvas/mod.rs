@@ -7,6 +7,7 @@ pub mod hit_test;
 pub mod overlays;
 pub mod spectrogram_renderer;
 pub mod waveform_renderer;
+pub mod tile_blit;
 pub mod tile_cache;
 pub mod tile_scheduler;
 pub mod spectral_store;
