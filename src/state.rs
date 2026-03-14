@@ -762,6 +762,10 @@ pub struct AppState {
     /// True when a USB audio device is detected but lacks permission.
     /// Used to change Record/Listen button labels to "Allow USB mic".
     pub mic_needs_permission: RwSignal<bool>,
+    /// User's preferred device name for mic input. None = use system default.
+    pub mic_selected_device: RwSignal<Option<String>>,
+    /// Whether the mic chooser modal dialog is visible.
+    pub show_mic_chooser: RwSignal<bool>,
 
     // Transient status message (e.g. permission errors)
     pub status_message: RwSignal<Option<String>>,
@@ -1061,6 +1065,8 @@ impl AppState {
             mic_recording_target_scroll: RwSignal::new(0.0),
             mic_live_data_cols: RwSignal::new(0),
             mic_needs_permission: RwSignal::new(false),
+            mic_selected_device: RwSignal::new(None),
+            show_mic_chooser: RwSignal::new(false),
             status_message: RwSignal::new(None),
             status_level: RwSignal::new(StatusLevel::Error),
             debug_log_entries: RwSignal::new(Vec::new()),

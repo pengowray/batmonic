@@ -249,13 +249,29 @@ pub fn list_input_devices() -> Vec<DeviceInfo> {
     devices
 }
 
-/// Open the default input device and create a capture stream.
+/// Open an input device and create a capture stream.
+/// If `device_name` is Some, look up that device by name; otherwise use the default.
 /// If `requested_max_rate` > 0, try to negotiate the highest rate up to that value.
-pub fn open_mic(requested_max_rate: u32) -> Result<MicState, String> {
+pub fn open_mic(requested_max_rate: u32, device_name: Option<&str>) -> Result<MicState, String> {
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| "No microphone found. Check your audio settings.".to_string())?;
+    let device = if let Some(name) = device_name {
+        // Try to find the requested device by name
+        let found = host
+            .input_devices()
+            .ok()
+            .and_then(|mut devs| devs.find(|d| d.name().ok().as_deref() == Some(name)));
+        match found {
+            Some(d) => d,
+            None => {
+                eprintln!("Requested device '{}' not found, falling back to default", name);
+                host.default_input_device()
+                    .ok_or_else(|| "No microphone found. Check your audio settings.".to_string())?
+            }
+        }
+    } else {
+        host.default_input_device()
+            .ok_or_else(|| "No microphone found. Check your audio settings.".to_string())?
+    };
 
     let device_name = device.name().unwrap_or_else(|_| "Unknown".into());
     let supported_rates = collect_supported_rates(&device);

@@ -699,12 +699,21 @@ async fn ensure_mic_open_tauri(state: &AppState) -> bool {
     }
 
     let max_sr = state.mic_max_sample_rate.get_untracked();
+    let selected_device = state.mic_selected_device.get_untracked();
     let args = js_sys::Object::new();
     if max_sr > 0 {
         js_sys::Reflect::set(
             &args,
             &JsValue::from_str("maxSampleRate"),
             &JsValue::from_f64(max_sr as f64),
+        )
+        .ok();
+    }
+    if let Some(ref name) = selected_device {
+        js_sys::Reflect::set(
+            &args,
+            &JsValue::from_str("deviceName"),
+            &JsValue::from_str(name),
         )
         .ok();
     }

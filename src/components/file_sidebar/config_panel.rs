@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
 use crate::state::{AppState, ChromaColormap, ColormapPreference, MicMode};
+use super::mic_chooser::MicChooserModal;
 
 fn parse_colormap_pref(s: &str) -> ColormapPreference {
     match s {
@@ -181,6 +182,27 @@ pub(super) fn ConfigPanel() -> impl IntoView {
                         <div class="mic-mode-hint">{label}</div>
                     })
                 }}
+                // Choose mic button (Tauri only)
+                {is_tauri.then(|| view! {
+                    <div class="setting-row">
+                        <span class="setting-label">"Device"</span>
+                        <button
+                            class="setting-btn"
+                            on:click=move |_| state.show_mic_chooser.set(true)
+                        >{move || {
+                            match state.mic_selected_device.get() {
+                                Some(name) => {
+                                    if name.len() > 16 {
+                                        format!("{}\u{2026}", &name[..15])
+                                    } else {
+                                        name
+                                    }
+                                }
+                                None => "Default".to_string(),
+                            }
+                        }}</button>
+                    </div>
+                })}
                 <div class="setting-row">
                     <span class="setting-label">"Max sample rate"</span>
                     <select
@@ -402,6 +424,9 @@ pub(super) fn ConfigPanel() -> impl IntoView {
                     </select>
                 </div>
             </div>
+
+            // Mic chooser modal (rendered here, uses position:fixed so DOM location doesn't matter)
+            {move || state.show_mic_chooser.get().then(|| view! { <MicChooserModal /> })}
         </div>
     }
 }
