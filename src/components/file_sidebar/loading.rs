@@ -483,8 +483,8 @@ async fn try_streaming_flac(file: &File, name: &str, state: AppState) -> Result<
             bits_per_sample: header.bits_per_sample,
             is_float: false,
             guano: None,
-            data_offset: None,
-            data_size: None,
+            data_offset: Some(header.first_frame_offset),
+            data_size: Some((file.size() as u64).saturating_sub(header.first_frame_offset)),
         },
     };
 
@@ -833,8 +833,8 @@ async fn try_streaming_mp3(file: &File, name: &str, state: AppState) -> Result<(
             bits_per_sample: 16,
             is_float: false,
             guano: None,
-            data_offset: None,
-            data_size: None,
+            data_offset: Some(header.data_offset),
+            data_size: Some((file.size() as u64).saturating_sub(header.data_offset)),
         },
     };
 

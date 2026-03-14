@@ -261,6 +261,7 @@ pub struct Mp3Header {
     pub sample_rate: u32,
     pub channels: u16,
     pub estimated_total_frames: u64, // from Xing/LAME header or bitrate estimate
+    pub data_offset: u64,            // byte offset where audio frames begin (after ID3v2 tags)
 }
 
 /// Parse MP3 metadata from the given bytes (typically first 64KB of file).
@@ -313,10 +314,23 @@ pub fn parse_mp3_header(header_bytes: &[u8], file_size: u64) -> Result<Mp3Header
         file_size * 8 * sample_rate as u64 / bitrate
     };
 
+    // Detect ID3v2 tag to determine audio data offset
+    let data_offset = if header_bytes.len() >= 10 && &header_bytes[0..3] == b"ID3" {
+        // ID3v2 size is stored as a 28-bit synchsafe integer in bytes 6-9
+        let size = ((header_bytes[6] as u64 & 0x7F) << 21)
+            | ((header_bytes[7] as u64 & 0x7F) << 14)
+            | ((header_bytes[8] as u64 & 0x7F) << 7)
+            | (header_bytes[9] as u64 & 0x7F);
+        10 + size // 10-byte ID3v2 header + tag body
+    } else {
+        0
+    };
+
     Ok(Mp3Header {
         sample_rate,
         channels,
         estimated_total_frames,
+        data_offset,
     })
 }
 
@@ -466,6 +480,11 @@ fn load_wav(bytes: &[u8]) -> Result<AudioData, String> {
 }
 
 fn load_flac(bytes: &[u8]) -> Result<AudioData, String> {
+    // Parse header for data_offset before using claxon
+    let (flac_data_offset, flac_data_size) = parse_flac_header(bytes)
+        .map(|h| (Some(h.first_frame_offset), Some((bytes.len() as u64).saturating_sub(h.first_frame_offset))))
+        .unwrap_or((None, None));
+
     let cursor = Cursor::new(bytes);
     let mut reader = claxon::FlacReader::new(cursor).map_err(|e| format!("FLAC error: {e}"))?;
     let info = reader.streaminfo();
@@ -495,8 +514,8 @@ fn load_flac(bytes: &[u8]) -> Result<AudioData, String> {
             bits_per_sample: bits as u16,
             is_float: false,
             guano: None,
-            data_offset: None,
-            data_size: None,
+            data_offset: flac_data_offset,
+            data_size: flac_data_size,
         },
     })
 }
@@ -550,6 +569,11 @@ fn load_mp3(bytes: &[u8]) -> Result<AudioData, String> {
     use symphonia::core::io::MediaSourceStream;
     use symphonia::core::meta::MetadataOptions;
     use symphonia::core::probe::Hint;
+
+    // Parse header for data_offset before decoding
+    let mp3_data_offset = parse_mp3_header(bytes, bytes.len() as u64)
+        .map(|h| h.data_offset)
+        .unwrap_or(0);
 
     let cursor = Cursor::new(bytes.to_vec());
     let mss = MediaSourceStream::new(Box::new(cursor), Default::default());
@@ -630,8 +654,8 @@ fn load_mp3(bytes: &[u8]) -> Result<AudioData, String> {
             bits_per_sample: 16,
             is_float: false,
             guano: None,
-            data_offset: None,
-            data_size: None,
+            data_offset: Some(mp3_data_offset),
+            data_size: Some((bytes.len() as u64).saturating_sub(mp3_data_offset)),
         },
     })
 }
