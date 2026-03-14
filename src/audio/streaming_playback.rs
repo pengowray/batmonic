@@ -32,7 +32,7 @@ const FILTER_WARMUP: usize = 4096;
 /// next chunk's leading overlap (same size) gets a Hann fade-in. Web Audio
 /// sums them → smooth crossfade, eliminating boundary clicks without
 /// needing the warmup-trim hack.
-const PV_HQ_OVERLAP: usize = 8192;
+pub(crate) const PV_HQ_OVERLAP: usize = 8192;
 
 /// How far ahead (in seconds) to stay buffered beyond current playback time.
 const LOOKAHEAD_SECS: f64 = 1.5;
@@ -216,7 +216,7 @@ async fn chunk_loop(
     params: PlaybackParams,
 ) {
     let mut pos = start_sample;
-    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder);
+    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift);
 
     // Gain computation depends on mode:
     // - Off: no gain at all (0 dB)
@@ -377,13 +377,9 @@ async fn process_one_chunk(
     start_sample: usize,
     end_sample: usize,
 ) -> (Vec<f32>, Option<Vec<f32>>, Option<Vec<f32>>, usize) {
-    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder);
+    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift);
 
-    let warmup_start = if pos > start_sample {
-        pos.saturating_sub(FILTER_WARMUP)
-    } else {
-        pos
-    };
+    let warmup_start = pos.saturating_sub(FILTER_WARMUP);
     let chunk_end = (pos + CHUNK_SAMPLES).min(end_sample);
     let warmup_len = pos - warmup_start;
 
@@ -512,7 +508,7 @@ pub(crate) fn apply_filters(samples: &[f32], sample_rate: u32, params: &Playback
                 params.filter_db_harmonics, params.filter_db_above,
                 params.filter_band_mode,
             ),
-            FilterQuality::HQ => apply_eq_filter(
+            FilterQuality::Spectral => apply_eq_filter(
                 samples, sample_rate,
                 params.filter_freq_low, params.filter_freq_high,
                 params.filter_db_below, params.filter_db_selected,

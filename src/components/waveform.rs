@@ -42,7 +42,7 @@ pub fn Waveform() -> impl IntoView {
             let samples = if filter_enabled {
                 match quality {
                     FilterQuality::Fast => apply_eq_filter_fast(&ch_samples, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
-                    FilterQuality::HQ => apply_eq_filter(&ch_samples, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
+                    FilterQuality::Spectral => apply_eq_filter(&ch_samples, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
                 }
             } else {
                 ch_samples.into_owned()

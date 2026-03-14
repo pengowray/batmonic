@@ -21,6 +21,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use crate::canvas::spectrogram_renderer::{self, PreRendered, FlowAlgo};
 use crate::state::{AppState, LoadedFile, PlaybackMode};
+use crate::audio::streaming_playback::PV_HQ_OVERLAP;
 use crate::audio::streaming_source;
 
 /// Number of spectrogram columns per tile (constant across all LODs).
@@ -452,9 +453,9 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
             state.playback_mode.get_untracked(),
             PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift | PlaybackMode::TimeExpansion
         );
-        // PV uses FFT_SIZE=4096, HOP=1024; fade_len=HOP. Pad by 8192 to ensure
-        // complete overlap-add warmup before the tile's actual samples begin.
-        let xform_pad = if needs_padding { 8192usize } else { 0 };
+        // Pad by PV_HQ_OVERLAP to ensure complete overlap-add warmup
+        // before the tile's actual samples begin.
+        let xform_pad = if needs_padding { PV_HQ_OVERLAP } else { 0 };
         let padded_start = sample_start.saturating_sub(xform_pad);
         let pre_pad_used = sample_start - padded_start;
         let padded_len = pre_pad_used + sample_len;

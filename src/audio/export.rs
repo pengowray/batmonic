@@ -17,6 +17,9 @@ const CHUNK_SAMPLES: usize = 96_000;
 /// Extra overlap samples prepended for IIR filter warmup.
 const FILTER_WARMUP: usize = 4096;
 
+/// Overlap samples for PV/PS crossfade (same as streaming_playback::PV_HQ_OVERLAP).
+const PV_HQ_OVERLAP: usize = 8192;
+
 /// Build PlaybackParams for exporting a region.
 /// When `use_region_focus` is true and the region has frequency bounds,
 /// those bounds drive the selection-based bandpass/heterodyne.
@@ -55,34 +58,98 @@ fn process_region(
     let start_sample = (start_time * sample_rate as f64) as usize;
     let end_sample = ((end_time * sample_rate as f64) as usize).min(source.total_samples() as usize);
 
+    let crossfade_mode = params.pv_hq
+        && matches!(params.mode, PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift);
+
     let mut all_samples: Vec<f32> = Vec::new();
     let mut pos = start_sample;
+    let mut is_first_chunk = true;
 
     while pos < end_sample {
         let chunk_end = (pos + CHUNK_SAMPLES).min(end_sample);
-        let warmup_start = if pos > start_sample {
-            pos.saturating_sub(FILTER_WARMUP)
-        } else {
-            pos
-        };
+        let warmup_start = pos.saturating_sub(FILTER_WARMUP);
         let warmup_len = pos - warmup_start;
+
+        // In crossfade mode, extend the read past the nominal end
+        let trailing_end = if crossfade_mode {
+            (chunk_end + PV_HQ_OVERLAP).min(end_sample)
+        } else if matches!(params.mode, PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder) {
+            (chunk_end + FILTER_WARMUP).min(end_sample)
+        } else {
+            chunk_end
+        };
+        let trailing_len = trailing_end - chunk_end;
 
         let chunk_with_warmup = source.read_region(
             ChannelView::MonoMix,
             warmup_start as u64,
-            chunk_end - warmup_start,
+            trailing_end - warmup_start,
         );
         let filtered = apply_filters(&chunk_with_warmup, sample_rate, params);
         let processed = apply_dsp_mode(&filtered, sample_rate, params);
 
-        // Trim warmup
-        let trimmed = if warmup_len < processed.len() {
-            &processed[warmup_len..]
-        } else {
-            &processed[..]
-        };
+        if crossfade_mode {
+            // Trim warmup but keep trailing overlap
+            let trim_start = warmup_len;
+            let mut chunk_samples = if trim_start < processed.len() {
+                processed[trim_start..].to_vec()
+            } else {
+                processed.to_vec()
+            };
 
-        all_samples.extend_from_slice(trimmed);
+            let core_len = chunk_end - pos;
+
+            // Hann fade-in on leading overlap (skip for first chunk)
+            if !is_first_chunk {
+                let fade_in_len = PV_HQ_OVERLAP.min(core_len).min(chunk_samples.len());
+                for i in 0..fade_in_len {
+                    let t = i as f32 / fade_in_len as f32;
+                    let w = 0.5 * (1.0 - (std::f32::consts::PI * t).cos());
+                    chunk_samples[i] *= w;
+                }
+            }
+
+            // Hann fade-out on trailing overlap
+            if trailing_len > 0 {
+                let fade_out_start = chunk_samples.len().saturating_sub(trailing_len);
+                let fade_out_len = chunk_samples.len() - fade_out_start;
+                for i in 0..fade_out_len {
+                    let t = i as f32 / fade_out_len as f32;
+                    let w = 0.5 * (1.0 + (std::f32::consts::PI * t).cos());
+                    chunk_samples[fade_out_start + i] *= w;
+                }
+            }
+
+            // Overlap-add into output buffer
+            if is_first_chunk {
+                all_samples.extend_from_slice(&chunk_samples);
+            } else {
+                // The overlap region is the last PV_HQ_OVERLAP samples of the
+                // existing output, which fade out. Sum with this chunk's
+                // fade-in region.
+                let overlap = PV_HQ_OVERLAP.min(all_samples.len()).min(chunk_samples.len());
+                let out_start = all_samples.len() - overlap;
+                for i in 0..overlap {
+                    all_samples[out_start + i] += chunk_samples[i];
+                }
+                // Append the non-overlapping tail
+                if overlap < chunk_samples.len() {
+                    all_samples.extend_from_slice(&chunk_samples[overlap..]);
+                }
+            }
+        } else {
+            // Standard mode: trim warmup and trailing
+            let trim_start = warmup_len;
+            let trim_end = processed.len().saturating_sub(trailing_len);
+            let trimmed = if trim_start < trim_end {
+                &processed[trim_start..trim_end]
+            } else {
+                &processed[..]
+            };
+            all_samples.extend_from_slice(trimmed);
+        }
+
+        is_first_chunk = false;
         pos = chunk_end;
     }
 

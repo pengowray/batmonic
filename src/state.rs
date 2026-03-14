@@ -182,7 +182,7 @@ impl RightSidebarTab {
 pub enum FilterQuality {
     #[default]
     Fast,
-    HQ,
+    Spectral,
 }
 
 // ── New enums ────────────────────────────────────────────────────────────────
@@ -996,7 +996,7 @@ impl AppState {
             filter_db_harmonics: RwSignal::new(-30.0),
             filter_db_above: RwSignal::new(-40.0),
             filter_hovering_band: RwSignal::new(None),
-            filter_quality: RwSignal::new(FilterQuality::HQ),
+            filter_quality: RwSignal::new(FilterQuality::Spectral),
             het_cutoff: RwSignal::new(15_000.0),
             sidebar_collapsed: RwSignal::new(false),
             sidebar_width: RwSignal::new(220.0),

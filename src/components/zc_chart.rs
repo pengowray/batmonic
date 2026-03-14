@@ -74,7 +74,7 @@ pub fn ZcDotChart() -> impl IntoView {
             let samples = if filter_enabled {
                 match quality {
                     FilterQuality::Fast => apply_eq_filter_fast(&raw, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
-                    FilterQuality::HQ => apply_eq_filter(&raw, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
+                    FilterQuality::Spectral => apply_eq_filter(&raw, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
                 }
             } else {
                 raw

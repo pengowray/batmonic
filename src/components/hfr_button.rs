@@ -150,7 +150,7 @@ pub fn HfrButton() -> impl IntoView {
                         if has_ff {
                             state.filter_freq_low.set(ff_lo);
                             state.filter_freq_high.set(ff_hi);
-                            state.filter_quality.set(FilterQuality::HQ);
+                            state.filter_quality.set(FilterQuality::Spectral);
                             state.filter_db_below.set(-60.0);
                             state.filter_db_selected.set(0.0);
                             state.filter_db_above.set(-60.0);
@@ -161,7 +161,7 @@ pub fn HfrButton() -> impl IntoView {
                         if has_ff {
                             state.filter_freq_low.set(ff_lo);
                             state.filter_freq_high.set(ff_hi);
-                            state.filter_quality.set(FilterQuality::HQ);
+                            state.filter_quality.set(FilterQuality::Spectral);
                             state.filter_db_below.set(-40.0);
                             state.filter_db_selected.set(0.0);
                             state.filter_db_above.set(-40.0);
@@ -551,8 +551,8 @@ pub fn HfrButton() -> impl IntoView {
                                     on:click=on_quality_click(FilterQuality::Fast)
                                     title="IIR band-split \u{2014} low latency, softer edges"
                                 >"Fast"</button>
-                                <button class=move || layer_opt_class(state.filter_quality.get() == FilterQuality::HQ)
-                                    on:click=on_quality_click(FilterQuality::HQ)
+                                <button class=move || layer_opt_class(state.filter_quality.get() == FilterQuality::Spectral)
+                                    on:click=on_quality_click(FilterQuality::Spectral)
                                     title="FFT spectral EQ \u{2014} sharp edges, higher latency"
                                 >"HQ"</button>
                                 <span style="width: 8px;"></span>
