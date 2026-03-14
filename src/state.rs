@@ -1349,8 +1349,8 @@ impl AppState {
         let peak = scan.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if peak < 1e-10 { return 0.0; }
         let peak_db = 20.0 * (peak as f64).log10();
-        // Cap at +30 dB to avoid extreme amplification of very quiet recordings
-        (-3.0 - peak_db).min(30.0)
+        // Cap at +60 dB to avoid extreme amplification of very quiet recordings
+        (-3.0 - peak_db).min(60.0)
     }
 
     // ── Focus Stack helpers ─────────────────────────────────────────────

@@ -7,7 +7,7 @@ use crate::annotations::{Annotation, AnnotationKind, Region};
 use crate::audio::microphone::encode_wav;
 use crate::audio::playback::snapshot_params;
 use crate::audio::source::{AudioSource, ChannelView};
-use crate::audio::streaming_playback::{apply_dsp_mode, apply_filters, PlaybackParams};
+use crate::audio::streaming_playback::{apply_dsp_mode, apply_filters, PlaybackParams, PV_MODE_BOOST_DB};
 use crate::audio::playback::apply_gain;
 use crate::state::{AppState, PlaybackMode, Selection};
 
@@ -153,8 +153,9 @@ fn process_region(
         pos = chunk_end;
     }
 
-    // Apply gain
-    let gain_db = params.gain_db;
+    // Apply gain (including PV compensatory boost)
+    let pv_boost = if matches!(params.mode, PlaybackMode::PhaseVocoder) { PV_MODE_BOOST_DB } else { 0.0 };
+    let gain_db = params.gain_db + pv_boost;
     apply_gain(&mut all_samples, gain_db);
 
     all_samples

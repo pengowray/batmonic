@@ -34,6 +34,10 @@ const FILTER_WARMUP: usize = 4096;
 /// needing the warmup-trim hack.
 pub(crate) const PV_HQ_OVERLAP: usize = 8192;
 
+/// Compensatory gain boost for PhaseVocoder mode (dB).
+/// PV's STFT bin-shifting inherently loses ~6-12 dB compared to PitchShift.
+pub(crate) const PV_MODE_BOOST_DB: f64 = 6.0;
+
 /// How far ahead (in seconds) to stay buffered beyond current playback time.
 const LOOKAHEAD_SECS: f64 = 1.5;
 
@@ -241,17 +245,22 @@ async fn chunk_loop(
             0.0
         } else {
             let peak_db = 20.0 * (peak as f64).log10();
-            (-3.0 - peak_db).min(30.0)
+            (-3.0 - peak_db).min(60.0)
         }
     } else {
         0.0
     };
 
+    let mode_boost = match params.mode {
+        PlaybackMode::PhaseVocoder => PV_MODE_BOOST_DB,
+        _ => 0.0,
+    };
+
     let global_gain = match params.gain_mode {
-        GainMode::Off => 0.0,
-        GainMode::Manual => manual_boost,
-        GainMode::AutoPeak => auto_peak_gain + manual_boost,
-        GainMode::Adaptive => manual_boost, // adaptive part added per-chunk
+        GainMode::Off => mode_boost,
+        GainMode::Manual => manual_boost + mode_boost,
+        GainMode::AutoPeak => auto_peak_gain + manual_boost + mode_boost,
+        GainMode::Adaptive => manual_boost + mode_boost, // adaptive part added per-chunk
     };
 
     // ── Pre-buffer phase ─────────────────────────────────────────────────────
@@ -483,7 +492,7 @@ async fn process_one_chunk(
 /// Compute per-chunk adaptive gain with noise gate.
 /// Boosts the chunk so its peak approaches −3 dBFS, but only if the peak
 /// is above a noise gate threshold (−50 dBFS). Quiet/silent chunks get no
-/// boost, avoiding amplified noise floor. Gain is capped at +30 dB.
+/// boost, avoiding amplified noise floor. Gain is capped at +60 dB.
 fn compute_adaptive_gain(samples: &[f32]) -> f64 {
     let peak = samples.iter().fold(0.0f32, |mx, s| mx.max(s.abs()));
     if peak < 1e-10 {
@@ -494,8 +503,8 @@ fn compute_adaptive_gain(samples: &[f32]) -> f64 {
     if peak_db < -50.0 {
         return 0.0;
     }
-    // Boost so peak → −3 dBFS, capped at +30 dB
-    (-3.0 - peak_db).clamp(0.0, 30.0)
+    // Boost so peak → −3 dBFS, capped at +60 dB
+    (-3.0 - peak_db).clamp(0.0, 60.0)
 }
 
 pub(crate) fn apply_filters(samples: &[f32], sample_rate: u32, params: &PlaybackParams) -> Vec<f32> {

@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
-use crate::state::{AppState, CanvasTool, GainMode, LayerPanel, PlayStartMode, RecordMode};
+use crate::state::{AppState, CanvasTool, GainMode, LayerPanel, PlaybackMode, PlayStartMode, RecordMode};
 use crate::audio::{microphone, playback};
+use crate::audio::streaming_playback::PV_MODE_BOOST_DB;
 use crate::audio::source::ChannelView;
 use crate::components::hfr_button::HfrButton;
 use crate::components::combo_button::ComboButton;
@@ -235,20 +236,28 @@ pub fn BottomToolbar() -> impl IntoView {
                 let gain_left_value = Signal::derive(move || {
                     let mode = state.gain_mode.get();
                     let manual_db = state.gain_db.get();
+                    let pv_boost = if state.playback_mode.get() == PlaybackMode::PhaseVocoder { PV_MODE_BOOST_DB } else { 0.0 };
                     match mode {
-                        GainMode::Off => String::new(),
+                        GainMode::Off => {
+                            if pv_boost > 0.0 { format!("+{:.0}dB", pv_boost) }
+                            else { String::new() }
+                        }
                         GainMode::Manual => {
-                            if manual_db > 0.0 { format!("+{:.0}dB", manual_db) }
-                            else { format!("{:.0}dB", manual_db) }
+                            let total = manual_db + pv_boost;
+                            if total > 0.0 { format!("+{:.0}dB", total) }
+                            else { format!("{:.0}dB", total) }
                         }
                         GainMode::AutoPeak => {
                             let auto_db = state.compute_auto_gain();
-                            let total = auto_db + manual_db;
+                            let total = auto_db + manual_db + pv_boost;
                             format!("+{:.0}dB", total)
                         }
                         GainMode::Adaptive => {
-                            if manual_db > 0.0 { format!("A+{:.0}", manual_db) }
-                            else { "Auto".to_string() }
+                            if manual_db > 0.0 || pv_boost > 0.0 {
+                                format!("A+{:.0}", manual_db + pv_boost)
+                            } else {
+                                "Auto".to_string()
+                            }
                         }
                     }
                 });
@@ -327,10 +336,12 @@ pub fn BottomToolbar() -> impl IntoView {
                         <div class="layer-panel-slider-row" style="margin-top: 6px;">
                             <label>{move || {
                                 let db = state.gain_db.get();
-                                if db > 0.0 { format!("+{:.0}dB", db) }
-                                else { format!("{:.0}dB", db) }
+                                let pv = if state.playback_mode.get() == PlaybackMode::PhaseVocoder { PV_MODE_BOOST_DB } else { 0.0 };
+                                let total = db + pv;
+                                if total > 0.0 { format!("+{:.0}dB", total) }
+                                else { format!("{:.0}dB", total) }
                             }}</label>
-                            <input type="range" min="0" max="30" step="1"
+                            <input type="range" min="-12" max="60" step="1"
                                 prop:value=move || state.gain_db.get().to_string()
                                 on:input=move |ev| {
                                     let val: f64 = event_target_value(&ev).parse().unwrap_or(0.0);
