@@ -1,8 +1,12 @@
 pub mod export;
 pub mod guano;
+pub mod live_recording;
 pub mod loader;
 pub mod microphone;
 pub mod playback;
 pub mod source;
 pub mod streaming_playback;
+pub mod streaming_mp3;
+pub mod streaming_ogg;
 pub mod streaming_source;
+pub mod wav_encoder;

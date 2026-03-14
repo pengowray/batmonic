@@ -7,7 +7,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
 use crate::canvas::spectrogram_renderer::{self, Colormap, ColormapMode, FreqMarkerState, FreqShiftMode, FlowAlgo, PreRendered, SpectDisplaySettings};
-use crate::state::{AppState, CanvasTool, ColormapPreference, DisplayFilterMode, SpectrogramHandle, MainView, PlaybackMode, Selection, SpectrogramDisplay};
+use crate::state::{AppState, CanvasTool, DisplayFilterMode, SpectrogramHandle, MainView, PlaybackMode, Selection, SpectrogramDisplay};
 
 /// Compute per-row dB adjustments for display EQ and noise filtering.
 /// Returns None if no adjustments are needed (both checkboxes off).
@@ -470,17 +470,6 @@ pub fn Spectrogram() -> impl IntoView {
         // --- Normal spectrogram mode ---
 
         // Build colormap
-        let pref_to_colormap = |p: ColormapPreference| -> Colormap {
-            match p {
-                ColormapPreference::Viridis => Colormap::Viridis,
-                ColormapPreference::Inferno => Colormap::Inferno,
-                ColormapPreference::Magma => Colormap::Magma,
-                ColormapPreference::Plasma => Colormap::Plasma,
-                ColormapPreference::Cividis => Colormap::Cividis,
-                ColormapPreference::Turbo => Colormap::Turbo,
-                ColormapPreference::Greyscale => Colormap::Greyscale,
-            }
-        };
         let xform_or_decim = state.display_transform.get_untracked()
             || main_view == MainView::XformedSpec
             || decim_effective > 0;
@@ -488,14 +477,14 @@ pub fn Spectrogram() -> impl IntoView {
             ColormapMode::Uniform(Colormap::Greyscale)
         } else if hfr_enabled && ff_hi > ff_lo && !xform_or_decim {
             ColormapMode::HfrFocus {
-                colormap: pref_to_colormap(hfr_colormap_pref),
+                colormap: hfr_colormap_pref,
                 ff_lo_frac: ff_lo / file_max_freq,
                 ff_hi_frac: ff_hi / file_max_freq,
             }
         } else if hfr_enabled {
-            ColormapMode::Uniform(pref_to_colormap(hfr_colormap_pref))
+            ColormapMode::Uniform(hfr_colormap_pref)
         } else {
-            ColormapMode::Uniform(pref_to_colormap(colormap_pref))
+            ColormapMode::Uniform(colormap_pref)
         };
 
         let file = idx.and_then(|i| files.get(i));

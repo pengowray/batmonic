@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use crate::audio::source::ChannelView;
+use crate::canvas::spectrogram_renderer::Colormap;
 use crate::types::{AudioData, PreviewImage, SpectrogramData};
 use crate::annotations::{AnnotationId, AnnotationStore, FileIdentity};
 
@@ -472,17 +473,6 @@ pub struct Bookmark {
     pub time: f64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub enum ColormapPreference {
-    #[default]
-    Viridis,
-    Inferno,
-    Magma,
-    Plasma,
-    Cividis,
-    Turbo,
-    Greyscale,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum ChromaColormap {
@@ -794,7 +784,7 @@ pub struct AppState {
     pub settings_page_open: RwSignal<bool>,
 
     // User colormap preference (when not overridden by HFR/flow)
-    pub colormap_preference: RwSignal<ColormapPreference>,
+    pub colormap_preference: RwSignal<Colormap>,
     // Chromagram colormap mode
     pub chroma_colormap: RwSignal<ChromaColormap>,
     // Chromagram display: brightness multiplier (1.0 = default)
@@ -802,7 +792,7 @@ pub struct AppState {
     // Chromagram display: gamma curve (1.0 = linear)
     pub chroma_gamma: RwSignal<f32>,
     // Colormap preference used when HFR mode is active
-    pub hfr_colormap_preference: RwSignal<ColormapPreference>,
+    pub hfr_colormap_preference: RwSignal<Colormap>,
     // When false, the Range button is hidden at full range
     pub always_show_view_range: RwSignal<bool>,
 
@@ -1077,11 +1067,11 @@ impl AppState {
             axis_drag_current_freq: RwSignal::new(None),
             cursor_time: RwSignal::new(None),
             settings_page_open: RwSignal::new(false),
-            colormap_preference: RwSignal::new(ColormapPreference::Viridis),
+            colormap_preference: RwSignal::new(Colormap::Viridis),
             chroma_colormap: RwSignal::new(ChromaColormap::PitchClass),
             chroma_gain: RwSignal::new(1.0),
             chroma_gamma: RwSignal::new(1.0),
-            hfr_colormap_preference: RwSignal::new(ColormapPreference::Inferno),
+            hfr_colormap_preference: RwSignal::new(Colormap::Inferno),
             always_show_view_range: RwSignal::new(false),
 
             notch_enabled: RwSignal::new(false),

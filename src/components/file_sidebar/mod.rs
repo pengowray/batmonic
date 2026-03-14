@@ -9,6 +9,7 @@ pub mod notch_panel;
 pub mod psd_panel;
 pub mod pulse_panel;
 mod loading;
+mod streaming_load;
 mod mic_chooser;
 
 use leptos::prelude::*;
