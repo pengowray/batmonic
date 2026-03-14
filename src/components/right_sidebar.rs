@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use js_sys;
+use std::{cell::RefCell, rc::Rc};
 use crate::state::{AppState, RightSidebarTab};
 
 use crate::components::file_sidebar::{
@@ -23,25 +24,45 @@ pub fn RightSidebar() -> impl IntoView {
         let body = doc.body().unwrap();
         let _ = body.class_list().add_1("sidebar-resizing");
 
-        let on_move = Closure::<dyn Fn(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
+        let on_move = Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
             let dx = ev.client_x() as f64 - start_x;
             let new_width = (start_width - dx).clamp(140.0, 500.0);
             state.right_sidebar_width.set(new_width);
         });
+        let on_move_slot: Rc<RefCell<Option<Closure<dyn FnMut(web_sys::MouseEvent)>>>> =
+            Rc::new(RefCell::new(Some(on_move)));
+        let on_up_slot: Rc<RefCell<Option<Closure<dyn FnMut(web_sys::MouseEvent)>>>> =
+            Rc::new(RefCell::new(None));
 
-        let on_move_fn = on_move.as_ref().unchecked_ref::<js_sys::Function>().clone();
-        let on_move_fn2 = on_move_fn.clone();
+        let on_move_fn = on_move_slot
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unchecked_ref::<js_sys::Function>()
+            .clone();
         let _ = doc.add_event_listener_with_callback("mousemove", &on_move_fn);
 
-        let on_up = Closure::<dyn FnMut(web_sys::MouseEvent)>::once_into_js(move |_: web_sys::MouseEvent| {
-            let doc = web_sys::window().unwrap().document().unwrap();
-            let body = doc.body().unwrap();
-            let _ = body.class_list().remove_1("sidebar-resizing");
-            let _ = doc.remove_event_listener_with_callback("mousemove", &on_move_fn2);
-            drop(on_move);
+        let doc_for_up = doc.clone();
+        let on_move_slot_for_up = Rc::clone(&on_move_slot);
+        let on_up_slot_for_up = Rc::clone(&on_up_slot);
+        let on_move_fn_for_up = on_move_fn.clone();
+        let on_up = Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |_: web_sys::MouseEvent| {
+            if let Some(body) = doc_for_up.body() {
+                let _ = body.class_list().remove_1("sidebar-resizing");
+            }
+            let _ = doc_for_up.remove_event_listener_with_callback("mousemove", &on_move_fn_for_up);
+            if let Some(on_up) = on_up_slot_for_up.borrow().as_ref() {
+                let on_up_fn = on_up.as_ref().unchecked_ref::<js_sys::Function>();
+                let _ = doc_for_up.remove_event_listener_with_callback_and_bool("mouseup", on_up_fn, true);
+            }
+            on_move_slot_for_up.borrow_mut().take();
+            on_up_slot_for_up.borrow_mut().take();
         });
 
-        let _ = doc.add_event_listener_with_callback_and_bool("mouseup", on_up.unchecked_ref(), true);
+        let on_up_fn = on_up.as_ref().unchecked_ref::<js_sys::Function>().clone();
+        *on_up_slot.borrow_mut() = Some(on_up);
+        let _ = doc.add_event_listener_with_callback_and_bool("mouseup", &on_up_fn, true);
     };
 
     let is_mobile = state.is_mobile.get_untracked();
@@ -65,12 +86,6 @@ pub fn RightSidebar() -> impl IntoView {
         } else {
             dropdown_open.update(|v| *v = !*v);
         }
-    };
-
-    let select_tab = move |tab: RightSidebarTab| {
-        state.right_sidebar_collapsed.set(false);
-        state.right_sidebar_tab.set(tab);
-        dropdown_open.set(false);
     };
 
     // Close dropdown when clicking outside
@@ -124,7 +139,15 @@ pub fn RightSidebar() -> impl IntoView {
                                         class=move || if is_active() { "sidebar-tab-option active" } else { "sidebar-tab-option" }
                                         on:mousedown=move |ev: web_sys::MouseEvent| {
                                             ev.prevent_default();
-                                            select_tab(tab);
+                                            let callback = Closure::once_into_js(move || {
+                                                state.right_sidebar_collapsed.set(false);
+                                                state.right_sidebar_tab.set(tab);
+                                                dropdown_open.set(false);
+                                            });
+                                            let _ = web_sys::window().unwrap().set_timeout_with_callback_and_timeout_and_arguments_0(
+                                                callback.unchecked_ref(),
+                                                0,
+                                            );
                                         }
                                     >
                                         {label}

@@ -42,120 +42,6 @@ pub(crate) fn PsdPanel() -> impl IntoView {
     let log_scale = RwSignal::new(false);
     let freq_range_enabled = RwSignal::new(false);
 
-    let run_psd = move |full_file: bool| {
-        let files = state.files.get_untracked();
-        let idx = state.current_file_index.get_untracked();
-        let file = idx.and_then(|i| files.get(i).cloned());
-        let Some(file) = file else { return; };
-
-        // Don't clear psd_result to None here — setting it synchronously inside
-        // the Effect cascade tears down the peak-table DOM (and its event-handler
-        // closures) while Leptos is still processing the triggering event, which
-        // causes "closure invoked recursively or after being dropped".
-        // Instead, keep the old result visible until the new one arrives.
-        is_computing.set(true);
-        compute_gen.update(|g| *g += 1);
-        let generation = compute_gen.get_untracked();
-
-        let sample_rate = file.audio.sample_rate;
-        let total = file.audio.source.total_samples() as usize;
-        if total == 0 {
-            is_computing.set(false);
-            return;
-        }
-
-        let nfft = state.psd_nfft.get_untracked();
-        let apply_eq = state.psd_apply_eq.get_untracked();
-        let apply_notch = state.psd_apply_notch.get_untracked();
-        let apply_nr = state.psd_apply_nr.get_untracked();
-
-        // Determine sample range
-        let selection = state.selection.get_untracked();
-        let (start_sample, end_sample, is_sel) = if let Some(sel) = selection {
-            let s = (sel.time_start * sample_rate as f64) as usize;
-            let e = ((sel.time_end * sample_rate as f64) as usize).min(total);
-            (s, e, true)
-        } else {
-            let max_samples = (DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as usize;
-            let is_long = total > max_samples;
-            file_is_long.set(is_long);
-            if full_file || !is_long {
-                analysis_is_full.set(true);
-                (0, total, false)
-            } else {
-                analysis_is_full.set(false);
-                (0, max_samples, false)
-            }
-        };
-        using_selection.set(is_sel);
-
-        let mut samples: Vec<f32> = file.audio.source.read_region(
-            ChannelView::MonoMix,
-            start_sample as u64,
-            end_sample.saturating_sub(start_sample),
-        );
-
-        // Apply filters pre-FFT
-        if apply_notch && state.notch_enabled.get_untracked() {
-            let bands = state.notch_bands.get_untracked();
-            let harm_supp = state.notch_harmonic_suppression.get_untracked();
-            if !bands.is_empty() {
-                samples = crate::dsp::notch::apply_notch_filters(&samples, sample_rate, &bands, harm_supp);
-            }
-        }
-
-        if apply_nr && state.noise_reduce_enabled.get_untracked() {
-            if let Some(nf) = state.noise_reduce_floor.get_untracked() {
-                let strength = state.noise_reduce_strength.get_untracked();
-                samples = crate::dsp::spectral_sub::apply_spectral_subtraction(
-                    &samples, sample_rate, &nf, strength, 0.01, 0.0,
-                );
-            }
-        }
-
-        if apply_eq && state.filter_enabled.get_untracked() {
-            let freq_low = state.filter_freq_low.get_untracked();
-            let freq_high = state.filter_freq_high.get_untracked();
-            let db_below = state.filter_db_below.get_untracked();
-            let db_selected = state.filter_db_selected.get_untracked();
-            let db_harmonics = state.filter_db_harmonics.get_untracked();
-            let db_above = state.filter_db_above.get_untracked();
-            let band_mode = state.filter_band_mode.get_untracked();
-            samples = crate::dsp::filters::apply_eq_filter(
-                &samples, sample_rate, freq_low, freq_high,
-                db_below, db_selected, db_harmonics, db_above, band_mode,
-            );
-        }
-
-        // Compute peak frequency range from selection
-        let peak_freq_range = if freq_range_enabled.get_untracked() {
-            let sel = state.selection.get_untracked();
-            sel.and_then(|s| {
-                match (s.freq_low, s.freq_high) {
-                    (Some(lo), Some(hi)) if lo < hi => Some((lo, hi)),
-                    _ => None,
-                }
-            })
-        } else {
-            None
-        };
-
-        let samples = Arc::new(samples);
-
-        spawn_local(async move {
-            let result = psd::compute_psd_async(
-                &samples, sample_rate, nfft, peak_freq_range, generation, compute_gen,
-            ).await;
-            if compute_gen.get_untracked() != generation {
-                return;
-            }
-            if let Some(r) = result {
-                psd_result.set(Some(r));
-            }
-            is_computing.set(false);
-        });
-    };
-
     // Trigger recomputation when tab is active and inputs change
     Effect::new(move || {
         let tab = state.right_sidebar_tab.get();
@@ -199,13 +85,21 @@ pub(crate) fn PsdPanel() -> impl IntoView {
             return;
         }
 
-        // Defer to break synchronous cascade: if run_psd runs inside the
-        // Effect while a checkbox on:change handler is still on the stack,
-        // is_computing.set(true) rebuilds the DOM, dropping event-handler
-        // closures that are still live → "closure invoked recursively or
-        // after being dropped".  spawn_local defers to a microtask.
+        // Yield to the browser before mutating the panel state so the
+        // triggering UI event fully unwinds before any DOM is rebuilt.
         spawn_local(async move {
-            run_psd(false);
+            yield_to_browser().await;
+            start_psd_compute(
+                state,
+                psd_result,
+                is_computing,
+                compute_gen,
+                analysis_is_full,
+                file_is_long,
+                using_selection,
+                freq_range_enabled,
+                false,
+            );
         });
     });
 
@@ -489,7 +383,22 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                             <span class="analysis-scope-badge">"First 30s"</span>
                             <button
                                 class="analysis-full-btn"
-                                on:click=move |_| run_psd(true)
+                                on:click=move |_| {
+                                    spawn_local(async move {
+                                        yield_to_browser().await;
+                                        start_psd_compute(
+                                            state,
+                                            psd_result,
+                                            is_computing,
+                                            compute_gen,
+                                            analysis_is_full,
+                                            file_is_long,
+                                            using_selection,
+                                            freq_range_enabled,
+                                            true,
+                                        );
+                                    });
+                                }
                             >
                                 "Analyze full file"
                             </button>
@@ -906,4 +815,140 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
             />
         </div>
     }
+}
+
+fn start_psd_compute(
+    state: AppState,
+    psd_result: RwSignal<Option<PsdResult>>,
+    is_computing: RwSignal<bool>,
+    compute_gen: RwSignal<u32>,
+    analysis_is_full: RwSignal<bool>,
+    file_is_long: RwSignal<bool>,
+    using_selection: RwSignal<bool>,
+    freq_range_enabled: RwSignal<bool>,
+    full_file: bool,
+) {
+    let files = state.files.get_untracked();
+    let idx = state.current_file_index.get_untracked();
+    let file = idx.and_then(|i| files.get(i).cloned());
+    let Some(file) = file else { return; };
+
+    // Don't clear psd_result to None here — setting it synchronously inside
+    // the Effect cascade tears down the peak-table DOM (and its event-handler
+    // closures) while Leptos is still processing the triggering event, which
+    // causes "closure invoked recursively or after being dropped".
+    // Instead, keep the old result visible until the new one arrives.
+    is_computing.set(true);
+    compute_gen.update(|g| *g += 1);
+    let generation = compute_gen.get_untracked();
+
+    let sample_rate = file.audio.sample_rate;
+    let total = file.audio.source.total_samples() as usize;
+    if total == 0 {
+        is_computing.set(false);
+        return;
+    }
+
+    let nfft = state.psd_nfft.get_untracked();
+    let apply_eq = state.psd_apply_eq.get_untracked();
+    let apply_notch = state.psd_apply_notch.get_untracked();
+    let apply_nr = state.psd_apply_nr.get_untracked();
+
+    // Determine sample range
+    let selection = state.selection.get_untracked();
+    let (start_sample, end_sample, is_sel) = if let Some(sel) = selection {
+        let s = (sel.time_start * sample_rate as f64) as usize;
+        let e = ((sel.time_end * sample_rate as f64) as usize).min(total);
+        (s, e, true)
+    } else {
+        let max_samples = (DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as usize;
+        let is_long = total > max_samples;
+        file_is_long.set(is_long);
+        if full_file || !is_long {
+            analysis_is_full.set(true);
+            (0, total, false)
+        } else {
+            analysis_is_full.set(false);
+            (0, max_samples, false)
+        }
+    };
+    using_selection.set(is_sel);
+
+    let mut samples: Vec<f32> = file.audio.source.read_region(
+        ChannelView::MonoMix,
+        start_sample as u64,
+        end_sample.saturating_sub(start_sample),
+    );
+
+    if apply_notch && state.notch_enabled.get_untracked() {
+        let bands = state.notch_bands.get_untracked();
+        let harm_supp = state.notch_harmonic_suppression.get_untracked();
+        if !bands.is_empty() {
+            samples = crate::dsp::notch::apply_notch_filters(&samples, sample_rate, &bands, harm_supp);
+        }
+    }
+
+    if apply_nr && state.noise_reduce_enabled.get_untracked() {
+        if let Some(nf) = state.noise_reduce_floor.get_untracked() {
+            let strength = state.noise_reduce_strength.get_untracked();
+            samples = crate::dsp::spectral_sub::apply_spectral_subtraction(
+                &samples, sample_rate, &nf, strength, 0.01, 0.0,
+            );
+        }
+    }
+
+    if apply_eq && state.filter_enabled.get_untracked() {
+        let freq_low = state.filter_freq_low.get_untracked();
+        let freq_high = state.filter_freq_high.get_untracked();
+        let db_below = state.filter_db_below.get_untracked();
+        let db_selected = state.filter_db_selected.get_untracked();
+        let db_harmonics = state.filter_db_harmonics.get_untracked();
+        let db_above = state.filter_db_above.get_untracked();
+        let band_mode = state.filter_band_mode.get_untracked();
+        samples = crate::dsp::filters::apply_eq_filter(
+            &samples, sample_rate, freq_low, freq_high,
+            db_below, db_selected, db_harmonics, db_above, band_mode,
+        );
+    }
+
+    let peak_freq_range = if freq_range_enabled.get_untracked() {
+        let sel = state.selection.get_untracked();
+        sel.and_then(|s| {
+            match (s.freq_low, s.freq_high) {
+                (Some(lo), Some(hi)) if lo < hi => Some((lo, hi)),
+                _ => None,
+            }
+        })
+    } else {
+        None
+    };
+
+    let samples = Arc::new(samples);
+
+    spawn_local(async move {
+        let result = psd::compute_psd_async(
+            &samples, sample_rate, nfft, peak_freq_range, generation, compute_gen,
+        ).await;
+        if compute_gen.get_untracked() != generation {
+            return;
+        }
+        if let Some(r) = result {
+            psd_result.set(Some(r));
+        }
+        is_computing.set(false);
+    });
+}
+
+async fn yield_to_browser() {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let win = web_sys::window().unwrap();
+        let cb = wasm_bindgen::closure::Closure::once_into_js(move || {
+            let _ = resolve.call0(&JsValue::NULL);
+        });
+        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
+            cb.unchecked_ref(),
+            0,
+        );
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }
