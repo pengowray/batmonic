@@ -16,6 +16,8 @@ pub fn Waveform() -> impl IntoView {
     let canvas_ref = NodeRef::<leptos::html::Canvas>::new();
     let hand_drag_start = RwSignal::new((0.0f64, 0.0f64));
     let pinch_state: RwSignal<Option<crate::components::pinch::PinchState>> = RwSignal::new(None);
+    let velocity_tracker = StoredValue::new(crate::components::inertia::VelocityTracker::new());
+    let inertia_generation = StoredValue::new(0u32);
 
     // Cache ZC bins — recompute when the file, channel, or EQ settings change.
     let zc_bins = Memo::new(move |_| {
@@ -481,6 +483,10 @@ pub fn Waveform() -> impl IntoView {
 
     // ── Touch event handlers (mobile) ──────────────────────────────────────────
     let on_touchstart = move |ev: web_sys::TouchEvent| {
+        // Cancel any ongoing inertia animation immediately
+        crate::components::inertia::cancel_inertia(inertia_generation);
+        velocity_tracker.update_value(|t| t.reset());
+
         let touches = ev.touches();
         let n = touches.length();
 
@@ -561,6 +567,9 @@ pub fn Waveform() -> impl IntoView {
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
         state.scroll_offset.set((start_scroll + dt).clamp(0.0, max_scroll));
+        // Record velocity sample for inertia
+        let now = web_sys::window().unwrap().performance().unwrap().now();
+        velocity_tracker.update_value(|t| t.push(now, touch.client_x() as f64));
     };
 
     let on_touchend = move |_ev: web_sys::TouchEvent| {
@@ -578,7 +587,7 @@ pub fn Waveform() -> impl IntoView {
             return;
         }
         if remaining == 0 {
-            // Hand tool: bookmark on tap (no significant drag) while playing
+            // Hand tool: bookmark on tap (no significant drag) while playing, or launch inertia
             if state.canvas_tool.get_untracked() == CanvasTool::Hand {
                 if let Some(touch) = _ev.changed_touches().get(0) {
                     let (start_x, _) = hand_drag_start.get_untracked();
@@ -586,6 +595,18 @@ pub fn Waveform() -> impl IntoView {
                     if dx < 5.0 && state.is_playing.get_untracked() {
                         let t = state.playhead_time.get_untracked();
                         state.bookmarks.update(|bm| bm.push(crate::state::Bookmark { time: t }));
+                    } else if dx >= 5.0 {
+                        // Flick → launch inertia
+                        let vel = velocity_tracker.with_value(|t| t.velocity_px_per_sec());
+                        let cw = state.spectrogram_canvas_width.get_untracked();
+                        let files = state.files.get_untracked();
+                        let idx = state.current_file_index.get_untracked();
+                        let file = idx.and_then(|i| files.get(i));
+                        let time_res = file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+                        let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX);
+                        crate::components::inertia::start_inertia(
+                            state, vel, cw, time_res, duration, inertia_generation,
+                        );
                     }
                 }
             }

@@ -18,6 +18,7 @@ pub mod xc_browser;
 pub mod zc_chart;
 pub mod chromagram_view;
 pub mod pinch;
+pub mod inertia;
 pub mod debug_panel;
 pub mod bat_book_tab;
 pub mod bat_book_strip;

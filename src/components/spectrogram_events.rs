@@ -27,6 +27,10 @@ pub struct SpectInteraction {
     pub last_tap_x: RwSignal<f64>,
     /// Time-axis tooltip: (x_px, tooltip_text) — None when not hovering the axis
     pub time_axis_tooltip: RwSignal<Option<(f64, String)>>,
+    /// Velocity tracker for inertia scrolling
+    pub velocity_tracker: StoredValue<crate::components::inertia::VelocityTracker>,
+    /// Generation counter for cancelling inertia animations
+    pub inertia_generation: StoredValue<u32>,
 }
 
 impl SpectInteraction {
@@ -40,6 +44,8 @@ impl SpectInteraction {
             last_tap_time: RwSignal::new(0.0f64),
             last_tap_x: RwSignal::new(0.0f64),
             time_axis_tooltip: RwSignal::new(None),
+            velocity_tracker: StoredValue::new(crate::components::inertia::VelocityTracker::new()),
+            inertia_generation: StoredValue::new(0u32),
         }
     }
 }
@@ -432,6 +438,10 @@ pub fn on_touchstart(
     canvas_ref: &NodeRef<leptos::html::Canvas>,
     state: AppState,
 ) {
+    // Cancel any ongoing inertia animation immediately
+    crate::components::inertia::cancel_inertia(ix.inertia_generation);
+    ix.velocity_tracker.update_value(|t| t.reset());
+
     let touches = ev.touches();
     let n = touches.length();
 
@@ -583,6 +593,9 @@ pub fn on_touchmove(
     match state.canvas_tool.get_untracked() {
         CanvasTool::Hand => {
             apply_hand_pan(state, touch.client_x() as f64, canvas_ref, ix.hand_drag_start.get_untracked());
+            // Record velocity sample for inertia
+            let now = web_sys::window().unwrap().performance().unwrap().now();
+            ix.velocity_tracker.update_value(|t| t.push(now, touch.client_x() as f64));
         }
         CanvasTool::Selection => {}
     }
@@ -624,7 +637,7 @@ pub fn on_touchend(
         }
         state.is_dragging.set(false);
 
-        // Hand tool: bookmark on tap (no significant drag) while playing
+        // Hand tool: bookmark on tap (no significant drag) while playing, or launch inertia
         if state.canvas_tool.get_untracked() == CanvasTool::Hand {
             if let Some(touch) = ev.changed_touches().get(0) {
                 let (start_x, _) = ix.hand_drag_start.get_untracked();
@@ -632,6 +645,31 @@ pub fn on_touchend(
                 if dx < 5.0 && state.is_playing.get_untracked() {
                     let t = state.playhead_time.get_untracked();
                     state.bookmarks.update(|bm| bm.push(crate::state::Bookmark { time: t }));
+                } else if dx >= 5.0 {
+                    // Flick → launch inertia
+                    let velocity = ix.velocity_tracker.with_value(|t| t.velocity_px_per_sec());
+                    if let Some(canvas_el) = canvas_ref.get() {
+                        let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+                        let cw = canvas.width() as f64;
+                        let files = state.files.get_untracked();
+                        let idx = state.current_file_index.get_untracked();
+                        let file = idx.and_then(|i| files.get(i));
+                        let timeline = state.active_timeline.get_untracked();
+                        let time_res = if let Some(ref tl) = timeline {
+                            tl.segments.first().and_then(|s| files.get(s.file_index))
+                                .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+                        } else {
+                            file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+                        };
+                        let duration = if let Some(ref tl) = timeline {
+                            tl.total_duration_secs
+                        } else {
+                            file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX)
+                        };
+                        crate::components::inertia::start_inertia(
+                            state, velocity, cw, time_res, duration, ix.inertia_generation,
+                        );
+                    }
                 }
             }
         }
