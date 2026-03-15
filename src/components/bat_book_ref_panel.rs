@@ -130,7 +130,6 @@ pub fn BatBookRefPanel() -> impl IntoView {
                     let entries = selected_entries.get();
                     entries.into_iter().map(|entry| {
                         let sci = entry.scientific_name;
-                        let commonness_label = entry.commonness.map(|c| c.label());
                         view! {
                             <div class="ref-panel-entry">
                                 <div class="ref-panel-entry-name">{entry.name}</div>
@@ -138,9 +137,6 @@ pub fn BatBookRefPanel() -> impl IntoView {
                                     <div class="ref-panel-sci"><i>{sci}</i></div>
                                 })}
                                 <div class="ref-panel-family">{entry.family}</div>
-                                {commonness_label.map(|label| view! {
-                                    <div class="ref-panel-commonness">{label}</div>
-                                })}
                                 <div class="ref-panel-freq">{entry.freq_range_label()}</div>
                                 <div class="ref-panel-call-type">"Call type: " {entry.call_type}</div>
                                 <div class="ref-panel-desc">{entry.description}</div>
