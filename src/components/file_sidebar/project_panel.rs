@@ -22,7 +22,7 @@ fn audio_meta_from_loaded(f: &crate::state::LoadedFile) -> AudioFileMetadata {
 }
 
 /// Save the current project to OPFS (fire-and-forget).
-fn save_project_async(state: AppState) {
+pub(crate) fn save_project_async(state: AppState) {
     let proj = state.current_project.get_untracked();
     if let Some(proj) = proj {
         spawn_local(async move {

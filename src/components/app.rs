@@ -219,6 +219,48 @@ pub fn App() -> impl IntoView {
         });
     }
 
+    // Auto-save project when dirty (debounced 2s)
+    {
+        use std::cell::RefCell;
+        thread_local! {
+            static AUTOSAVE_TIMER: RefCell<Option<i32>> = RefCell::new(None);
+        }
+        fn cancel_autosave_timer() {
+            AUTOSAVE_TIMER.with(|t| {
+                if let Some(handle) = t.borrow_mut().take() {
+                    let _ = web_sys::window().unwrap().clear_timeout_with_handle(handle);
+                }
+            });
+        }
+        Effect::new(move |_| {
+            let dirty = state.project_dirty.get();
+            let has_project = state.current_project.with(|p| p.is_some());
+            if !dirty || !has_project {
+                cancel_autosave_timer();
+                return;
+            }
+            cancel_autosave_timer();
+            let cb = wasm_bindgen::closure::Closure::once(move || {
+                if state.project_dirty.get_untracked()
+                    && state.current_project.with_untracked(|p| p.is_some())
+                {
+                    crate::components::file_sidebar::save_project_async(state);
+                }
+            });
+            let handle = web_sys::window()
+                .unwrap()
+                .set_timeout_with_callback_and_timeout_and_arguments_0(
+                    cb.as_ref().unchecked_ref(),
+                    2000,
+                )
+                .unwrap_or(0);
+            cb.forget();
+            AUTOSAVE_TIMER.with(|t| {
+                *t.borrow_mut() = Some(handle);
+            });
+        });
+    }
+
     // Sync flow_enabled with main_view (Flow view → enabled, anything else → disabled)
     Effect::new(move |_| {
         let is_flow = state.main_view.get() == MainView::Flow;

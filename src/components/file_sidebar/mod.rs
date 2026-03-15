@@ -2,6 +2,7 @@ pub(crate) mod file_groups;
 mod files_panel;
 mod config_panel;
 mod project_panel;
+pub(crate) use project_panel::save_project_async;
 pub mod settings_panel;
 pub mod analysis;
 pub mod metadata_panel;
