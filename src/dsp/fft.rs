@@ -420,9 +420,11 @@ pub fn compute_overview_from_spectrogram(data: &SpectrogramData) -> Option<Previ
     for x in 0..out_w {
         let src_col = (x as usize * src_w) / out_w as usize;
         let col = &data.columns[src_col.min(src_w - 1)];
+        let col_len = col.magnitudes.len();
+        if col_len == 0 { continue; }
         for y in 0..out_h {
             let src_bin = src_h - 1 - ((y as usize * src_h) / out_h as usize).min(src_h - 1);
-            let mag = col.magnitudes[src_bin];
+            let mag = col.magnitudes[src_bin.min(col_len - 1)];
             let grey = magnitude_to_greyscale(mag, max_mag);
             let idx = (y * out_w + x) as usize * 4;
             pixels[idx] = grey;

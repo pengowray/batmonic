@@ -765,7 +765,7 @@ fn render_tree_nodes(nodes: Vec<AnnotationNode>, state: AppState) -> impl IntoVi
                     view! { <span class="annotation-icon">{icon}</span> }.into_any()
                 }}
                 {move || {
-                    if editing.get() {
+                    if editing.try_get().unwrap_or(false) {
                         let id_save = id_edit.clone();
                         let id_save2 = id_edit.clone();
                         let id_tags_save = id_tags.clone();
@@ -777,10 +777,16 @@ fn render_tree_nodes(nodes: Vec<AnnotationNode>, state: AppState) -> impl IntoVi
                             }
                         });
                         let save_all = move |id_l: &str, id_t: &str| {
-                            let val = edit_value.get_untracked();
+                            let val = match edit_value.try_get_untracked() {
+                                Some(v) => v,
+                                None => return,
+                            };
                             let label = if val.trim().is_empty() { None } else { Some(val) };
                             update_annotation_label(state, id_l, label);
-                            let tags_str = tags_value.get_untracked();
+                            let tags_str = match tags_value.try_get_untracked() {
+                                Some(v) => v,
+                                None => return,
+                            };
                             let tags: Vec<String> = tags_str.split(',')
                                 .map(|s| s.trim().to_string())
                                 .filter(|s| !s.is_empty())
@@ -807,42 +813,42 @@ fn render_tree_nodes(nodes: Vec<AnnotationNode>, state: AppState) -> impl IntoVi
                                     }).unwrap_or(false);
                                     if !still_inside {
                                         save_all(&id_l_focusout, &id_t_focusout);
-                                        editing.set(false);
+                                        let _ = editing.try_set(false);
                                     }
                                 }
                             >
                                 <input
                                     class="annotation-label-input"
                                     type="text"
-                                    prop:value=move || edit_value.get()
+                                    prop:value=move || edit_value.try_get().unwrap_or_default()
                                     placeholder="Label..."
                                     node_ref=input_ref
                                     on:input=move |ev| {
-                                        edit_value.set(leptos::prelude::event_target_value(&ev));
+                                        let _ = edit_value.try_set(leptos::prelude::event_target_value(&ev));
                                     }
                                     on:keydown=move |ev| {
                                         if ev.key() == "Enter" {
                                             save_all(&id_l_enter, &id_t_enter);
-                                            editing.set(false);
+                                            let _ = editing.try_set(false);
                                         } else if ev.key() == "Escape" {
-                                            editing.set(false);
+                                            let _ = editing.try_set(false);
                                         }
                                     }
                                 />
                                 <input
                                     class="annotation-label-input annotation-tags-input"
                                     type="text"
-                                    prop:value=move || tags_value.get()
+                                    prop:value=move || tags_value.try_get().unwrap_or_default()
                                     placeholder="Tags (comma separated)..."
                                     on:input=move |ev| {
-                                        tags_value.set(leptos::prelude::event_target_value(&ev));
+                                        let _ = tags_value.try_set(leptos::prelude::event_target_value(&ev));
                                     }
                                     on:keydown=move |ev| {
                                         if ev.key() == "Enter" {
                                             save_all(&id_l_blur, &id_t_blur);
-                                            editing.set(false);
+                                            let _ = editing.try_set(false);
                                         } else if ev.key() == "Escape" {
-                                            editing.set(false);
+                                            let _ = editing.try_set(false);
                                         }
                                     }
                                 />
@@ -893,7 +899,7 @@ fn render_tree_nodes(nodes: Vec<AnnotationNode>, state: AppState) -> impl IntoVi
                     title="Edit label & tags"
                     on:click=move |e| {
                         e.stop_propagation();
-                        editing.set(true);
+                        let _ = editing.try_set(true);
                     }
                 >"\u{270E}"</button>
                 <button class="annotation-delete"

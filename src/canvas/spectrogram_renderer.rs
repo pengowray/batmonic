@@ -133,6 +133,7 @@ pub fn pre_render_columns(
     let mut db_data = vec![f32::NEG_INFINITY; (width * height) as usize];
     for (col_idx, col) in columns.iter().enumerate() {
         for (bin_idx, &mag) in col.magnitudes.iter().enumerate() {
+            if bin_idx >= height as usize { break; }
             let db = magnitude_to_db(mag);
             let y = height as usize - 1 - bin_idx;
             let idx = y * width as usize + col_idx;
