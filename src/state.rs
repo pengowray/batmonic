@@ -855,6 +855,8 @@ pub struct AppState {
     pub undo_stack: RwSignal<UndoStack>,
 
     // Project
+    /// Whether the Projects beta feature is enabled (persisted to localStorage).
+    pub projects_enabled: RwSignal<bool>,
     /// Currently loaded .batproj project (None = no project open).
     pub current_project: RwSignal<Option<crate::project::BatProject>>,
     /// Whether the project has unsaved changes.
@@ -1134,6 +1136,13 @@ impl AppState {
             drop_target: RwSignal::new(None),
             undo_stack: RwSignal::new(UndoStack::default()),
 
+            projects_enabled: RwSignal::new({
+                web_sys::window()
+                    .and_then(|w: web_sys::Window| w.local_storage().ok().flatten())
+                    .and_then(|ls: web_sys::Storage| ls.get_item("batmonic_projects_enabled").ok().flatten())
+                    .map(|v| v == "true")
+                    .unwrap_or(false)
+            }),
             current_project: RwSignal::new(None),
             project_dirty: RwSignal::new(false),
             project_save_status: RwSignal::new(""),

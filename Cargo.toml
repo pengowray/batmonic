@@ -67,6 +67,7 @@ web-sys = { version = "0.3", features = [
     "FileSystemCreateWritableOptions",
     "FileSystemWritableFileStream",
     "WritableStream",
+    "Storage",
 ] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"

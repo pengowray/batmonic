@@ -139,26 +139,28 @@ pub fn FileSidebar() -> impl IntoView {
                 >
                     "Files"
                 </button>
-                <button
-                    class=move || if state.left_sidebar_tab.get() == LeftSidebarTab::Project {
-                        "sidebar-header-label active"
-                    } else {
-                        "sidebar-header-label"
-                    }
-                    on:click=move |_| {
-                        state.left_sidebar_tab.set(LeftSidebarTab::Project);
-                    }
-                    title="Project"
-                >
-                    "Project"
-                    {move || {
-                        if state.current_project.with(|p| p.is_some()) {
-                            Some(view! { <span class="project-tab-dot">{"\u{25CF}"}</span> })
+                {move || state.projects_enabled.get().then(|| view! {
+                    <button
+                        class=move || if state.left_sidebar_tab.get() == LeftSidebarTab::Project {
+                            "sidebar-header-label active"
                         } else {
-                            None
+                            "sidebar-header-label"
                         }
-                    }}
-                </button>
+                        on:click=move |_| {
+                            state.left_sidebar_tab.set(LeftSidebarTab::Project);
+                        }
+                        title="Project (beta)"
+                    >
+                        "Project"
+                        {move || {
+                            if state.current_project.with(|p| p.is_some()) {
+                                Some(view! { <span class="project-tab-dot">{"\u{25CF}"}</span> })
+                            } else {
+                                None
+                            }
+                        }}
+                    </button>
+                })}
                 <button
                     class=move || if state.left_sidebar_tab.get() == LeftSidebarTab::Settings {
                         "sidebar-settings-btn active"
@@ -185,7 +187,11 @@ pub fn FileSidebar() -> impl IntoView {
             {move || {
                 match state.left_sidebar_tab.get() {
                     LeftSidebarTab::Files => view! { <FilesPanel /> }.into_any(),
-                    LeftSidebarTab::Project => view! { <ProjectPanel /> }.into_any(),
+                    LeftSidebarTab::Project if state.projects_enabled.get() => view! { <ProjectPanel /> }.into_any(),
+                    LeftSidebarTab::Project => {
+                        state.left_sidebar_tab.set(LeftSidebarTab::Files);
+                        view! { <FilesPanel /> }.into_any()
+                    }
                     LeftSidebarTab::Settings => view! { <ConfigPanel /> }.into_any(),
                 }
             }}

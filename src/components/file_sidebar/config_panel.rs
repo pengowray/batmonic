@@ -426,6 +426,29 @@ pub(super) fn ConfigPanel() -> impl IntoView {
                 </div>
             </div>
 
+            <div class="setting-group">
+                <div class="setting-group-title">"Beta"</div>
+                <div class="setting-row">
+                    <span class="setting-label">"Enable projects"</span>
+                    <input
+                        type="checkbox"
+                        class="setting-checkbox"
+                        prop:checked=move || state.projects_enabled.get()
+                        on:change=move |ev: web_sys::Event| {
+                            let target = ev.target().unwrap();
+                            let input: web_sys::HtmlInputElement = target.unchecked_into();
+                            let checked = input.checked();
+                            state.projects_enabled.set(checked);
+                            if let Some(ls) = web_sys::window()
+                                .and_then(|w| w.local_storage().ok().flatten())
+                            {
+                                let _ = ls.set_item("batmonic_projects_enabled", if checked { "true" } else { "false" });
+                            }
+                        }
+                    />
+                </div>
+            </div>
+
             // Mic chooser modal (rendered here, uses position:fixed so DOM location doesn't matter)
             {move || state.show_mic_chooser.get().then(|| view! { <MicChooserModal /> })}
         </div>
