@@ -19,10 +19,21 @@ pub(super) const STREAMING_CHECK_SIZE: f64 = 128.0 * 1024.0 * 1024.0; // 128 MB
 /// Decoded size threshold for streaming (512 MB of f32 samples).
 const STREAMING_DECODED_THRESHOLD: u64 = 512 * 1024 * 1024;
 
+fn should_stream_from_decoded_size(decoded_bytes: u64, force_streaming: bool) -> Result<(), String> {
+    if force_streaming || decoded_bytes >= STREAMING_DECODED_THRESHOLD {
+        Ok(())
+    } else {
+        Err(format!(
+            "Decoded size {:.0} MB below streaming threshold",
+            decoded_bytes as f64 / 1_048_576.0
+        ))
+    }
+}
+
 /// Attempt to open a large WAV file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming
 /// (not WAV, decoded size below threshold, unsupported format).
-pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState) -> Result<(), String> {
+pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, force_streaming: bool) -> Result<(), String> {
     // Read first 64KB for header parsing
     let header_size = 65536.0f64.min(file.size());
     let header_bytes = read_blob_range(file, 0.0, header_size).await?;
@@ -39,12 +50,7 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState) 
 
     // Check if decoded size warrants streaming
     let decoded_bytes = header.total_frames * header.channels as u64 * 4; // f32 per sample
-    if decoded_bytes < STREAMING_DECODED_THRESHOLD {
-        return Err(format!(
-            "Decoded size {:.0} MB below streaming threshold",
-            decoded_bytes as f64 / 1_048_576.0
-        ));
-    }
+    should_stream_from_decoded_size(decoded_bytes, force_streaming)?;
 
     log::info!(
         "Streaming WAV: {} — {} frames, {} ch, {} Hz, {:.1}s, decoded {:.0} MB",
@@ -56,10 +62,17 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState) 
         decoded_bytes as f64 / 1_048_576.0,
     );
 
-    state.show_info_toast(format!(
-        "Streaming large file ({:.0} MB)",
-        file.size() / 1_000_000.0
-    ));
+    if force_streaming && decoded_bytes < STREAMING_DECODED_THRESHOLD {
+        state.show_info_toast(format!(
+            "Streaming file to keep total open files under control ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    } else {
+        state.show_info_toast(format!(
+            "Streaming large file ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    }
 
     // Decode first 30s for head samples
     use crate::audio::source::DEFAULT_ANALYSIS_WINDOW_SECS;
@@ -261,7 +274,7 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState) 
 
 /// Attempt to open a large FLAC file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming.
-pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState) -> Result<(), String> {
+pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState, force_streaming: bool) -> Result<(), String> {
     // Read first 64KB for header parsing
     let header_size = 65536.0f64.min(file.size());
     let header_bytes = read_blob_range(file, 0.0, header_size).await?;
@@ -277,12 +290,7 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState)
 
     // Check if decoded size warrants streaming
     let decoded_bytes = header.total_frames * header.channels as u64 * 4; // f32 per sample
-    if decoded_bytes < STREAMING_DECODED_THRESHOLD {
-        return Err(format!(
-            "Decoded size {:.0} MB below streaming threshold",
-            decoded_bytes as f64 / 1_048_576.0
-        ));
-    }
+    should_stream_from_decoded_size(decoded_bytes, force_streaming)?;
 
     log::info!(
         "Streaming FLAC: {} — {} frames, {} ch, {} Hz, {:.1}s, decoded {:.0} MB",
@@ -294,10 +302,17 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState)
         decoded_bytes as f64 / 1_048_576.0,
     );
 
-    state.show_info_toast(format!(
-        "Streaming large FLAC ({:.0} MB)",
-        file.size() / 1_000_000.0
-    ));
+    if force_streaming && decoded_bytes < STREAMING_DECODED_THRESHOLD {
+        state.show_info_toast(format!(
+            "Streaming FLAC to keep total open files under control ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    } else {
+        state.show_info_toast(format!(
+            "Streaming large FLAC ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    }
 
     // Decode first 30s by reading a generous initial chunk.
     // Estimate: at 1411 kbps (CD quality) FLAC compresses ~50-70%, so 30s ≈ ~3 MB.
@@ -585,7 +600,7 @@ async fn background_flac_decode(
 
 /// Attempt to open a large MP3 file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming.
-pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState) -> Result<(), String> {
+pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, force_streaming: bool) -> Result<(), String> {
     // Read first 64KB for header probing
     let header_size = 65536.0f64.min(file.size());
     let header_bytes = read_blob_range(file, 0.0, header_size).await?;
@@ -599,12 +614,7 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState) 
 
     // Check if decoded size warrants streaming
     let decoded_bytes = header.estimated_total_frames * header.channels as u64 * 4;
-    if decoded_bytes < STREAMING_DECODED_THRESHOLD {
-        return Err(format!(
-            "Decoded size {:.0} MB below streaming threshold",
-            decoded_bytes as f64 / 1_048_576.0
-        ));
-    }
+    should_stream_from_decoded_size(decoded_bytes, force_streaming)?;
 
     log::info!(
         "Streaming MP3: {} — ~{} frames, {} ch, {} Hz, ~{:.1}s, decoded ~{:.0} MB",
@@ -616,10 +626,17 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState) 
         decoded_bytes as f64 / 1_048_576.0,
     );
 
-    state.show_info_toast(format!(
-        "Streaming large MP3 ({:.0} MB)",
-        file.size() / 1_000_000.0
-    ));
+    if force_streaming && decoded_bytes < STREAMING_DECODED_THRESHOLD {
+        state.show_info_toast(format!(
+            "Streaming MP3 to keep total open files under control ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    } else {
+        state.show_info_toast(format!(
+            "Streaming large MP3 ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    }
 
     // Decode first 30s by reading a generous initial chunk.
     // MP3 at 320 kbps: 30s ≈ 1.2 MB. At lower bitrates even less.
@@ -935,7 +952,7 @@ async fn background_mp3_decode(
 
 /// Attempt to open a large OGG file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming.
-pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState) -> Result<(), String> {
+pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, force_streaming: bool) -> Result<(), String> {
     // Read first 64KB for header probing
     let header_size = 65536.0f64.min(file.size());
     let header_bytes = read_blob_range(file, 0.0, header_size).await?;
@@ -949,12 +966,7 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState) 
 
     // Check if decoded size warrants streaming
     let decoded_bytes = header.estimated_total_frames * header.channels as u64 * 4;
-    if decoded_bytes < STREAMING_DECODED_THRESHOLD {
-        return Err(format!(
-            "Decoded size {:.0} MB below streaming threshold",
-            decoded_bytes as f64 / 1_048_576.0
-        ));
-    }
+    should_stream_from_decoded_size(decoded_bytes, force_streaming)?;
 
     log::info!(
         "Streaming OGG: {} — ~{} frames, {} ch, {} Hz, ~{:.1}s, decoded ~{:.0} MB",
@@ -966,10 +978,17 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState) 
         decoded_bytes as f64 / 1_048_576.0,
     );
 
-    state.show_info_toast(format!(
-        "Streaming large OGG ({:.0} MB)",
-        file.size() / 1_000_000.0
-    ));
+    if force_streaming && decoded_bytes < STREAMING_DECODED_THRESHOLD {
+        state.show_info_toast(format!(
+            "Streaming OGG to keep total open files under control ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    } else {
+        state.show_info_toast(format!(
+            "Streaming large OGG ({:.0} MB)",
+            file.size() / 1_000_000.0
+        ));
+    }
 
     // Decode first 30s by reading a generous initial chunk.
     // Vorbis at ~192 kbps: 30s ≈ 720 KB. Read 48 MB to be safe.

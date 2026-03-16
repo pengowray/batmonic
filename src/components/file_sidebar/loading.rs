@@ -16,10 +16,24 @@ use super::streaming_load::{SilenceCheck, STREAMING_CHECK_SIZE, try_streaming_wa
 /// Files above this MUST use the streaming path; if streaming fails, they're rejected.
 const MAX_FILE_SIZE: f64 = 2_000_000_000.0;
 
+/// Once the total size of opened files reaches this threshold, prefer streaming
+/// for newly opened supported formats to avoid piling up more in-memory decodes.
+const TOTAL_OPEN_FILE_STREAMING_THRESHOLD: u64 = 500_000_000;
+
+fn total_open_file_bytes(state: AppState) -> u64 {
+    state.files.with_untracked(|files| {
+        files.iter()
+            .map(|file| file.audio.metadata.file_size as u64)
+            .sum()
+    })
+}
+
 pub(super) async fn read_and_load_file(file: File, state: AppState, load_id: u64) -> Result<(), String> {
     let name = file.name();
     let size = file.size();
     let last_modified_ms = Some(file.last_modified());
+    let projected_total_open_bytes = total_open_file_bytes(state).saturating_add(size as u64);
+    let force_streaming = projected_total_open_bytes >= TOTAL_OPEN_FILE_STREAMING_THRESHOLD;
 
     // Helper: set last_modified_ms and compute file identity on the most recently added file
     let name_for_identity = name.clone();
@@ -45,28 +59,29 @@ pub(super) async fn read_and_load_file(file: File, state: AppState, load_id: u64
         );
     };
 
-    // For large files, attempt streaming path (WAV or FLAC)
-    if size > STREAMING_CHECK_SIZE {
+    // For large files, or once the workspace has accumulated enough opened
+    // files, attempt the streaming path for supported formats.
+    if size > STREAMING_CHECK_SIZE || force_streaming {
         state.loading_update(load_id, crate::state::LoadingStage::Streaming);
-        match try_streaming_wav(&file, &name, state).await {
+        match try_streaming_wav(&file, &name, state, force_streaming).await {
             Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
             Err(e) => {
                 log::info!("WAV streaming not applicable for {}: {}", name, e);
             }
         }
-        match try_streaming_flac(&file, &name, state).await {
+        match try_streaming_flac(&file, &name, state, force_streaming).await {
             Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
             Err(e) => {
                 log::info!("FLAC streaming not applicable for {}: {}", name, e);
             }
         }
-        match try_streaming_mp3(&file, &name, state).await {
+        match try_streaming_mp3(&file, &name, state, force_streaming).await {
             Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
             Err(e) => {
                 log::info!("MP3 streaming not applicable for {}: {}", name, e);
             }
         }
-        match try_streaming_ogg(&file, &name, state).await {
+        match try_streaming_ogg(&file, &name, state, force_streaming).await {
             Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
             Err(e) => {
                 log::info!("OGG streaming not applicable for {}: {}", name, e);
