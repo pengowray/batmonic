@@ -198,6 +198,7 @@ pub fn App() -> impl IntoView {
             let _ = state.filter_band_mode.get();
             let _ = state.filter_quality.get();
             let _ = state.bandpass_mode.get();
+            let _ = state.channel_view.get();
             let notch_on = state.notch_enabled.get();
             let _ = state.notch_bands.get();
             let noise_on = state.noise_reduce_enabled.get();
