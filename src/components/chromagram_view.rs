@@ -5,7 +5,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::spectrogram_renderer;
 use crate::canvas::tile_cache::{self, TILE_COLS};
 use crate::dsp::chromagram::{NUM_PITCH_CLASSES, NUM_OCTAVES, PITCH_CLASS_NAMES};
-use crate::state::{AppState, CanvasTool};
+use crate::state::{AppState, CanvasTool, PlayStartMode};
 use crate::viewport;
 
 #[component]
@@ -124,7 +124,7 @@ pub fn ChromagramView() -> impl IntoView {
         }
 
         // Draw "play here" marker when not playing
-        if !is_playing && canvas_tool == CanvasTool::Hand {
+        if state.play_start_mode.get() == PlayStartMode::FromHere && !is_playing && canvas_tool == CanvasTool::Hand {
             let visible_time = viewport::visible_time(display_w as f64, zoom, time_res);
             let here_x = display_w as f64 * viewport::PLAY_FROM_HERE_FRACTION;
             let here_time = viewport::play_from_here_time(scroll, visible_time);
@@ -174,6 +174,7 @@ pub fn ChromagramView() -> impl IntoView {
             .unwrap_or((1.0, 0.0));
         let zoom = state.zoom_level.get_untracked();
         let scroll = state.scroll_offset.get_untracked();
+        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
 
         let visible_time = viewport::visible_time(display_w, zoom, time_res);
         let playhead_rel = playhead - scroll;
@@ -198,7 +199,7 @@ pub fn ChromagramView() -> impl IntoView {
 
         if playhead_rel > visible_time * viewport::FOLLOW_CURSOR_EDGE_FRACTION || playhead_rel < 0.0 {
             let target_scroll = playhead - visible_time * viewport::FOLLOW_CURSOR_FRACTION;
-            state.scroll_offset.set(viewport::clamp_scroll(target_scroll, duration, visible_time));
+            state.scroll_offset.set(viewport::clamp_scroll_for_mode(target_scroll, duration, visible_time, from_here_mode));
         }
     });
 
@@ -222,7 +223,8 @@ pub fn ChromagramView() -> impl IntoView {
             let duration = files.get(idx)
                 .map(|f| f.audio.duration_secs)
                 .unwrap_or(0.0);
-            state.scroll_offset.update(|s| *s = viewport::clamp_scroll(*s + delta, duration, visible_time));
+            let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+            state.scroll_offset.update(|s| *s = viewport::clamp_scroll_for_mode(*s + delta, duration, visible_time, from_here_mode));
         }
     };
 
@@ -247,9 +249,10 @@ pub fn ChromagramView() -> impl IntoView {
         let zoom = state.zoom_level.get_untracked();
         let visible_time = viewport::visible_time(cw, zoom, time_res);
         let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
+        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
-        state.scroll_offset.set(viewport::clamp_scroll(start_scroll + dt, duration, visible_time));
+        state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
     };
 
     let on_mouseup = move |ev: MouseEvent| {
@@ -288,6 +291,7 @@ pub fn ChromagramView() -> impl IntoView {
                     initial_mid_client_x: mid_x,
                     time_res,
                     duration,
+                    from_here_mode: state.play_start_mode.get_untracked() == PlayStartMode::FromHere,
                 }));
             }
             state.is_dragging.set(false);
@@ -342,9 +346,10 @@ pub fn ChromagramView() -> impl IntoView {
         let zoom = state.zoom_level.get_untracked();
         let visible_time = viewport::visible_time(cw, zoom, time_res);
         let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
+        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
-        state.scroll_offset.set(viewport::clamp_scroll(start_scroll + dt, duration, visible_time));
+        state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
     };
 
     let on_touchend = move |_ev: web_sys::TouchEvent| {

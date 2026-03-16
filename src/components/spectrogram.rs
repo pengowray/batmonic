@@ -11,7 +11,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::freq_adjustments::compute_freq_adjustments;
 use crate::canvas::spectrogram_renderer::{self, Colormap, ColormapMode, FreqMarkerState, FreqShiftMode, FlowAlgo, PreRendered, SpectDisplaySettings};
 use crate::components::spectrogram_events::{self, SpectInteraction, LABEL_AREA_WIDTH};
-use crate::state::{AppState, CanvasTool, SpectrogramHandle, MainView, PlaybackMode, SpectrogramDisplay};
+use crate::state::{AppState, CanvasTool, SpectrogramHandle, MainView, PlaybackMode, PlayStartMode, SpectrogramDisplay};
 use crate::viewport;
 
 #[component]
@@ -808,8 +808,8 @@ pub fn Spectrogram() -> impl IntoView {
             if visible_time <= 0.0 { return; }
             let px_per_sec = display_w as f64 / visible_time;
 
-            // Draw static position marker when not playing
-            if !is_playing && canvas_tool == CanvasTool::Hand {
+            // Draw static position marker when not playing in FromHere mode
+            if state.play_start_mode.get() == PlayStartMode::FromHere && !is_playing && canvas_tool == CanvasTool::Hand {
                 let here_x = display_w as f64 * viewport::PLAY_FROM_HERE_FRACTION;
                 let here_time = viewport::play_from_here_time(scroll, visible_time);
                 state.play_from_here_time.set(here_time);
@@ -875,6 +875,7 @@ pub fn Spectrogram() -> impl IntoView {
             .unwrap_or((1.0, 0.0));
         let zoom = state.zoom_level.get_untracked();
         let scroll = state.scroll_offset.get_untracked();
+        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
 
         let visible_time = viewport::visible_time(display_w, zoom, time_res);
         let playhead_rel = playhead - scroll;
@@ -904,7 +905,7 @@ pub fn Spectrogram() -> impl IntoView {
         // Normal follow: scroll when playhead nears the edge
         if playhead_rel > visible_time * viewport::FOLLOW_CURSOR_EDGE_FRACTION || playhead_rel < 0.0 {
             let target_scroll = playhead - visible_time * viewport::FOLLOW_CURSOR_FRACTION;
-            state.scroll_offset.set(viewport::clamp_scroll(target_scroll, duration, visible_time));
+            state.scroll_offset.set(viewport::clamp_scroll_for_mode(target_scroll, duration, visible_time, from_here_mode));
         }
     });
 

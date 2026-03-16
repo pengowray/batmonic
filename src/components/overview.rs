@@ -5,7 +5,6 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, MouseEvent
 use crate::canvas::waveform_renderer;
 use crate::state::{AppState, LayerPanel, OverviewFreqMode, OverviewView};
 use crate::types::PreviewImage;
-use crate::viewport;
 
 thread_local! {
     /// Reusable off-screen canvas for the overview preview blit.
@@ -134,9 +133,8 @@ fn draw_overview_spectrogram(
     // visible_time = (canvas_px / zoom) * spec_time_res  (zoom = px per FFT column)
     let visible_cols = main_canvas_width / zoom.max(0.001);
     let visible_time = visible_cols * spec_time_res;
-    let (vp_x, vp_w) = viewport::data_region_px(scroll_offset, visible_time, total_duration, cw)
-        .map(|(_start, _end, dst_x, dst_w)| (dst_x, dst_w.max(2.0)))
-        .unwrap_or((0.0, 2.0));
+    let vp_x = (scroll_offset * px_per_sec).max(0.0);
+    let vp_w = (visible_time * px_per_sec).max(2.0);
 
     // Vertical: map main view freq range into the overview's freq coordinate space.
     // overview y=0 → top freq (ofc * Nyquist), y=ch → 0 Hz.
@@ -210,9 +208,8 @@ fn draw_overview_waveform(
     let px_per_sec = cw / total_duration;
     let visible_cols = main_canvas_width / zoom.max(0.001);
     let visible_time = visible_cols * time_resolution;
-    let (vp_x, vp_w) = viewport::data_region_px(scroll_offset, visible_time, total_duration, cw)
-        .map(|(_start, _end, dst_x, dst_w)| (dst_x, dst_w.max(2.0)))
-        .unwrap_or((0.0, 2.0));
+    let vp_x = (scroll_offset * px_per_sec).max(0.0);
+    let vp_w = (visible_time * px_per_sec).max(2.0);
     ctx.set_fill_style_str("rgba(80, 180, 130, 0.12)");
     ctx.fill_rect(vp_x, 0.0, vp_w, ch);
     ctx.set_stroke_style_str("rgba(80, 180, 130, 0.55)");
@@ -600,7 +597,8 @@ pub fn OverviewPanel() -> impl IntoView {
         if let Some(t) = x_to_time(canvas_x, cw) {
             push_nav(&state);
             let visible = half_visible_time() * 2.0;
-            let centered = viewport::clamp_scroll(t - half_visible_time(), file_duration(), visible);
+            let max_scroll = (file_duration() - visible).max(0.0);
+            let centered = (t - half_visible_time()).clamp(0.0, max_scroll);
             state.suspend_follow();
             state.scroll_offset.set(centered);
         }
@@ -628,7 +626,8 @@ pub fn OverviewPanel() -> impl IntoView {
                 (canvas_w / zoom) * f.spectrogram.time_resolution
             }).unwrap_or(0.0)
         };
-        let new_scroll = viewport::clamp_scroll(drag_start_scroll.get_untracked() + dt, total_duration, visible_time);
+        let max_scroll = (total_duration - visible_time).max(0.0);
+        let new_scroll = (drag_start_scroll.get_untracked() + dt).clamp(0.0, max_scroll);
         state.suspend_follow();
         state.scroll_offset.set(new_scroll);
     };
@@ -651,7 +650,8 @@ pub fn OverviewPanel() -> impl IntoView {
         if let Some(t) = x_to_time(canvas_x, cw) {
             push_nav(&state);
             let visible = half_visible_time() * 2.0;
-            let centered = viewport::clamp_scroll(t - half_visible_time(), file_duration(), visible);
+            let max_scroll = (file_duration() - visible).max(0.0);
+            let centered = (t - half_visible_time()).clamp(0.0, max_scroll);
             state.suspend_follow();
             state.scroll_offset.set(centered);
         }
@@ -683,7 +683,8 @@ pub fn OverviewPanel() -> impl IntoView {
                 (canvas_w / zoom) * f.spectrogram.time_resolution
             }).unwrap_or(0.0)
         };
-        let new_scroll = viewport::clamp_scroll(drag_start_scroll.get_untracked() + dt, total_duration, visible_time);
+        let max_scroll = (total_duration - visible_time).max(0.0);
+        let new_scroll = (drag_start_scroll.get_untracked() + dt).clamp(0.0, max_scroll);
         state.suspend_follow();
         state.scroll_offset.set(new_scroll);
     };
@@ -706,7 +707,8 @@ pub fn OverviewPanel() -> impl IntoView {
             }).unwrap_or(0.0)
         };
         state.suspend_follow();
-        state.scroll_offset.update(|s| *s = viewport::clamp_scroll(*s + delta, total_duration, visible_time));
+        let max_scroll = (total_duration - visible_time).max(0.0);
+        state.scroll_offset.update(|s| *s = (*s + delta).clamp(0.0, max_scroll));
     };
 
     // Back/forward can_back and can_forward

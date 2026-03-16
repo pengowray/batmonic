@@ -879,8 +879,13 @@ pub fn blit_chromagram_tiles_viewport(
     }
 
     let visible_cols = cw / zoom;
-    let src_start = scroll_col.max(0.0).min((total_cols as f64 - 1.0).max(0.0));
-    let src_end = (src_start + visible_cols).min(total_cols as f64);
+    let vis_start = scroll_col;
+    let vis_end = scroll_col + visible_cols;
+    let src_start = vis_start.max(0.0);
+    let src_end = vis_end.min(total_cols as f64);
+    if src_end <= src_start {
+        return false;
+    }
 
     let first_tile = (src_start / TILE_COLS as f64).floor() as usize;
     let last_tile = ((src_end - 1.0).max(0.0) / TILE_COLS as f64).floor() as usize;
@@ -953,8 +958,8 @@ pub fn blit_chromagram_tiles_viewport(
             if tile_src_w <= 0.0 { return; }
 
             // No frequency cropping for chromagram — show full height
-            let dst_x_raw = ((tile_col_start as f64 + tile_src_x) - src_start) * zoom;
-            let dst_x_end_raw = ((tile_col_start as f64 + tile_src_x + tile_src_w) - src_start) * zoom;
+            let dst_x_raw = ((tile_col_start as f64 + tile_src_x) - vis_start) * zoom;
+            let dst_x_end_raw = ((tile_col_start as f64 + tile_src_x + tile_src_w) - vis_start) * zoom;
             let dst_x = dst_x_raw.floor();
             let dst_w = (dst_x_end_raw.ceil() - dst_x).max(1.0);
 

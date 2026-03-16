@@ -2,6 +2,10 @@ pub const PLAY_FROM_HERE_FRACTION: f64 = 0.10;
 pub const FOLLOW_CURSOR_FRACTION: f64 = 0.20;
 pub const FOLLOW_CURSOR_EDGE_FRACTION: f64 = 0.80;
 
+pub fn uses_from_here_bounds(enabled: bool) -> bool {
+    enabled
+}
+
 pub fn visible_time(canvas_width: f64, zoom: f64, time_resolution: f64) -> f64 {
     if canvas_width <= 0.0 || zoom <= 0.0 || time_resolution <= 0.0 {
         0.0
@@ -29,8 +33,33 @@ pub fn scroll_bounds(duration: f64, visible_time: f64) -> (f64, f64) {
     (min_scroll, max_scroll)
 }
 
+pub fn standard_scroll_bounds(duration: f64, visible_time: f64) -> (f64, f64) {
+    if visible_time <= 0.0 {
+        return (0.0, duration.max(0.0));
+    }
+    (0.0, (duration - visible_time).max(0.0))
+}
+
+pub fn scroll_bounds_for_mode(duration: f64, visible_time: f64, from_here_mode: bool) -> (f64, f64) {
+    if uses_from_here_bounds(from_here_mode) {
+        scroll_bounds(duration, visible_time)
+    } else {
+        standard_scroll_bounds(duration, visible_time)
+    }
+}
+
 pub fn clamp_scroll(scroll_offset: f64, duration: f64, visible_time: f64) -> f64 {
     let (min_scroll, max_scroll) = scroll_bounds(duration, visible_time);
+    scroll_offset.clamp(min_scroll, max_scroll)
+}
+
+pub fn clamp_scroll_for_mode(
+    scroll_offset: f64,
+    duration: f64,
+    visible_time: f64,
+    from_here_mode: bool,
+) -> f64 {
+    let (min_scroll, max_scroll) = scroll_bounds_for_mode(duration, visible_time, from_here_mode);
     scroll_offset.clamp(min_scroll, max_scroll)
 }
 

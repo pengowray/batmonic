@@ -9,6 +9,8 @@ pub struct ViewportGeometry {
     pub ratio: f64,
     pub vis_start: f64,
     pub vis_end: f64,
+    pub data_start: f64,
+    pub data_end: f64,
     pub first_tile: usize,
     pub last_tile: usize,
     pub fc_lo: f64,
@@ -35,11 +37,16 @@ impl ViewportGeometry {
         let ideal_lod = tile_cache::select_lod(zoom);
         let ratio = tile_cache::lod_ratio(ideal_lod);
 
-        let vis_start = scroll_col.max(0.0).min((total_cols as f64 - 1.0).max(0.0));
-        let vis_end = (vis_start + cw / zoom).min(total_cols as f64);
+        let vis_start = scroll_col;
+        let vis_end = scroll_col + cw / zoom;
+        let data_start = vis_start.max(0.0);
+        let data_end = vis_end.min(total_cols as f64);
+        if data_end <= data_start {
+            return None;
+        }
 
-        let vis_start_lod = vis_start * ratio;
-        let vis_end_lod = vis_end * ratio;
+        let vis_start_lod = data_start * ratio;
+        let vis_end_lod = data_end * ratio;
 
         let first_tile = (vis_start_lod / TILE_COLS as f64).floor() as usize;
         let last_tile = ((vis_end_lod - 0.001).max(0.0) / TILE_COLS as f64).floor() as usize;
@@ -49,6 +56,7 @@ impl ViewportGeometry {
 
         Some(Self {
             cw, ch, ideal_lod, ratio, vis_start, vis_end,
+            data_start, data_end,
             first_tile, last_tile, fc_lo, fc_hi, zoom,
         })
     }
@@ -57,8 +65,8 @@ impl ViewportGeometry {
     pub fn tile_clip_range(&self, tile_idx: usize) -> Option<(f64, f64)> {
         let tile_lod1_start = tile_idx as f64 * TILE_COLS as f64 / self.ratio;
         let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / self.ratio;
-        let clip_start = self.vis_start.max(tile_lod1_start);
-        let clip_end = self.vis_end.min(tile_lod1_end);
+        let clip_start = self.data_start.max(tile_lod1_start);
+        let clip_end = self.data_end.min(tile_lod1_end);
         if clip_end <= clip_start { None } else { Some((clip_start, clip_end)) }
     }
 }

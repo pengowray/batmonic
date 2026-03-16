@@ -17,6 +17,8 @@ pub struct PinchState {
     pub time_res: f64,
     /// File duration in seconds (for scroll clamping).
     pub duration: f64,
+    /// Whether FromHere viewport bounds should be used.
+    pub from_here_mode: bool,
 }
 
 /// Returns (midpoint_client_x, distance) for exactly 2 touches.
@@ -71,7 +73,12 @@ pub fn apply_pinch(
     let pan_dt = -(mid_shift_px / canvas_width) * new_visible_time;
 
     let raw_scroll = scroll_from_anchor + pan_dt;
-    let new_scroll = viewport::clamp_scroll(raw_scroll, pinch.duration, new_visible_time);
+    let new_scroll = viewport::clamp_scroll_for_mode(
+        raw_scroll,
+        pinch.duration,
+        new_visible_time,
+        pinch.from_here_mode,
+    );
 
     (new_zoom, new_scroll)
 }

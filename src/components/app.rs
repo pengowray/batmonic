@@ -653,14 +653,15 @@ pub fn App() -> impl IntoView {
                 let zoom = state_kb.zoom_level.get_untracked();
                 let canvas_w = state_kb.spectrogram_canvas_width.get_untracked();
                 let visible_time = viewport::visible_time(canvas_w, zoom, time_res);
-                let (_min_scroll, max_scroll) = viewport::scroll_bounds(duration, visible_time);
+                let from_here_mode = state_kb.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+                let (_min_scroll, max_scroll) = viewport::scroll_bounds_for_mode(duration, visible_time, from_here_mode);
                 let new_scroll = match key.as_str() {
-                    "Home" => viewport::clamp_scroll(0.0, duration, visible_time),
+                    "Home" => viewport::clamp_scroll_for_mode(0.0, duration, visible_time, from_here_mode),
                     "End" => max_scroll,
-                    "ArrowLeft" => viewport::clamp_scroll(state_kb.scroll_offset.get_untracked() - visible_time * 0.2, duration, visible_time),
-                    "ArrowRight" => viewport::clamp_scroll(state_kb.scroll_offset.get_untracked() + visible_time * 0.2, duration, visible_time),
-                    "PageUp" => viewport::clamp_scroll(state_kb.scroll_offset.get_untracked() - visible_time * 0.8, duration, visible_time),
-                    "PageDown" => viewport::clamp_scroll(state_kb.scroll_offset.get_untracked() + visible_time * 0.8, duration, visible_time),
+                    "ArrowLeft" => viewport::clamp_scroll_for_mode(state_kb.scroll_offset.get_untracked() - visible_time * 0.2, duration, visible_time, from_here_mode),
+                    "ArrowRight" => viewport::clamp_scroll_for_mode(state_kb.scroll_offset.get_untracked() + visible_time * 0.2, duration, visible_time, from_here_mode),
+                    "PageUp" => viewport::clamp_scroll_for_mode(state_kb.scroll_offset.get_untracked() - visible_time * 0.8, duration, visible_time, from_here_mode),
+                    "PageDown" => viewport::clamp_scroll_for_mode(state_kb.scroll_offset.get_untracked() + visible_time * 0.8, duration, visible_time, from_here_mode),
                     _ => state_kb.scroll_offset.get_untracked(),
                 };
                 state_kb.suspend_follow();

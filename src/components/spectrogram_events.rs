@@ -3,7 +3,7 @@ use web_sys::{HtmlCanvasElement, MouseEvent};
 use crate::canvas::coord::pointer_to_xtf;
 use crate::canvas::hit_test::{hit_test_spec_handles, is_in_ff_drag_zone};
 use crate::canvas::spectrogram_renderer;
-use crate::state::{AppState, CanvasTool, SpectrogramHandle, Selection};
+use crate::state::{AppState, CanvasTool, PlayStartMode, SpectrogramHandle, Selection};
 use crate::viewport;
 
 pub const LABEL_AREA_WIDTH: f64 = 60.0;
@@ -189,9 +189,10 @@ pub fn apply_hand_pan(
     } else {
         file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX)
     };
+    let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
     let dt = -(dx / cw) * visible_time;
     state.suspend_follow();
-    state.scroll_offset.set(viewport::clamp_scroll(start_scroll + dt, duration, visible_time));
+    state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
 }
 
 // ── Mouse event handlers ───────────────────────────────────────────────────
@@ -476,6 +477,7 @@ pub fn on_touchstart(
                 initial_mid_client_x: mid_x,
                 time_res,
                 duration,
+                from_here_mode: state.play_start_mode.get_untracked() == PlayStartMode::FromHere,
             }));
         }
         // End any in-progress single-touch gesture
@@ -684,8 +686,9 @@ pub fn on_touchend(
                         } else {
                             file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX)
                         };
+                        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
                         crate::components::inertia::start_inertia(
-                            state, velocity, cw, time_res, duration, ix.inertia_generation,
+                            state, velocity, cw, time_res, duration, from_here_mode, ix.inertia_generation,
                         );
                     }
                 }
@@ -781,12 +784,13 @@ pub fn on_wheel(
             let zoom = state.zoom_level.get_untracked();
             let canvas_w = state.spectrogram_canvas_width.get_untracked();
             let visible_time = viewport::visible_time(canvas_w, zoom, time_res);
+            let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
             // Scroll proportional to visible time (like arrow keys),
             // normalized so a typical wheel tick (~100px) scrolls ~10% of the view
             let delta = raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
             state.suspend_follow();
             state.scroll_offset.update(|s| {
-                *s = viewport::clamp_scroll(*s + delta, duration, visible_time);
+                *s = viewport::clamp_scroll_for_mode(*s + delta, duration, visible_time, from_here_mode);
             });
         }
     }

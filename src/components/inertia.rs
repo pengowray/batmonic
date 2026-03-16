@@ -107,6 +107,7 @@ pub fn start_inertia(
     canvas_width: f64,
     time_resolution: f64,
     duration: f64,
+    from_here_mode: bool,
     generation: StoredValue<u32>,
 ) {
     if velocity_px_per_sec.abs() < MIN_VELOCITY || canvas_width == 0.0 {
@@ -122,7 +123,7 @@ pub fn start_inertia(
     // Convert px velocity to time velocity (same sign convention as apply_hand_pan: negate)
     let v0_time = -(velocity_px_per_sec / canvas_width) * visible_time;
     let start_scroll = state.scroll_offset.get_untracked();
-    let (min_scroll, max_scroll) = viewport::scroll_bounds(duration, visible_time);
+    let (min_scroll, max_scroll) = viewport::scroll_bounds_for_mode(duration, visible_time, from_here_mode);
 
     // Threshold in time-domain units
     let stop_threshold = (STOP_VELOCITY / canvas_width) * visible_time;

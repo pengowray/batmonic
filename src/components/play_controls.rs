@@ -61,11 +61,7 @@ pub fn BookmarkPopup() -> impl IntoView {
                                         .unwrap_or(0.001);
                                     let canvas_w = 800.0_f64;
                                     let visible_time = viewport::visible_time(canvas_w, zoom, time_res);
-                                    let new_scroll = viewport::clamp_scroll(
-                                        viewport::scroll_for_play_from_here(t, visible_time),
-                                        idx.and_then(|i| files.get(i)).map(|f| f.audio.duration_secs).unwrap_or(0.0),
-                                        visible_time,
-                                    );
+                                    let new_scroll = (t - visible_time * 0.1).max(0.0);
                                     state2.suspend_follow();
                                     state2.scroll_offset.set(new_scroll);
                                     state2.show_bookmark_popup.set(false);
