@@ -1011,6 +1011,7 @@ pub fn draw_annotations(
     zoom: f64,
     canvas_width: f64,
     canvas_height: f64,
+    is_mobile: bool,
 ) {
     let visible_time = (canvas_width / zoom) * time_resolution;
     let start_time = scroll_offset;
@@ -1093,7 +1094,9 @@ pub fn draw_annotations(
                     .as_ref()
                     .map_or(false, |(hid, hp)| *hid == annotation.id && *hp == *pos);
 
-                let size = if is_hovered { 4.0 } else { 3.0 };
+                let size = if is_hovered {
+                    if is_mobile { 8.0 } else { 4.0 }
+                } else if is_mobile { 6.0 } else { 3.0 };
 
                 let fill = if locked {
                     if is_hovered { "rgba(160, 160, 160, 0.9)" } else { "rgba(120, 120, 120, 0.7)" }

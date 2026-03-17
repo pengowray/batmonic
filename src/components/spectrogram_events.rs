@@ -709,6 +709,7 @@ pub fn on_mousemove(
                                     px_x, px_y,
                                     min_freq_val, max_freq_val,
                                     scroll, time_res, zoom, cw, ch,
+                                    crate::canvas::hit_test::ANNOTATION_HANDLE_HIT_RADIUS,
                                 );
                                 state.annotation_hover_handle.set(ann_handle);
                             } else {
@@ -963,6 +964,62 @@ pub fn on_touchstart(
         }
     }
 
+    // Check for annotation resize handle drag (touch)
+    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+        if let Some(canvas_el) = canvas_ref.get() {
+            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+            let cw = canvas.width() as f64;
+            let ch = canvas.height() as f64;
+            let selected_ids = state.selected_annotation_ids.get_untracked();
+            if !selected_ids.is_empty() {
+                let file_idx = state.current_file_index.get_untracked().unwrap_or(0);
+                let store = state.annotation_store.get_untracked();
+                let files = state.files.get_untracked();
+                let file_max_freq = files.get(file_idx).map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
+                let min_freq_val = state.min_display_freq.get_untracked().unwrap_or(0.0);
+                let max_freq_val = state.max_display_freq.get_untracked().unwrap_or(file_max_freq);
+                let scroll = state.scroll_offset.get_untracked();
+                let time_res = files.get(file_idx).map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+                let zoom = state.zoom_level.get_untracked();
+                if let Some(Some(set)) = store.sets.get(file_idx) {
+                    let ann_handle = hit_test_annotation_handles(
+                        set, &selected_ids,
+                        px_x, px_y,
+                        min_freq_val, max_freq_val,
+                        scroll, time_res, zoom, cw, ch,
+                        crate::canvas::hit_test::ANNOTATION_HANDLE_HIT_RADIUS_TOUCH,
+                    );
+                    if let Some((ref ann_id, handle_pos)) = ann_handle {
+                        // Check if locked
+                        let locked = set.annotations.iter().find(|a| a.id == *ann_id)
+                            .and_then(|a| match &a.kind {
+                                crate::annotations::AnnotationKind::Region(r) => Some(r.is_locked()),
+                                _ => None,
+                            })
+                            .unwrap_or(false);
+                        if !locked {
+                            // Snapshot for undo
+                            let snapshot = store.sets.get(file_idx).and_then(|s| s.clone());
+                            state.undo_stack.update(|stack| {
+                                stack.push_undo(UndoEntry { file_idx, snapshot });
+                            });
+                            // Store original bounds
+                            if let Some(a) = set.annotations.iter().find(|a| a.id == *ann_id) {
+                                if let crate::annotations::AnnotationKind::Region(ref r) = a.kind {
+                                    state.annotation_drag_original.set(Some((r.time_start, r.time_end, r.freq_low, r.freq_high)));
+                                }
+                            }
+                            state.annotation_drag_handle.set(Some((ann_id.clone(), handle_pos)));
+                            state.is_dragging.set(true);
+                            ev.prevent_default();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Check for ambiguous corner drag (bottom-left: both axis zones overlap)
     if let Some((px_x, px_y, t, freq)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
         if let Some(canvas_el) = canvas_ref.get() {
@@ -1079,6 +1136,14 @@ pub fn on_touchmove(
         return;
     }
 
+    // Annotation resize handle drag
+    if let Some((ref ann_id, handle_pos)) = state.annotation_drag_handle.get_untracked() {
+        if let Some((_, _, t, f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+            apply_annotation_resize(state, ann_id.clone(), handle_pos, t, f);
+        }
+        return;
+    }
+
     // Corner drag: determine axis from drag direction, allow switching
     if ix.corner_drag_active.get_untracked() {
         if let Some((_, _, t, f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
@@ -1190,6 +1255,23 @@ pub fn on_touchend(
     if remaining == 0 {
         if state.spec_drag_handle.get_untracked().is_some() {
             state.spec_drag_handle.set(None);
+            state.is_dragging.set(false);
+            return;
+        }
+        // End annotation resize handle drag
+        if let Some((ref ann_id, _)) = state.annotation_drag_handle.get_untracked() {
+            let file_idx = state.current_file_index.get_untracked().unwrap_or(0);
+            let now = js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_default();
+            state.annotation_store.update(|store| {
+                if let Some(Some(set)) = store.sets.get_mut(file_idx) {
+                    if let Some(a) = set.annotations.iter_mut().find(|a| a.id == *ann_id) {
+                        a.modified_at = now;
+                    }
+                }
+            });
+            state.annotations_dirty.set(true);
+            state.annotation_drag_handle.set(None);
+            state.annotation_drag_original.set(None);
             state.is_dragging.set(false);
             return;
         }

@@ -759,6 +759,7 @@ pub fn Spectrogram() -> impl IntoView {
                             zoom,
                             display_w as f64,
                             display_h as f64,
+                            state.is_mobile.get_untracked(),
                         );
                     }
                 }

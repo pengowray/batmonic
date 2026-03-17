@@ -82,8 +82,10 @@ pub fn is_in_ff_drag_zone(mouse_x: f64, canvas_width: f64) -> bool {
     (mouse_x - center_x).abs() <= FF_HANDLE_HALF_WIDTH
 }
 
-/// Pixel radius for annotation resize handle hit detection.
-const ANNOTATION_HANDLE_HIT_RADIUS: f64 = 8.0;
+/// Pixel radius for annotation resize handle hit detection (mouse).
+pub const ANNOTATION_HANDLE_HIT_RADIUS: f64 = 8.0;
+/// Pixel radius for annotation resize handle hit detection (touch/mobile).
+pub const ANNOTATION_HANDLE_HIT_RADIUS_TOUCH: f64 = 22.0;
 
 /// Compute the 8 (or 2 for segments) resize handle positions in pixel space for an annotation.
 /// Returns a list of (handle_position, px_x, px_y).
@@ -131,7 +133,7 @@ fn annotation_handle_positions(
 }
 
 /// Hit-test annotation resize handles for currently selected annotations.
-/// Returns the closest handle within ANNOTATION_HANDLE_HIT_RADIUS of (px_x, px_y), or None.
+/// Returns the closest handle within `hit_radius` pixels of (px_x, px_y), or None.
 pub fn hit_test_annotation_handles(
     annotation_set: &AnnotationSet,
     selected_ids: &[AnnotationId],
@@ -144,6 +146,7 @@ pub fn hit_test_annotation_handles(
     zoom: f64,
     canvas_width: f64,
     canvas_height: f64,
+    hit_radius: f64,
 ) -> Option<(AnnotationId, ResizeHandlePosition)> {
     if selected_ids.is_empty() {
         return None;
@@ -172,7 +175,7 @@ pub fn hit_test_annotation_handles(
 
         for (pos, hx, hy) in &handles {
             let d = ((px_x - hx).powi(2) + (px_y - hy).powi(2)).sqrt();
-            if d <= ANNOTATION_HANDLE_HIT_RADIUS {
+            if d <= hit_radius {
                 if best.as_ref().map_or(true, |(_, _, bd)| d < *bd) {
                     best = Some((ann.id.clone(), *pos, d));
                 }
