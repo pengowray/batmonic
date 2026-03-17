@@ -1413,6 +1413,63 @@ fn MainViewButton() -> impl IntoView {
                 }
             })}
 
+            // Waveform view gain (when Waveform is active)
+            {move || (state.main_view.get() == MainView::Waveform).then(|| {
+                view! {
+                    <hr />
+                    <div class="dsp-custom-section">
+                        <div class="dsp-custom-title">"Waveform Gain"</div>
+                        <div class="dsp-custom-slider-row">
+                            <button
+                                class=move || if state.wave_view_auto_gain.get() {
+                                    "layer-panel-opt selected"
+                                } else {
+                                    "layer-panel-opt"
+                                }
+                                style="font-size: 9px; padding: 2px 6px; width: auto; display: inline;"
+                                on:click=move |_| {
+                                    state.wave_view_auto_gain.set(!state.wave_view_auto_gain.get_untracked());
+                                }
+                            >"Auto"</button>
+                        </div>
+                        <div class="dsp-custom-slider-row">
+                            <span class="dsp-slider-label">"Gain"</span>
+                            <input
+                                type="range"
+                                class="setting-range"
+                                min="-12" max="60" step="1"
+                                prop:value=move || if state.wave_view_auto_gain.get() {
+                                    state.compute_auto_gain().to_string()
+                                } else {
+                                    state.wave_view_gain_db.get().to_string()
+                                }
+                                on:input=move |ev: web_sys::Event| {
+                                    let target = ev.target().unwrap();
+                                    let input: web_sys::HtmlInputElement = target.unchecked_into();
+                                    if let Ok(v) = input.value().parse::<f64>() {
+                                        state.wave_view_gain_db.set(v);
+                                        state.wave_view_auto_gain.set(false);
+                                    }
+                                }
+                                on:dblclick=move |_| {
+                                    state.wave_view_gain_db.set(0.0);
+                                    state.wave_view_auto_gain.set(false);
+                                }
+                            />
+                            <span class="dsp-custom-value">{move || {
+                                if state.wave_view_auto_gain.get() {
+                                    let db = state.compute_auto_gain();
+                                    if db.abs() < 0.5 { "auto".to_string() }
+                                    else { format!("a{:+.0}", db) }
+                                } else {
+                                    format!("{:+.0} dB", state.wave_view_gain_db.get())
+                                }
+                            }}</span>
+                        </div>
+                    </div>
+                }
+            })}
+
             // Flow algorithm options (when Flow is active)
             {move || (state.main_view.get() == MainView::Flow).then(|| {
                 view! {

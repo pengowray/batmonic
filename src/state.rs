@@ -656,6 +656,9 @@ pub struct AppState {
     pub gain_mode: RwSignal<GainMode>,
     /// Remembers last auto-gain mode so toggle restores it (default: Adaptive).
     pub gain_mode_last_auto: RwSignal<GainMode>,
+    // Waveform view gain (visual only, independent of audio gain)
+    pub wave_view_gain_db: RwSignal<f64>,
+    pub wave_view_auto_gain: RwSignal<bool>,
 
     // Channel
     pub channel_view: RwSignal<ChannelView>,
@@ -1051,6 +1054,8 @@ impl AppState {
             auto_gain: RwSignal::new(false),
             gain_mode: RwSignal::new(GainMode::Off),
             gain_mode_last_auto: RwSignal::new(GainMode::AutoPeak),
+            wave_view_gain_db: RwSignal::new(0.0),
+            wave_view_auto_gain: RwSignal::new(false),
 
             channel_view: RwSignal::new(ChannelView::Stereo),
 

@@ -92,11 +92,11 @@ pub fn Waveform() -> impl IntoView {
         let is_playing = state.is_playing.get();
         let canvas_tool = state.canvas_tool.get();
         let cv = state.channel_view.get();
-        let auto_gain = state.auto_gain.get();
-        let gain_db = if auto_gain {
+        let wave_auto = state.wave_view_auto_gain.get();
+        let gain_db = if wave_auto {
             state.compute_auto_gain()
         } else {
-            state.gain_db.get()
+            state.wave_view_gain_db.get()
         };
         // Re-read canvas dimensions when sidebar layout changes
         let _sidebar = state.sidebar_collapsed.get();
