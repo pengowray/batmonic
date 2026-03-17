@@ -412,7 +412,7 @@ impl AudioSource for StreamingWavSource {
         let head_end = self.head_frames as u64;
 
         match channel {
-            ChannelView::MonoMix => {
+            ChannelView::Stereo | ChannelView::MonoMix => {
                 if end <= head_end {
                     // Entirely within head
                     self.read_head_mono(start, buf)
@@ -928,7 +928,7 @@ impl AudioSource for StreamingFlacSource {
         let head_end = self.head_frames as u64;
 
         match channel {
-            ChannelView::MonoMix => {
+            ChannelView::Stereo | ChannelView::MonoMix => {
                 if end <= head_end {
                     self.read_head_mono(start, buf)
                 } else if start >= head_end {

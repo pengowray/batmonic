@@ -24,8 +24,10 @@ pub type SamplePos = u64;
 /// Channel selection for multi-channel files.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum ChannelView {
-    /// Average all channels (current default behavior).
+    /// Stereo playback (L+R to separate speakers), mono-mix for display.
     #[default]
+    Stereo,
+    /// Mono downmix of all channels (single channel for both display and playback).
     MonoMix,
     /// A specific channel by index (0 = first/left, 1 = second/right, etc.).
     Channel(u32),
@@ -179,7 +181,7 @@ impl AudioSource for InMemorySource {
         buf: &mut [f32],
     ) -> usize {
         match channel {
-            ChannelView::MonoMix => self.read_mono(start, buf),
+            ChannelView::Stereo | ChannelView::MonoMix => self.read_mono(start, buf),
             ChannelView::Channel(ch) => {
                 if self.channels == 1 {
                     self.read_mono(start, buf)
@@ -222,6 +224,7 @@ impl ChannelView {
     /// Short label for UI display.
     pub fn label(&self) -> &'static str {
         match self {
+            ChannelView::Stereo => "Stereo",
             ChannelView::MonoMix => "L+R",
             ChannelView::Channel(0) => "L",
             ChannelView::Channel(1) => "R",

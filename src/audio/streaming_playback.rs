@@ -164,9 +164,9 @@ pub(crate) fn start_stream(
         _ => sample_rate,
     };
 
-    // Stereo output: stereo source + MonoMix view (all modes, not just Normal)
+    // Stereo output: stereo source + Stereo view (all modes, not just Normal)
     let stereo_out = source.channel_count() >= 2
-        && channel_view == ChannelView::MonoMix;
+        && channel_view == ChannelView::Stereo;
 
     // Reuse existing AudioContext if its sample rate matches; otherwise create new.
     let ctx = STREAM_CTX.with(|c| {

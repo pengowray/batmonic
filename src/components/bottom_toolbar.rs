@@ -380,6 +380,7 @@ pub fn BottomToolbar() -> impl IntoView {
                                 return format!("Trk {}", track);
                             }
                             match state.channel_view.get() {
+                                ChannelView::Stereo => "Stereo".to_string(),
                                 ChannelView::MonoMix => "L+R".to_string(),
                                 ChannelView::Channel(0) => "L".to_string(),
                                 ChannelView::Channel(1) => "R".to_string(),
@@ -418,9 +419,13 @@ pub fn BottomToolbar() -> impl IntoView {
                                     {if is_stereo {
                                         Some(view! {
                                             <button
+                                                class=move || layer_opt_class(state.channel_view.get() == ChannelView::Stereo && state.active_timeline_track.with(|t| t.is_none()))
+                                                on:click=set_ch(ChannelView::Stereo)
+                                            >"Stereo"</button>
+                                            <button
                                                 class=move || layer_opt_class(state.channel_view.get() == ChannelView::MonoMix && state.active_timeline_track.with(|t| t.is_none()))
                                                 on:click=set_ch(ChannelView::MonoMix)
-                                            >"Mix (L+R)"</button>
+                                            >"Mono (L+R)"</button>
                                             <button
                                                 class=move || layer_opt_class(state.channel_view.get() == ChannelView::Channel(0) && state.active_timeline_track.with(|t| t.is_none()))
                                                 on:click=set_ch(ChannelView::Channel(0))

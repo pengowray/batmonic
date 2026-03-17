@@ -1052,7 +1052,7 @@ impl AppState {
             gain_mode: RwSignal::new(GainMode::Off),
             gain_mode_last_auto: RwSignal::new(GainMode::AutoPeak),
 
-            channel_view: RwSignal::new(ChannelView::MonoMix),
+            channel_view: RwSignal::new(ChannelView::Stereo),
 
             // New
             canvas_tool: RwSignal::new(CanvasTool::Hand),
