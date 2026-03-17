@@ -334,8 +334,9 @@ pub(crate) fn SelectionPanel() -> impl IntoView {
         if let (Some(sel), Some(idx)) = (selection, file_idx) {
             let has_freq = sel.freq_low.is_some() && sel.freq_high.is_some();
             state.snapshot_annotations();
+            let ann_id = generate_uuid();
             let annotation = Annotation {
-                id: generate_uuid(),
+                id: ann_id.clone(),
                 kind: AnnotationKind::Region(Region {
                     time_start: sel.time_start,
                     time_end: sel.time_end,
@@ -372,6 +373,9 @@ pub(crate) fn SelectionPanel() -> impl IntoView {
                 }
             });
             state.annotations_dirty.set(true);
+            // Clear the transient selection and select the new annotation
+            state.selection.set(None);
+            state.selected_annotation_ids.set(vec![ann_id]);
             state.show_info_toast(if has_freq { "Region annotated" } else { "Segment annotated" });
         }
     };
