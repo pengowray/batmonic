@@ -236,7 +236,7 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
     // For streaming files, tiles are computed on-demand by tile_cache.
     // Schedule visible tiles to kick off the initial view.
     use crate::canvas::{spectral_store, tile_cache};
-    spectral_store::init(file_index, total_cols);
+    spectral_store::init(file_index, total_cols, fft_size);
 
     // Prefetch first viewport worth of audio, then schedule tiles
     let audio_ref = state.files.get_untracked().get(file_index).cloned();
@@ -507,7 +507,7 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
     }
 
     use crate::canvas::{spectral_store, tile_cache};
-    spectral_store::init(file_index, total_cols);
+    spectral_store::init(file_index, total_cols, fft_size);
 
     // Prefetch first viewport and schedule tiles
     {
@@ -859,7 +859,7 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
     }
 
     use crate::canvas::{spectral_store, tile_cache};
-    spectral_store::init(file_index, total_cols);
+    spectral_store::init(file_index, total_cols, fft_size);
 
     // Prefetch first viewport and schedule tiles
     {
@@ -1210,7 +1210,7 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
     }
 
     use crate::canvas::{spectral_store, tile_cache};
-    spectral_store::init(file_index, total_cols);
+    spectral_store::init(file_index, total_cols, fft_size);
 
     // Prefetch first viewport and schedule tiles
     {

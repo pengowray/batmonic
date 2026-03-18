@@ -329,11 +329,13 @@ thread_local! {
     static FLOW_CACHE: RefCell<TileCache> = RefCell::new(TileCache::new(FLOW_MAX_BYTES));
     static FLOW_IN_FLIGHT: RefCell<HashMap<CacheKey, f64>> =
         RefCell::new(HashMap::new());
+    static FLOW_CACHE_GENERATION: RefCell<u64> = RefCell::new(0);
 
     /// Reassignment spectrogram tile cache — multi-LOD, same CacheKey as magnitude tiles.
     static REASSIGN_CACHE: RefCell<TileCache> = RefCell::new(TileCache::new(REASSIGN_MAX_BYTES));
     static REASSIGN_IN_FLIGHT: RefCell<HashMap<CacheKey, f64>> =
         RefCell::new(HashMap::new());
+    static REASSIGN_CACHE_GENERATION: RefCell<u64> = RefCell::new(0);
 
     /// Chromagram tile cache (LOD1-only).
     static CHROMA_CACHE: RefCell<ChromaTileCache> = RefCell::new(ChromaTileCache::new(CHROMA_MAX_BYTES));
@@ -579,6 +581,20 @@ fn reassign_request_still_active(key: &CacheKey) -> bool {
     REASSIGN_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), key))
 }
 
+fn active_lod1_fft(state: AppState) -> usize {
+    state.spect_fft_mode.get_untracked().fft_for_lod(LOD_CONFIGS[1].hop_size)
+}
+
+fn spectrogram_fft_size(data: &crate::types::SpectrogramData) -> Option<usize> {
+    if let Some(first) = data.columns.first() {
+        return Some(first.magnitudes.len().saturating_sub(1) * 2);
+    }
+    if data.freq_resolution > 0.0 {
+        return Some((data.sample_rate as f64 / data.freq_resolution).round() as usize);
+    }
+    None
+}
+
 /// Returns the number of complete LOD1 tiles for a file currently in the cache.
 pub fn tiles_ready(file_idx: usize, n_tiles: usize) -> usize {
     CACHE.with(|c| {
@@ -734,10 +750,18 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
 /// Schedule generation of a LOD1 tile from in-memory spectrogram columns.
 /// Used during initial file loading when LoadedFile.spectrogram.columns is available.
 pub fn schedule_tile(state: AppState, file: LoadedFile, file_idx: usize, tile_idx: usize) {
+    let expected_fft = active_lod1_fft(state);
+    if spectrogram_fft_size(&file.spectrogram) != Some(expected_fft) {
+        schedule_tile_on_demand(state, file_idx, tile_idx);
+        return;
+    }
+
     let key: CacheKey = (file_idx, 1, tile_idx);
     if CACHE.with(|c| c.borrow().tiles.contains_key(&key)) { return; }
     if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
+
+    let gen = CACHE_GENERATION.with(|g| *g.borrow());
 
     spawn_local(async move {
         yield_to_browser().await;
@@ -775,6 +799,13 @@ pub fn schedule_tile(state: AppState, file: LoadedFile, file_idx: usize, tile_id
             &file.spectrogram.columns[col_start..col_end],
         );
 
+        let current_gen = CACHE_GENERATION.with(|g| *g.borrow());
+        if current_gen != gen {
+            IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
+            state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
+            return;
+        }
+
         CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
         state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
@@ -797,11 +828,12 @@ pub fn schedule_all_tiles(state: AppState, file: LoadedFile, file_idx: usize) {
 }
 
 /// Render a LOD1 tile synchronously from the spectral column store.
-pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize) -> bool {
+pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize, expected_fft: usize) -> bool {
     use crate::canvas::spectral_store;
 
     let key: CacheKey = (file_idx, 1, tile_idx);
     if CACHE.with(|c| c.borrow().tiles.contains_key(&key)) { return true; }
+    if !spectral_store::fft_matches(file_idx, expected_fft) { return false; }
 
     let col_start = tile_idx * TILE_COLS;
     let col_end = col_start + TILE_COLS;
@@ -819,8 +851,12 @@ pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize) -> bool {
 }
 
 /// Render a partial (live) LOD1 tile from the spectral store.
-pub fn render_live_tile_sync(file_idx: usize, tile_idx: usize, col_start: usize, available_cols: usize) -> bool {
+pub fn render_live_tile_sync(file_idx: usize, tile_idx: usize, col_start: usize, available_cols: usize, expected_fft: usize) -> bool {
     use crate::canvas::spectral_store;
+
+    if !spectral_store::fft_matches(file_idx, expected_fft) {
+        return false;
+    }
 
     let col_end = col_start + available_cols;
     let rendered = spectral_store::with_columns(file_idx, col_start, col_end, |cols, _max_mag| {
@@ -890,10 +926,18 @@ pub fn render_live_tile_sync(file_idx: usize, tile_idx: usize, col_start: usize,
 pub fn schedule_tile_from_store(state: AppState, file_idx: usize, tile_idx: usize) {
     use crate::canvas::spectral_store;
 
+    let expected_fft = active_lod1_fft(state);
+    if !spectral_store::fft_matches(file_idx, expected_fft) {
+        schedule_tile_on_demand(state, file_idx, tile_idx);
+        return;
+    }
+
     let key: CacheKey = (file_idx, 1, tile_idx);
     if CACHE.with(|c| c.borrow().tiles.contains_key(&key)) { return; }
     if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
+
+    let gen = CACHE_GENERATION.with(|g| *g.borrow());
 
     spawn_local(async move {
         yield_to_browser().await;
@@ -935,6 +979,12 @@ pub fn schedule_tile_from_store(state: AppState, file_idx: usize, tile_idx: usiz
         });
 
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
+
+        let current_gen = CACHE_GENERATION.with(|g| *g.borrow());
+        if current_gen != gen {
+            state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
+            return;
+        }
 
         if let Some(rendered) = rendered {
             CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
@@ -1069,6 +1119,8 @@ pub fn schedule_tile_on_demand(
 
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
+    let gen = CACHE_GENERATION.with(|g| *g.borrow());
+
     spawn_local(async move {
         yield_to_browser().await;
 
@@ -1103,7 +1155,7 @@ pub fn schedule_tile_on_demand(
         let cv = state.channel_view.get_untracked();
         let col_start = tile_idx * TILE_COLS;
         let hop_size = 512usize;
-        let fft_size = 2048usize;
+        let fft_size = state.spect_fft_mode.get_untracked().fft_for_lod(hop_size);
 
         // Read only the sample region needed for this tile
         let sample_start = col_start * hop_size;
@@ -1128,6 +1180,13 @@ pub fn schedule_tile_on_demand(
         spectral_store::insert_columns(file_idx, col_start, &cols);
 
         let rendered = spectrogram_renderer::pre_render_columns(&cols);
+
+        let current_gen = CACHE_GENERATION.with(|g| *g.borrow());
+        if current_gen != gen {
+            IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
+            state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
+            return;
+        }
 
         CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
@@ -1160,11 +1219,13 @@ pub fn borrow_flow_tile<R>(file_idx: usize, lod: u8, tile_idx: usize, f: impl Fn
 pub fn clear_flow_cache() {
     FLOW_CACHE.with(|c| c.borrow_mut().clear_all());
     FLOW_IN_FLIGHT.with(|s| s.borrow_mut().clear());
+    FLOW_CACHE_GENERATION.with(|g| *g.borrow_mut() += 1);
 }
 
 pub fn clear_flow_file(file_idx: usize) {
     FLOW_CACHE.with(|c| c.borrow_mut().clear_for_file(file_idx));
     FLOW_IN_FLIGHT.with(|s| s.borrow_mut().retain(|k, _| k.0 != file_idx));
+    FLOW_CACHE_GENERATION.with(|g| *g.borrow_mut() += 1);
 }
 
 /// Schedule a flow tile for background generation at any LOD.
@@ -1192,6 +1253,8 @@ pub fn schedule_flow_tile(
     if tile_idx >= max_tiles { return; }
 
     FLOW_IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
+
+    let gen = FLOW_CACHE_GENERATION.with(|g| *g.borrow());
 
     let config_hop = LOD_CONFIGS[lod as usize].hop_size;
     let actual_fft = state.spect_fft_mode.get_untracked().fft_for_lod(config_hop);
@@ -1317,6 +1380,13 @@ pub fn schedule_flow_tile(
             }
         };
 
+        let current_gen = FLOW_CACHE_GENERATION.with(|g| *g.borrow());
+        if current_gen != gen {
+            FLOW_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
+            state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
+            return;
+        }
+
         FLOW_CACHE.with(|c| c.borrow_mut().insert(file_idx, lod, tile_idx, rendered));
         FLOW_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
         state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
@@ -1348,11 +1418,13 @@ pub fn borrow_reassign_tile<R>(file_idx: usize, lod: u8, tile_idx: usize, f: imp
 pub fn clear_reassign_cache() {
     REASSIGN_CACHE.with(|c| c.borrow_mut().clear_all());
     REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().clear());
+    REASSIGN_CACHE_GENERATION.with(|g| *g.borrow_mut() += 1);
 }
 
 pub fn clear_reassign_file(file_idx: usize) {
     REASSIGN_CACHE.with(|c| c.borrow_mut().clear_for_file(file_idx));
     REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().retain(|k, _| k.0 != file_idx));
+    REASSIGN_CACHE_GENERATION.with(|g| *g.borrow_mut() += 1);
 }
 
 /// Schedule a reassignment spectrogram tile for background generation.
@@ -1378,6 +1450,8 @@ pub fn schedule_reassign_tile(
     if tile_idx >= max_tiles { return; }
 
     REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
+
+    let gen = REASSIGN_CACHE_GENERATION.with(|g| *g.borrow());
 
     let config_hop = LOD_CONFIGS[lod as usize].hop_size;
     let actual_fft = state.spect_fft_mode.get_untracked().fft_for_lod(config_hop);
@@ -1450,6 +1524,13 @@ pub fn schedule_reassign_tile(
         let rendered = compute_reassigned_tile(
             samples, TILE_COLS, actual_fft, config_hop, -60.0,
         );
+
+        let current_gen = REASSIGN_CACHE_GENERATION.with(|g| *g.borrow());
+        if current_gen != gen {
+            REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
+            state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
+            return;
+        }
 
         REASSIGN_CACHE.with(|c| c.borrow_mut().insert(file_idx, lod, tile_idx, rendered));
         REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));

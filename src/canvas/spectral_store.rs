@@ -24,6 +24,8 @@ const APPROX_BYTES_PER_COL: usize = 1025 * 4 + 8 + 24;
 struct SpectralColumnStore {
     /// Columns indexed by spectrogram column number.  `None` = not yet computed / evicted.
     columns: Vec<Option<SpectrogramColumn>>,
+    /// FFT size used to compute these columns.
+    fft_size: usize,
     /// Running maximum magnitude across all inserted columns.
     max_magnitude: f32,
     /// Number of `Some` columns currently stored.
@@ -42,10 +44,11 @@ fn total_bytes(stores: &HashMap<usize, SpectralColumnStore>) -> usize {
 }
 
 /// Initialise (or reset) the store for a file.
-pub fn init(file_idx: usize, total_cols: usize) {
+pub fn init(file_idx: usize, total_cols: usize, fft_size: usize) {
     STORES.with(|s| {
         s.borrow_mut().insert(file_idx, SpectralColumnStore {
             columns: (0..total_cols).map(|_| None).collect(),
+            fft_size,
             max_magnitude: 0.0,
             present_count: 0,
         });
@@ -150,6 +153,7 @@ pub fn ensure_capacity(file_idx: usize, new_total: usize) {
             None => {
                 stores.insert(file_idx, SpectralColumnStore {
                     columns: (0..new_total).map(|_| None).collect(),
+                    fft_size: 0,
                     max_magnitude: 0.0,
                     present_count: 0,
                 });
@@ -222,6 +226,16 @@ pub fn compute_chroma_global_max(file_idx: usize, freq_resolution: f64) -> Optio
 /// Check whether a store exists for a file (i.e. it's still alive for large-file mode).
 pub fn has_store(file_idx: usize) -> bool {
     STORES.with(|s| s.borrow().contains_key(&file_idx))
+}
+
+/// Return the FFT size associated with a file's stored columns.
+pub fn fft_size(file_idx: usize) -> Option<usize> {
+    STORES.with(|s| s.borrow().get(&file_idx).map(|store| store.fft_size))
+}
+
+/// Check whether a file's stored columns were computed with the expected FFT size.
+pub fn fft_matches(file_idx: usize, expected_fft_size: usize) -> bool {
+    fft_size(file_idx) == Some(expected_fft_size)
 }
 
 /// Drain all columns from the store and return them as a contiguous Vec.

@@ -100,7 +100,7 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
         let is_tauri = state.is_tauri;
 
         // Initialize spectral store (will grow as recording progresses)
-        spectral_store::ensure_capacity(file_index, 0);
+        spectral_store::init(file_index, 0, fft_size);
 
         loop {
             // Wait ~200ms
@@ -211,14 +211,14 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
                     let tile_end = tile_start + TILE_COLS;
                     if tile_end <= tw.total_cols {
                         if spectral_store::tile_complete(file_index, tile_start, tile_end) {
-                            tile_cache::render_tile_from_store_sync(file_index, tile_idx);
+                            tile_cache::render_tile_from_store_sync(file_index, tile_idx, fft_size);
                         }
                     }
                 }
 
                 // Render the rightmost partial (live) tile
                 if tw.live_cols > 0 && tw.live_cols < TILE_COLS {
-                    tile_cache::render_live_tile_sync(file_index, tw.live_tile_idx, tw.live_tile_start, tw.live_cols);
+                    tile_cache::render_live_tile_sync(file_index, tw.live_tile_idx, tw.live_tile_start, tw.live_cols, fft_size);
                 }
             }
 
@@ -572,7 +572,7 @@ pub(crate) fn spawn_spectrogram_computation(
         use crate::canvas::tile_cache::{self, TILE_COLS};
 
         // Initialise spectral store for progressive tile generation
-        spectral_store::init(file_index, total_cols);
+        spectral_store::init(file_index, total_cols, FFT_SIZE);
 
         let n_tiles = (total_cols + TILE_COLS - 1) / TILE_COLS;
         let mut tile_scheduled = vec![false; n_tiles];
@@ -609,7 +609,7 @@ pub(crate) fn spawn_spectrogram_computation(
                 let tile_start = tile_idx * TILE_COLS;
                 let tile_end = (tile_start + TILE_COLS).min(total_cols);
                 if spectral_store::tile_complete(file_index, tile_start, tile_end) {
-                    if tile_cache::render_tile_from_store_sync(file_index, tile_idx) {
+                    if tile_cache::render_tile_from_store_sync(file_index, tile_idx, FFT_SIZE) {
                         any_tile_rendered = true;
                     }
                     tile_scheduled[tile_idx] = true;

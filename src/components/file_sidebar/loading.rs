@@ -237,7 +237,7 @@ pub(crate) async fn load_named_bytes(name: String, bytes: &[u8], xc_metadata: Op
     // Initialise the spectral column store for incremental tile generation
     use crate::canvas::spectral_store;
     use crate::canvas::tile_cache::{self, TILE_COLS};
-    spectral_store::init(file_index, total_cols);
+    spectral_store::init(file_index, total_cols, fft_size);
 
     // Build chunk schedule: viewport-first expanding order
     let time_resolution = HOP_SIZE as f64 / audio_for_stft.sample_rate as f64;
@@ -298,7 +298,7 @@ pub(crate) async fn load_named_bytes(name: String, bytes: &[u8], xc_metadata: Op
             let tile_start = tile_idx * TILE_COLS;
             let tile_end = (tile_start + TILE_COLS).min(total_cols);
             if spectral_store::tile_complete(file_index, tile_start, tile_end) {
-                if tile_cache::render_tile_from_store_sync(file_index, tile_idx) {
+                if tile_cache::render_tile_from_store_sync(file_index, tile_idx, fft_size) {
                     any_tile_rendered = true;
                 }
                 tile_scheduled[tile_idx] = true;
