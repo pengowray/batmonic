@@ -342,7 +342,14 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                 }
                                 on:click=on_click
                             >
-                                {preview.map(|pv| view! { <PreviewCanvas preview=pv /> })}
+                                {preview.map(|pv| {
+                    let show = state.show_file_previews;
+                    view! {
+                        <Show when=move || show.get()>
+                            <PreviewCanvas preview=pv.clone() />
+                        </Show>
+                    }
+                })}
                                 <div class="file-item-header">
                                     <div class="file-item-name">
                                         {if show_unsaved {
@@ -588,12 +595,24 @@ fn SortBar(sort_mode: FileSortMode) -> impl IntoView {
         sort_signal.set(mode);
     };
 
+    let show_previews = state.show_file_previews;
+    let on_toggle_previews = move |_: web_sys::MouseEvent| {
+        show_previews.update(|v| *v = !*v);
+    };
+
     view! {
         <div class="file-sort-bar">
             <span class="file-sort-label">"Sort:"</span>
             <select class="file-sort-select" on:change=on_change>
                 {options}
             </select>
+            <button
+                class=move || if show_previews.get() { "file-preview-toggle active" } else { "file-preview-toggle" }
+                title=move || if show_previews.get() { "Hide previews" } else { "Show previews" }
+                on:click=on_toggle_previews
+            >
+                "\u{1F5BC}\u{FE0E}"
+            </button>
         </div>
     }
 }
