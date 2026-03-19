@@ -53,13 +53,10 @@ pub fn BottomToolbar() -> impl IntoView {
     let play_is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::PlayMode));
 
     let play_left_class = Signal::derive(move || {
-        let playing = state.is_playing.get();
-        let open = play_is_open.get();
-        match (playing, open) {
-            (true, true) => "layer-btn combo-btn-left active open",
-            (true, false) => "layer-btn combo-btn-left active",
-            (false, true) => "layer-btn combo-btn-left open",
-            (false, false) => "layer-btn combo-btn-left",
+        if state.is_playing.get() {
+            "layer-btn combo-btn-left active"
+        } else {
+            "layer-btn combo-btn-left"
         }
     });
     let play_right_class = Signal::derive(move || {
@@ -100,15 +97,12 @@ pub fn BottomToolbar() -> impl IntoView {
     let rec_is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::RecordMode));
 
     let rec_left_class = Signal::derive(move || {
-        let recording = state.mic_recording.get();
-        let listen_only = state.record_mode.get() == RecordMode::ListenOnly;
-        let open = rec_is_open.get();
-        if recording {
-            if open { "layer-btn combo-btn-left mic-recording open" } else { "layer-btn combo-btn-left mic-recording" }
-        } else if listen_only {
-            if open { "layer-btn combo-btn-left disabled open" } else { "layer-btn combo-btn-left disabled" }
+        if state.mic_recording.get() {
+            "layer-btn combo-btn-left mic-recording"
+        } else if state.record_mode.get() == RecordMode::ListenOnly {
+            "layer-btn combo-btn-left disabled"
         } else {
-            if open { "layer-btn combo-btn-left open" } else { "layer-btn combo-btn-left" }
+            "layer-btn combo-btn-left"
         }
     });
     let rec_right_class = Signal::derive(move || {
@@ -214,14 +208,10 @@ pub fn BottomToolbar() -> impl IntoView {
                 let gain_is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::Gain));
 
                 let gain_left_class = Signal::derive(move || {
-                    let mode = state.gain_mode.get();
-                    let open = gain_is_open.get();
-                    let active = mode != GainMode::Off;
-                    match (active, open) {
-                        (true, true) => "layer-btn combo-btn-left active open",
-                        (true, false) => "layer-btn combo-btn-left active",
-                        (false, true) => "layer-btn combo-btn-left no-annotation open",
-                        (false, false) => "layer-btn combo-btn-left no-annotation",
+                    if state.gain_mode.get() != GainMode::Off {
+                        "layer-btn combo-btn-left active"
+                    } else {
+                        "layer-btn combo-btn-left no-annotation"
                     }
                 });
                 let gain_right_class = Signal::derive(move || {

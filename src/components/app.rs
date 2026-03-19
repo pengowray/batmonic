@@ -1004,7 +1004,7 @@ fn MainViewButton() -> impl IntoView {
     let is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::MainView));
 
     let left_class = Signal::derive(move || {
-        if is_open.get() { "layer-btn combo-btn-left open" } else { "layer-btn combo-btn-left" }
+        "layer-btn combo-btn-left"
     });
     let right_class = Signal::derive(move || {
         if is_open.get() { "layer-btn combo-btn-right dim open" } else { "layer-btn combo-btn-right dim" }

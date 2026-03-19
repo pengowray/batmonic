@@ -183,13 +183,10 @@ pub fn HfrButton() -> impl IntoView {
     let is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::HfrMode));
 
     let left_class = Signal::derive(move || {
-        let hfr = state.hfr_enabled.get();
-        let open = is_open.get();
-        match (hfr, open) {
-            (true, true) => "layer-btn combo-btn-left no-annotation active open",
-            (true, false) => "layer-btn combo-btn-left no-annotation active",
-            (false, true) => "layer-btn combo-btn-left no-annotation open",
-            (false, false) => "layer-btn combo-btn-left no-annotation",
+        if state.hfr_enabled.get() {
+            "layer-btn combo-btn-left no-annotation active"
+        } else {
+            "layer-btn combo-btn-left no-annotation"
         }
     });
     let right_class = Signal::derive(move || {
