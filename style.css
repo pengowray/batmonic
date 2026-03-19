@@ -2032,6 +2032,9 @@ body.sidebar-resizing {
     /* overflow: visible so layer-panels can extend above this container */
     overflow: visible;
     min-height: 0;
+    /* Layer-panel dropdowns inside main-overlays must paint above the
+       bottom-toolbar (z-index: 15) which is a sibling of this element. */
+    z-index: 16;
 }
 
 /* Spectrogram and waveform canvases clip their own content */
@@ -2469,6 +2472,7 @@ body.sidebar-resizing {
 .layer-panel {
     pointer-events: auto;
     position: absolute;
+    z-index: 50;
     background: rgba(16, 16, 16, 0.97);
     border: 1px solid #3a3a3a;
     border-radius: 8px;
