@@ -214,15 +214,6 @@ pub enum SpectrogramHandle {
     HetBandLower,  // HET lower band edge
 }
 
-/// How TE / PS factors are auto-computed from the FF range.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub enum AutoFactorMode {
-    #[default]
-    Target3k,    // factor = FF_center / 3000
-    MinAudible,  // factor = FF_high / 20000
-    Fixed10x,    // factor = 10
-}
-
 /// How the Play button initiates playback.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum PlayStartMode {
@@ -745,7 +736,9 @@ pub struct AppState {
     pub te_factor_auto: RwSignal<bool>,
     pub ps_factor_auto: RwSignal<bool>,
     pub pv_factor_auto: RwSignal<bool>,
-    pub auto_factor_mode: RwSignal<AutoFactorMode>,
+
+    /// Output frequency range to highlight on spectrogram (set by hover in HFR panel).
+    pub output_freq_highlight: RwSignal<Option<(f64, f64)>>,
 
     // Microphone (independent listen + record)
     pub mic_listening: RwSignal<bool>,
@@ -1097,7 +1090,7 @@ impl AppState {
             te_factor_auto: RwSignal::new(true),
             ps_factor_auto: RwSignal::new(true),
             pv_factor_auto: RwSignal::new(true),
-            auto_factor_mode: RwSignal::new(AutoFactorMode::Target3k),
+            output_freq_highlight: RwSignal::new(None),
             mic_listening: RwSignal::new(false),
             mic_recording: RwSignal::new(false),
             mic_sample_rate: RwSignal::new(0),

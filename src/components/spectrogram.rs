@@ -131,6 +131,7 @@ pub fn Spectrogram() -> impl IntoView {
         let het_freq_auto = state.het_freq_auto.get();
         let het_cutoff_auto = state.het_cutoff_auto.get();
         let hfr_enabled = state.hfr_enabled.get();
+        let output_freq_hl = state.output_freq_highlight.get();
         let flow_on = state.flow_enabled.get_untracked();
         let _flow_ig = state.flow_intensity_gate.get(); // trigger redraw on flow setting change
         let _flow_mg = state.flow_gate.get();
@@ -726,6 +727,30 @@ pub fn Spectrogram() -> impl IntoView {
                     spec_hover, spec_drag,
                     state.is_mobile.get_untracked(),
                 );
+            }
+
+            // Output frequency highlight (from HFR panel hover)
+            if let Some((hl_lo, hl_hi)) = output_freq_hl {
+                if hl_hi > hl_lo && !xform_on {
+                    let ch = display_h as f64;
+                    let freq_range = max_freq - min_freq;
+                    if freq_range > 0.0 {
+                        let y_top = ch * (1.0 - (hl_hi - min_freq) / freq_range);
+                        let y_bot = ch * (1.0 - (hl_lo - min_freq) / freq_range);
+                        // Semi-transparent blue band
+                        ctx.set_fill_style_str("rgba(100, 180, 255, 0.15)");
+                        ctx.fill_rect(0.0, y_top, display_w as f64, y_bot - y_top);
+                        // Edge lines
+                        ctx.set_stroke_style_str("rgba(100, 180, 255, 0.5)");
+                        ctx.set_line_width(1.0);
+                        ctx.begin_path();
+                        ctx.move_to(0.0, y_top);
+                        ctx.line_to(display_w as f64, y_top);
+                        ctx.move_to(0.0, y_bot);
+                        ctx.line_to(display_w as f64, y_bot);
+                        ctx.stroke();
+                    }
+                }
             }
 
             // HET overlay (cyan lines on top, no dimming) — skip in xform view

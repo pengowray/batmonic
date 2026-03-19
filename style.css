@@ -2694,6 +2694,67 @@ body.sidebar-resizing {
     background: rgba(0,200,255,0.15);
 }
 
+/* Factor text input (editable value next to slider) */
+.factor-input {
+    all: unset;
+    width: 36px;
+    min-width: 36px;
+    font-size: 11px;
+    color: #ccc;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 3px;
+    padding: 1px 4px;
+    cursor: text;
+}
+.factor-input:focus {
+    outline: 1px solid rgba(0,200,255,0.4);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+/* Factor preset buttons row */
+.factor-presets {
+    display: flex;
+    gap: 2px;
+    padding: 2px 8px 4px 10px;
+}
+.factor-preset {
+    all: unset;
+    font-size: 10px;
+    color: #888;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    cursor: pointer;
+    text-align: center;
+    flex: 1;
+}
+.factor-preset:hover {
+    color: #ccc;
+    background: rgba(255,255,255,0.12);
+}
+.factor-preset.sel {
+    color: #0cf;
+    background: rgba(0,200,255,0.15);
+}
+
+/* Frequency summary (Input/Output display) */
+.freq-summary {
+    padding: 2px 10px 4px;
+    font-size: 10px;
+    color: #888;
+    line-height: 1.4;
+}
+.freq-summary-output {
+    cursor: default;
+}
+.freq-summary-output:hover {
+    color: #6cf;
+}
+
 /* Layer panel container: wraps button + panel for positioning */
 .layer-anchor {
     position: absolute;

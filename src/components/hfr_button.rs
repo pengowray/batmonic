@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use crate::state::{AppState, AutoFactorMode, BandpassMode, BandpassRange, FilterQuality, LayerPanel, PlaybackMode, SpectrogramHandle};
+use crate::state::{AppState, BandpassMode, BandpassRange, FilterQuality, LayerPanel, PlaybackMode, SpectrogramHandle};
 use crate::components::combo_button::ComboButton;
 
 fn layer_opt_class(active: bool) -> &'static str {
@@ -10,6 +10,103 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
     state.layer_panel_open.update(|p| {
         *p = if *p == Some(panel) { None } else { Some(panel) };
     });
+}
+
+/// Compute the best auto factor for shifting FF center into audible range.
+/// Prefers 8x, then other 2^n, then 10, then best integer, then exact ratio.
+fn smart_auto_factor(ff_lo: f64, ff_hi: f64, max_factor: f64) -> f64 {
+    let ff_center = (ff_lo + ff_hi) / 2.0;
+    if ff_center <= 0.0 { return 10.0; }
+
+    let target = 3000.0;
+    let shifting_down = ff_center > target;
+
+    if shifting_down {
+        let ideal = ff_center / target;
+
+        // Check preferred factors in order: 8, then other 2^n, then 10
+        let preferred: &[f64] = &[8.0, 4.0, 16.0, 2.0, 32.0, 10.0];
+        let comfortable = |f: f64| {
+            let out = ff_center / f;
+            out >= 1000.0 && out <= 6000.0
+        };
+
+        for &f in preferred {
+            if f <= max_factor && comfortable(f) { return f; }
+        }
+
+        // Best integer
+        let best_int = ideal.round().clamp(2.0, max_factor);
+        if comfortable(best_int) { return best_int; }
+
+        // Exact ratio
+        ideal.clamp(2.0, max_factor)
+    } else {
+        // Sub-audible: need to pitch up (negative factor)
+        let ideal = target / ff_center;
+        let preferred: &[f64] = &[8.0, 4.0, 16.0, 2.0, 32.0, 10.0];
+        let comfortable = |f: f64| {
+            let out = ff_center * f;
+            out >= 1000.0 && out <= 6000.0
+        };
+
+        for &f in preferred {
+            if f <= max_factor && comfortable(f) { return -f; }
+        }
+
+        let best_int = ideal.round().clamp(2.0, max_factor);
+        if comfortable(best_int) { return -best_int; }
+
+        -(ideal.clamp(2.0, max_factor))
+    }
+}
+
+/// Compute output frequency given input frequency and factor.
+/// Positive factor = divide (shift down), negative = multiply (shift up).
+fn output_freq(input: f64, factor: f64) -> f64 {
+    if factor > 0.0 { input / factor }
+    else if factor < 0.0 { input * factor.abs() }
+    else { input }
+}
+
+/// Format a frequency for display (e.g. "45.0k", "1.8k", "800").
+fn format_freq_khz(f: f64) -> String {
+    if f >= 1000.0 {
+        let khz = f / 1000.0;
+        if (khz - khz.round()).abs() < 0.05 {
+            format!("{}k", khz.round() as i32)
+        } else {
+            format!("{:.1}k", khz)
+        }
+    } else {
+        format!("{:.0}", f)
+    }
+}
+
+/// Format a factor value for display in the text input.
+fn format_factor_value(f: f64) -> String {
+    let abs = f.abs();
+    let num = if (abs - abs.round()).abs() < 0.001 {
+        format!("{}", abs.round() as i32)
+    } else {
+        format!("{:.1}", abs)
+    };
+    if f < -1.0 {
+        format!("\u{00f7}{}", num) // ÷N
+    } else {
+        num
+    }
+}
+
+/// Parse a user-entered factor string. Accepts "10", "10.5", "-2", "÷2", etc.
+fn parse_factor_input(s: &str) -> Option<f64> {
+    let s = s.trim();
+    if let Some(rest) = s.strip_prefix('\u{00f7}') {
+        // ÷N → negative factor
+        rest.trim().parse::<f64>().ok().map(|v| -v.abs())
+    } else {
+        s.parse::<f64>().ok()
+    }
 }
 
 #[component]
@@ -39,11 +136,10 @@ pub fn HfrButton() -> impl IntoView {
         }
     });
 
-    // ── Effect B: FF range → auto parameter values ──
+    // ── Effect B: FF range → auto parameter values (smart auto) ──
     Effect::new(move || {
         let ff_lo = state.ff_freq_lo.get();
         let ff_hi = state.ff_freq_hi.get();
-        let mode = state.auto_factor_mode.get();
 
         if ff_hi <= ff_lo {
             return;
@@ -59,36 +155,16 @@ pub fn HfrButton() -> impl IntoView {
             state.het_cutoff.set((ff_bandwidth / 2.0).min(15_000.0));
         }
 
-        let ratio = match mode {
-            AutoFactorMode::Target3k => ff_center / 3000.0,
-            AutoFactorMode::MinAudible => ff_hi / 20_000.0,
-            AutoFactorMode::Fixed10x => {
-                if ff_center < 3000.0 { 0.1 } else { 10.0 }
-            }
-        };
-
         if state.te_factor_auto.get_untracked() {
-            let te = if ratio >= 1.0 {
-                ratio.round().clamp(2.0, 40.0)
-            } else {
-                -(1.0 / ratio).round().clamp(2.0, 40.0)
-            };
+            let te = smart_auto_factor(ff_lo, ff_hi, 40.0);
             state.te_factor.set(te);
         }
         if state.ps_factor_auto.get_untracked() {
-            let ps = if ratio >= 1.0 {
-                ratio.round().clamp(2.0, 20.0)
-            } else {
-                -(1.0 / ratio).round().clamp(2.0, 20.0)
-            };
+            let ps = smart_auto_factor(ff_lo, ff_hi, 20.0);
             state.ps_factor.set(ps);
         }
         if state.pv_factor_auto.get_untracked() {
-            let pv = if ratio >= 1.0 {
-                ratio.round().clamp(2.0, 20.0)
-            } else {
-                -(1.0 / ratio).round().clamp(2.0, 20.0)
-            };
+            let pv = smart_auto_factor(ff_lo, ff_hi, 20.0);
             state.pv_factor.set(pv);
         }
     });
@@ -232,6 +308,7 @@ pub fn HfrButton() -> impl IntoView {
         }
     };
 
+    // ── Slider change handlers ──
     let on_te_change = move |ev: web_sys::Event| {
         use wasm_bindgen::JsCast;
         let input: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -269,6 +346,71 @@ pub fn HfrButton() -> impl IntoView {
             state.playback_mode.set(PlaybackMode::ZeroCrossing);
             state.zc_factor.set(val);
         }
+    };
+
+    // ── Text input change handlers ──
+    let on_te_text = move |ev: web_sys::Event| {
+        use wasm_bindgen::JsCast;
+        let input: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
+        if let Some(val) = parse_factor_input(&input.value()) {
+            state.te_factor_auto.set(false);
+            state.te_factor.set(val);
+        }
+    };
+
+    let on_ps_text = move |ev: web_sys::Event| {
+        use wasm_bindgen::JsCast;
+        let input: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
+        if let Some(val) = parse_factor_input(&input.value()) {
+            state.ps_factor_auto.set(false);
+            state.ps_factor.set(val);
+        }
+    };
+
+    let on_pv_text = move |ev: web_sys::Event| {
+        use wasm_bindgen::JsCast;
+        let input: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
+        if let Some(val) = parse_factor_input(&input.value()) {
+            state.pv_factor_auto.set(false);
+            state.pv_factor.set(val);
+        }
+    };
+
+    // ── Preset click helpers ──
+    let make_preset_click = move |factor_signal: RwSignal<f64>, auto_signal: RwSignal<bool>, mode: PlaybackMode, value: f64| {
+        move |_: web_sys::MouseEvent| {
+            auto_signal.set(false);
+            factor_signal.set(value);
+            state.playback_mode.set(mode);
+        }
+    };
+
+    // Preset values: ÷2, 2, 4, 8, 10, 16
+    let preset_values: [(f64, &str); 6] = [
+        (-2.0, "\u{00f7}2x"),
+        (2.0, "2x"),
+        (4.0, "4x"),
+        (8.0, "8x"),
+        (10.0, "10x"),
+        (16.0, "16x"),
+    ];
+
+    // ── Output freq hover helpers ──
+    let set_output_highlight = move |factor_signal: RwSignal<f64>| {
+        move |_: web_sys::MouseEvent| {
+            let f = factor_signal.get_untracked();
+            let ff_lo = state.ff_freq_lo.get_untracked();
+            let ff_hi = state.ff_freq_hi.get_untracked();
+            if ff_hi > ff_lo {
+                let out_lo = output_freq(ff_lo, f);
+                let out_hi = output_freq(ff_hi, f);
+                let (lo, hi) = if out_lo < out_hi { (out_lo, out_hi) } else { (out_hi, out_lo) };
+                state.output_freq_highlight.set(Some((lo, hi)));
+            }
+        }
+    };
+    let clear_output_highlight = move |_: web_sys::MouseEvent| {
+        state.output_freq_highlight.set(None);
     };
 
     view! {
@@ -368,6 +510,7 @@ pub fn HfrButton() -> impl IntoView {
                                     >"A"</button>
                                 </div>
                             }.into_any(),
+
                             PlaybackMode::TimeExpansion => view! {
                                 <div class="layer-panel-slider-row">
                                     <label>"Factor"</label>
@@ -375,18 +518,51 @@ pub fn HfrButton() -> impl IntoView {
                                         prop:value=move || (state.te_factor.get() as i32).to_string()
                                         on:input=on_te_change
                                     />
-                                    <span>{move || {
-                                        let f = state.te_factor.get() as i32;
-                                        if f > 1 { format!("{}x", f) }
-                                        else if f < -1 { format!("\u{00f7}{}x", f.abs()) }
-                                        else { "1:1".to_string() }
-                                    }}</span>
+                                    <input type="text" class="factor-input"
+                                        prop:value=move || format_factor_value(state.te_factor.get())
+                                        on:change=on_te_text
+                                        on:focus=move |ev: web_sys::FocusEvent| {
+                                            use wasm_bindgen::JsCast;
+                                            if let Some(input) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) {
+                                                let _ = input.select();
+                                            }
+                                        }
+                                        title="Enter a custom factor (e.g. 10, 7.5, \u{00f7}2)"
+                                    />
                                     <button class=move || if state.te_factor_auto.get() { "auto-toggle on" } else { "auto-toggle" }
                                         on:click=move |_| state.te_factor_auto.update(|v| *v = !*v)
-                                        title="Toggle auto TE factor"
+                                        title="Auto: picks best factor for audible output"
                                     >"A"</button>
                                 </div>
+                                <div class="factor-presets">
+                                    {preset_values.iter().map(|&(val, label)| {
+                                        let on_click = make_preset_click(state.te_factor, state.te_factor_auto, PlaybackMode::TimeExpansion, val);
+                                        let is_sel = move || (state.te_factor.get() - val).abs() < 0.01 && !state.te_factor_auto.get();
+                                        view! {
+                                            <button class=move || if is_sel() { "factor-preset sel" } else { "factor-preset" }
+                                                on:click=on_click
+                                            >{label}</button>
+                                        }
+                                    }).collect::<Vec<_>>()}
+                                </div>
+                                // Frequency summary
+                                <Show when=move || { let (h, l) = (state.ff_freq_hi.get(), state.ff_freq_lo.get()); h > l }>
+                                    <div class="freq-summary">
+                                        <div>"Input: "{move || format!("{}\u{2013}{}", format_freq_khz(state.ff_freq_lo.get()), format_freq_khz(state.ff_freq_hi.get()))}</div>
+                                        <div class="freq-summary-output"
+                                            on:mouseenter=set_output_highlight(state.te_factor)
+                                            on:mouseleave=clear_output_highlight
+                                        >"Output: "{move || {
+                                            let f = state.te_factor.get();
+                                            let lo = output_freq(state.ff_freq_lo.get(), f);
+                                            let hi = output_freq(state.ff_freq_hi.get(), f);
+                                            let (lo, hi) = if lo < hi { (lo, hi) } else { (hi, lo) };
+                                            format!("{}\u{2013}{}", format_freq_khz(lo), format_freq_khz(hi))
+                                        }}</div>
+                                    </div>
+                                </Show>
                             }.into_any(),
+
                             PlaybackMode::PitchShift => view! {
                                 <div class="layer-panel-slider-row">
                                     <label>"Factor"</label>
@@ -394,17 +570,48 @@ pub fn HfrButton() -> impl IntoView {
                                         prop:value=move || (state.ps_factor.get() as i32).to_string()
                                         on:input=on_ps_change
                                     />
-                                    <span>{move || {
-                                        let f = state.ps_factor.get() as i32;
-                                        if f > 1 { format!("\u{00f7}{}", f) }
-                                        else if f < -1 { format!("\u{00d7}{}", f.abs()) }
-                                        else { "1:1".to_string() }
-                                    }}</span>
+                                    <input type="text" class="factor-input"
+                                        prop:value=move || format_factor_value(state.ps_factor.get())
+                                        on:change=on_ps_text
+                                        on:focus=move |ev: web_sys::FocusEvent| {
+                                            use wasm_bindgen::JsCast;
+                                            if let Some(input) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) {
+                                                let _ = input.select();
+                                            }
+                                        }
+                                        title="Enter a custom factor (e.g. 10, 7.5, \u{00f7}2)"
+                                    />
                                     <button class=move || if state.ps_factor_auto.get() { "auto-toggle on" } else { "auto-toggle" }
                                         on:click=move |_| state.ps_factor_auto.update(|v| *v = !*v)
-                                        title="Toggle auto PS factor"
+                                        title="Auto: picks best factor for audible output"
                                     >"A"</button>
                                 </div>
+                                <div class="factor-presets">
+                                    {preset_values.iter().map(|&(val, label)| {
+                                        let on_click = make_preset_click(state.ps_factor, state.ps_factor_auto, PlaybackMode::PitchShift, val);
+                                        let is_sel = move || (state.ps_factor.get() - val).abs() < 0.01 && !state.ps_factor_auto.get();
+                                        view! {
+                                            <button class=move || if is_sel() { "factor-preset sel" } else { "factor-preset" }
+                                                on:click=on_click
+                                            >{label}</button>
+                                        }
+                                    }).collect::<Vec<_>>()}
+                                </div>
+                                <Show when=move || { let (h, l) = (state.ff_freq_hi.get(), state.ff_freq_lo.get()); h > l }>
+                                    <div class="freq-summary">
+                                        <div>"Input: "{move || format!("{}\u{2013}{}", format_freq_khz(state.ff_freq_lo.get()), format_freq_khz(state.ff_freq_hi.get()))}</div>
+                                        <div class="freq-summary-output"
+                                            on:mouseenter=set_output_highlight(state.ps_factor)
+                                            on:mouseleave=clear_output_highlight
+                                        >"Output: "{move || {
+                                            let f = state.ps_factor.get();
+                                            let lo = output_freq(state.ff_freq_lo.get(), f);
+                                            let hi = output_freq(state.ff_freq_hi.get(), f);
+                                            let (lo, hi) = if lo < hi { (lo, hi) } else { (hi, lo) };
+                                            format!("{}\u{2013}{}", format_freq_khz(lo), format_freq_khz(hi))
+                                        }}</div>
+                                    </div>
+                                </Show>
                                 <div class="layer-panel-slider-row">
                                     <label>"Quality"</label>
                                     <button class=move || if !state.pv_hq.get() { "auto-toggle on" } else { "auto-toggle" }
@@ -417,6 +624,7 @@ pub fn HfrButton() -> impl IntoView {
                                     >"HQ"</button>
                                 </div>
                             }.into_any(),
+
                             PlaybackMode::PhaseVocoder => view! {
                                 <div class="layer-panel-slider-row">
                                     <label>"Factor"</label>
@@ -424,17 +632,48 @@ pub fn HfrButton() -> impl IntoView {
                                         prop:value=move || (state.pv_factor.get() as i32).to_string()
                                         on:input=on_pv_change
                                     />
-                                    <span>{move || {
-                                        let f = state.pv_factor.get() as i32;
-                                        if f > 1 { format!("\u{00f7}{}", f) }
-                                        else if f < -1 { format!("\u{00d7}{}", f.abs()) }
-                                        else { "1:1".to_string() }
-                                    }}</span>
+                                    <input type="text" class="factor-input"
+                                        prop:value=move || format_factor_value(state.pv_factor.get())
+                                        on:change=on_pv_text
+                                        on:focus=move |ev: web_sys::FocusEvent| {
+                                            use wasm_bindgen::JsCast;
+                                            if let Some(input) = ev.target().and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok()) {
+                                                let _ = input.select();
+                                            }
+                                        }
+                                        title="Enter a custom factor (e.g. 10, 7.5, \u{00f7}2)"
+                                    />
                                     <button class=move || if state.pv_factor_auto.get() { "auto-toggle on" } else { "auto-toggle" }
                                         on:click=move |_| state.pv_factor_auto.update(|v| *v = !*v)
-                                        title="Toggle auto PV factor"
+                                        title="Auto: picks best factor for audible output"
                                     >"A"</button>
                                 </div>
+                                <div class="factor-presets">
+                                    {preset_values.iter().map(|&(val, label)| {
+                                        let on_click = make_preset_click(state.pv_factor, state.pv_factor_auto, PlaybackMode::PhaseVocoder, val);
+                                        let is_sel = move || (state.pv_factor.get() - val).abs() < 0.01 && !state.pv_factor_auto.get();
+                                        view! {
+                                            <button class=move || if is_sel() { "factor-preset sel" } else { "factor-preset" }
+                                                on:click=on_click
+                                            >{label}</button>
+                                        }
+                                    }).collect::<Vec<_>>()}
+                                </div>
+                                <Show when=move || { let (h, l) = (state.ff_freq_hi.get(), state.ff_freq_lo.get()); h > l }>
+                                    <div class="freq-summary">
+                                        <div>"Input: "{move || format!("{}\u{2013}{}", format_freq_khz(state.ff_freq_lo.get()), format_freq_khz(state.ff_freq_hi.get()))}</div>
+                                        <div class="freq-summary-output"
+                                            on:mouseenter=set_output_highlight(state.pv_factor)
+                                            on:mouseleave=clear_output_highlight
+                                        >"Output: "{move || {
+                                            let f = state.pv_factor.get();
+                                            let lo = output_freq(state.ff_freq_lo.get(), f);
+                                            let hi = output_freq(state.ff_freq_hi.get(), f);
+                                            let (lo, hi) = if lo < hi { (lo, hi) } else { (hi, lo) };
+                                            format!("{}\u{2013}{}", format_freq_khz(lo), format_freq_khz(hi))
+                                        }}</div>
+                                    </div>
+                                </Show>
                                 <div class="layer-panel-slider-row">
                                     <label>"Quality"</label>
                                     <button class=move || if !state.pv_hq.get() { "auto-toggle on" } else { "auto-toggle" }
@@ -447,6 +686,7 @@ pub fn HfrButton() -> impl IntoView {
                                     >"HQ"</button>
                                 </div>
                             }.into_any(),
+
                             PlaybackMode::ZeroCrossing => view! {
                                 <div class="layer-panel-slider-row">
                                     <label>"Division"</label>
@@ -460,29 +700,6 @@ pub fn HfrButton() -> impl IntoView {
                             PlaybackMode::Normal => view! { <span></span> }.into_any(),
                         }
                     }}
-
-                    // Auto factor mode switch
-                    <Show when=move || {
-                        state.te_factor_auto.get()
-                            || state.ps_factor_auto.get()
-                            || state.pv_factor_auto.get()
-                    }>
-                        <div class="layer-panel-title" style="margin-top: 4px;">"Auto mode"</div>
-                        <div style="display: flex; gap: 2px; padding: 0 6px 4px;">
-                            <button class=move || layer_opt_class(state.auto_factor_mode.get() == AutoFactorMode::Target3k)
-                                on:click=move |_| state.auto_factor_mode.set(AutoFactorMode::Target3k)
-                                title="Factor = FF center / 3 kHz"
-                            >"3k"</button>
-                            <button class=move || layer_opt_class(state.auto_factor_mode.get() == AutoFactorMode::MinAudible)
-                                on:click=move |_| state.auto_factor_mode.set(AutoFactorMode::MinAudible)
-                                title="Factor = FF high / 20 kHz"
-                            >"Min aud"</button>
-                            <button class=move || layer_opt_class(state.auto_factor_mode.get() == AutoFactorMode::Fixed10x)
-                                on:click=move |_| state.auto_factor_mode.set(AutoFactorMode::Fixed10x)
-                                title="Factor = 10x"
-                            >"10x"</button>
-                        </div>
-                    </Show>
                 </Show>
 
                 // ── Bandpass ──
