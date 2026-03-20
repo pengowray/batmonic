@@ -59,3 +59,31 @@ pub async fn read_file_range(path: &str, offset: u64, length: u64) -> Result<Vec
     let uint8 = js_sys::Uint8Array::new(&array_buffer);
     Ok(uint8.to_vec())
 }
+
+/// Subscribe to a Tauri event. The closure is leaked (via `forget`) so the
+/// listener lives for the lifetime of the app.  Returns `true` if the
+/// listener was registered successfully.
+pub fn tauri_listen(event_name: &str, callback: Closure<dyn FnMut(JsValue)>) -> bool {
+    let Some(tauri) = get_tauri_internals() else { return false };
+
+    let Ok(transform_fn) = js_sys::Reflect::get(&tauri, &JsValue::from_str("transformCallback")) else { return false };
+    let transform_fn = js_sys::Function::from(transform_fn);
+    let Ok(handler_id) = transform_fn.call1(&tauri, callback.as_ref().unchecked_ref()) else { return false };
+
+    let Ok(invoke_fn) = js_sys::Reflect::get(&tauri, &JsValue::from_str("invoke")) else { return false };
+    let invoke_fn = js_sys::Function::from(invoke_fn);
+
+    let args = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&args, &"event".into(), &JsValue::from_str(event_name));
+    let target = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&target, &"kind".into(), &JsValue::from_str("Any"));
+    let _ = js_sys::Reflect::set(&args, &"target".into(), &target);
+    let _ = js_sys::Reflect::set(&args, &"handler".into(), &handler_id);
+
+    let _ = invoke_fn.call2(&tauri, &JsValue::from_str("plugin:event|listen"), &args);
+
+    // Leak the closure so it lives forever (event listener for app lifetime)
+    callback.forget();
+
+    true
+}

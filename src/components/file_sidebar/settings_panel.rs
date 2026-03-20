@@ -1149,7 +1149,10 @@ fn export_annotations(state: AppState) {
             match crate::tauri_bridge::tauri_invoke("export_annotations_file", &args.into()).await {
                 Ok(path) => {
                     let path_str = path.as_string().unwrap_or_default();
-                    state.show_info_toast(format!("Exported to {path_str}"));
+                    if !path_str.is_empty() {
+                        state.show_info_toast(format!("Exported to {path_str}"));
+                    }
+                    // empty = user cancelled, no toast needed
                 }
                 Err(e) => state.show_error_toast(format!("Export failed: {e}")),
             }

@@ -32,7 +32,7 @@ pub(crate) use harmonics::HarmonicsPanel;
 pub(crate) use notch_panel::NotchPanel;
 pub(crate) use psd_panel::PsdPanel;
 pub(crate) use pulse_panel::PulsePanel;
-pub(crate) use loading::{load_named_bytes, fetch_demo_index, load_single_demo};
+pub(crate) use loading::{load_named_bytes, load_native_file, fetch_demo_index, load_single_demo};
 
 fn copy_to_clipboard(text: &str) {
     if let Some(window) = web_sys::window() {

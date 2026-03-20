@@ -324,18 +324,26 @@ fn write_central_annotations(app: tauri::AppHandle, file_key: String, yaml: Stri
     Ok(())
 }
 
-/// Export annotations to an "exports" directory in app data, returning the full path.
+/// Show a native save dialog and export annotations to the chosen path.
+/// Returns the saved path, or empty string if cancelled.
 #[tauri::command]
-fn export_annotations_file(app: tauri::AppHandle, filename: String, yaml: String) -> Result<String, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("exports");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let path = dir.join(&filename);
-    std::fs::write(&path, &yaml).map_err(|e| format!("Failed to write export: {e}"))?;
-    Ok(path.to_string_lossy().to_string())
+async fn export_annotations_file(filename: String, yaml: String) -> Result<String, String> {
+    let handle = rfd::AsyncFileDialog::new()
+        .set_file_name(&filename)
+        .add_filter("Batmonic annotations", &["batm"])
+        .add_filter("YAML files", &["yaml", "yml"])
+        .set_title("Export annotations")
+        .save_file()
+        .await;
+    match handle {
+        Some(file) => {
+            let path = file.path().to_string_lossy().to_string();
+            std::fs::write(file.path(), &yaml)
+                .map_err(|e| format!("Failed to write export: {e}"))?;
+            Ok(path)
+        }
+        None => Ok(String::new()), // cancelled
+    }
 }
 
 /// Show a native file-open dialog and return the selected paths.

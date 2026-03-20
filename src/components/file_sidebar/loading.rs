@@ -653,7 +653,7 @@ fn expanding_chunk_order(center: usize, total: usize) -> Vec<usize> {
 
 /// Load a file from a native filesystem path (Tauri only).
 /// Reads bytes via IPC, decodes in WASM, and stores the original path in FileIdentity.
-pub(super) async fn load_native_file(path: String, state: AppState, load_id: u64) -> Result<(), String> {
+pub(crate) async fn load_native_file(path: String, state: AppState, load_id: u64) -> Result<(), String> {
     // Extract filename from path
     let name = path.rsplit(['/', '\\']).next().unwrap_or(&path).to_string();
 

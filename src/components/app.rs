@@ -855,6 +855,40 @@ pub fn App() -> impl IntoView {
         on_drop.forget();
     }
 
+    // Tauri: listen for native file drag-drop events (provides real filesystem paths)
+    if state.is_tauri {
+        let state_drop = state.clone();
+        let callback = wasm_bindgen::closure::Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |ev: wasm_bindgen::JsValue| {
+            // Payload shape: { event: "tauri://drag-drop", payload: { paths: [...], position: {x, y} } }
+            let payload = js_sys::Reflect::get(&ev, &wasm_bindgen::JsValue::from_str("payload")).unwrap_or_default();
+            let paths = js_sys::Reflect::get(&payload, &wasm_bindgen::JsValue::from_str("paths")).unwrap_or_default();
+            let paths_array = js_sys::Array::from(&paths);
+            let file_paths: Vec<String> = paths_array.iter().filter_map(|v| v.as_string()).collect();
+            if file_paths.is_empty() { return; }
+
+            log::info!("Tauri drag-drop: {} file(s)", file_paths.len());
+            for path in file_paths {
+                let name = path.rsplit(['/', '\\']).next().unwrap_or(&path).to_string();
+                // Filter to audio-ish extensions
+                let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+                if !matches!(ext.as_str(), "wav" | "flac" | "ogg" | "mp3") {
+                    log::info!("Skipping non-audio drop: {name}");
+                    continue;
+                }
+                let state = state_drop.clone();
+                let load_id = state.loading_start(&name);
+                leptos::task::spawn_local(async move {
+                    match crate::components::file_sidebar::load_native_file(path, state.clone(), load_id).await {
+                        Ok(()) => {}
+                        Err(e) => log::error!("Failed to load dropped file: {e}"),
+                    }
+                    state.loading_done(load_id);
+                });
+            }
+        });
+        crate::tauri_bridge::tauri_listen("tauri://drag-drop", callback);
+    }
+
     // Android back button: close sidebar when open
     if is_mobile {
         let state_back = state.clone();
