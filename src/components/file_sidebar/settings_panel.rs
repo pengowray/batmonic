@@ -377,6 +377,19 @@ fn AnnotationsList() -> impl IntoView {
         export_annotations(state);
     };
 
+    let on_save_sidecar = move |_: web_sys::MouseEvent| {
+        if let Some(idx) = state.current_file_index.get_untracked() {
+            crate::opfs::save_sidecar_explicit(state, idx);
+        }
+    };
+
+    let has_file_path = move || {
+        let idx = state.current_file_index.get()?;
+        let files = state.files.get();
+        let file = files.get(idx)?;
+        file.identity.as_ref()?.file_path.as_ref().map(|_| true)
+    };
+
     let on_import = move |_: web_sys::MouseEvent| {
         import_annotations(state);
     };
@@ -463,14 +476,39 @@ fn AnnotationsList() -> impl IntoView {
             </button>
         </div>
         <div class="setting-row" style="gap: 4px;">
-            <button
-                class="sidebar-btn"
-                style="flex: 1;"
-                on:click=on_export
-                disabled=move || has_annotations().is_none()
-            >
-                "Export .batm"
-            </button>
+            {if state.is_tauri {
+                view! {
+                    <button
+                        class="sidebar-btn"
+                        style="flex: 1;"
+                        on:click=on_save_sidecar
+                        disabled=move || has_annotations().is_none() || has_file_path().is_none()
+                        title="Save .batm sidecar next to the audio file"
+                    >
+                        "Save .batm"
+                    </button>
+                    <button
+                        class="sidebar-btn"
+                        style="flex: 1;"
+                        on:click=on_export
+                        disabled=move || has_annotations().is_none()
+                        title="Export .batm to a chosen location"
+                    >
+                        "Save as\u{2026}"
+                    </button>
+                }.into_any()
+            } else {
+                view! {
+                    <button
+                        class="sidebar-btn"
+                        style="flex: 1;"
+                        on:click=on_export
+                        disabled=move || has_annotations().is_none()
+                    >
+                        "Export .batm"
+                    </button>
+                }.into_any()
+            }}
             <button
                 class="sidebar-btn"
                 style="flex: 1;"

@@ -182,6 +182,8 @@ pub(crate) async fn load_named_bytes(name: String, bytes: &[u8], xc_metadata: Op
                 identity: None,
                 file_handle: None,
                 cached_peak_db,
+                read_only: false,
+                had_sidecar: false,
             });
             if files.len() == 1 {
                 state.current_file_index.set(Some(0));

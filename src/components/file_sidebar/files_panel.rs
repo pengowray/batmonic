@@ -355,6 +355,17 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                 }
                             });
                         };
+                        let on_toggle_readonly = move |ev: MouseEvent| {
+                            ev.stop_propagation();
+                            state.files.update(|files| {
+                                if let Some(f) = files.get_mut(i) {
+                                    f.read_only = !f.read_only;
+                                }
+                            });
+                        };
+                        let is_read_only = move || {
+                            state.files.with(|files| files.get(i).map_or(false, |f| f.read_only))
+                        };
                         // Show unsaved badge on web recordings only
                         let show_unsaved = is_rec && !is_tauri;
                         let file_view = view! {
@@ -408,6 +419,20 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                             >"\u{2B73}"</button>
                                             <button class="file-mark-saved-btn" on:click=on_mark_saved title="Mark as saved"
                                             >"\u{2713}"</button>
+                                        })
+                                    } else {
+                                        None
+                                    }}
+                                    {if is_tauri {
+                                        Some(view! {
+                                            <button
+                                                class="file-readonly-btn"
+                                                on:click=on_toggle_readonly
+                                                title=move || if is_read_only() { "Read-only (click to enable editing)" } else { "Editable (click for read-only)" }
+                                                style="font-size: 10px; padding: 0 2px; opacity: 0.6; border: none; background: none; cursor: pointer;"
+                                            >
+                                                {move || if is_read_only() { "\u{1F512}" } else { "\u{1F513}" }}
+                                            </button>
                                         })
                                     } else {
                                         None

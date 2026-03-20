@@ -59,6 +59,11 @@ pub struct LoadedFile {
     pub file_handle: Option<crate::audio::streaming_source::FileHandle>,
     /// Cached peak level (dBFS) of first 30s. None = not yet computed (e.g. streaming still loading).
     pub cached_peak_db: Option<f64>,
+    /// Read-only mode: annotations are ephemeral, no auto-save to central store or sidecar.
+    pub read_only: bool,
+    /// A file-adjacent .batm sidecar existed when this file was loaded.
+    /// When true, auto-save updates the sidecar alongside the central store.
+    pub had_sidecar: bool,
 }
 
 impl LoadedFile {

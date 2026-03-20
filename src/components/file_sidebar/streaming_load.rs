@@ -213,6 +213,8 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
                 identity: None,
                 file_handle: Some(FileHandle::WebFile(file.clone())),
                 cached_peak_db,
+                read_only: false,
+                had_sidecar: false,
             });
             if files.len() == 1 {
                 state.current_file_index.set(Some(0));
@@ -489,6 +491,8 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
                 identity: None,
                 file_handle: Some(FileHandle::WebFile(file.clone())),
                 cached_peak_db,
+                read_only: false,
+                had_sidecar: false,
             });
             if files.len() == 1 {
                 state.current_file_index.set(Some(0));
@@ -843,6 +847,8 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
                 identity: None,
                 file_handle: Some(FileHandle::WebFile(file.clone())),
                 cached_peak_db,
+                read_only: false,
+                had_sidecar: false,
             });
             if files.len() == 1 {
                 state.current_file_index.set(Some(0));
@@ -1196,6 +1202,8 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
                 identity: None,
                 file_handle: Some(FileHandle::WebFile(file.clone())),
                 cached_peak_db,
+                read_only: false,
+                had_sidecar: false,
             });
             if files.len() == 1 {
                 state.current_file_index.set(Some(0));

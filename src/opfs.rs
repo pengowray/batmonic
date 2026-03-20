@@ -160,8 +160,19 @@ fn sync_noise_profile_from_state(state: crate::state::AppState) -> Option<crate:
 }
 
 /// Save annotations for a specific file index (OPFS on browser, central store on Tauri).
+/// Respects read_only (skips all saves) and had_sidecar (only writes file-adjacent if it existed).
 pub fn save_annotations(state: crate::state::AppState, file_idx: usize) {
-    use leptos::prelude::{GetUntracked, Update};
+    use leptos::prelude::{GetUntracked, Update, WithUntracked};
+
+    // Check read_only flag — skip all saves
+    let (read_only, had_sidecar) = state.files.with_untracked(|files: &Vec<crate::state::LoadedFile>| {
+        files.get(file_idx)
+            .map(|f| (f.read_only, f.had_sidecar))
+            .unwrap_or((false, false))
+    });
+    if read_only {
+        return;
+    }
 
     // Sync noise profile and touch modified_at before saving
     state.annotation_store.update(|store| {
@@ -188,19 +199,21 @@ pub fn save_annotations(state: crate::state::AppState, file_idx: usize) {
     };
 
     if state.is_tauri {
-        // Tauri: save to central annotations directory via IPC
+        // Tauri: always save to central annotations directory
         wasm_bindgen_futures::spawn_local(async move {
             if let Err(e) = tauri_save_central(&key, &yaml).await {
                 log::warn!("Tauri central save error: {e}");
             } else {
                 log::debug!("Tauri saved annotations: {key}");
             }
-            // Also save file-adjacent sidecar if we know the original path
-            if let Some(ref path) = set.file_identity.file_path {
-                if let Err(e) = tauri_save_sidecar(path, &yaml).await {
-                    log::debug!("Tauri sidecar save skipped for {path}: {e}");
-                } else {
-                    log::debug!("Tauri saved sidecar: {path}.batm");
+            // Only auto-save file-adjacent sidecar if one already existed on load
+            if had_sidecar {
+                if let Some(ref path) = set.file_identity.file_path {
+                    if let Err(e) = tauri_save_sidecar(path, &yaml).await {
+                        log::debug!("Tauri sidecar save skipped for {path}: {e}");
+                    } else {
+                        log::debug!("Tauri saved sidecar: {path}.batm");
+                    }
                 }
             }
         });
@@ -214,6 +227,50 @@ pub fn save_annotations(state: crate::state::AppState, file_idx: usize) {
             }
         });
     }
+}
+
+/// Explicitly save a file-adjacent .batm sidecar (Tauri only).
+/// Called when user clicks "Save .batm sidecar". Sets had_sidecar so future auto-saves update it.
+pub fn save_sidecar_explicit(state: crate::state::AppState, file_idx: usize) {
+    use leptos::prelude::{GetUntracked, Update};
+
+    // Sync noise profile and touch modified_at
+    state.annotation_store.update(|store| {
+        if let Some(Some(ref mut set)) = store.sets.get_mut(file_idx) {
+            set.noise_profile = sync_noise_profile_from_state(state);
+            set.touch();
+        }
+    });
+
+    let store = state.annotation_store.get_untracked();
+    let set = match store.sets.get(file_idx).and_then(|s| s.as_ref()) {
+        Some(s) => s.clone(),
+        None => { state.show_error_toast("No annotations to save"); return; }
+    };
+
+    let path = match set.file_identity.file_path {
+        Some(ref p) => p.clone(),
+        None => { state.show_error_toast("No file path — file was not opened from disk"); return; }
+    };
+
+    let yaml = match yaml_serde::to_string(&set) {
+        Ok(y) => y,
+        Err(e) => { state.show_error_toast(format!("Serialize error: {e}")); return; }
+    };
+
+    // Mark had_sidecar so future auto-saves keep updating it
+    state.files.update(|files| {
+        if let Some(f) = files.get_mut(file_idx) {
+            f.had_sidecar = true;
+        }
+    });
+
+    wasm_bindgen_futures::spawn_local(async move {
+        match tauri_save_sidecar(&path, &yaml).await {
+            Ok(()) => state.show_info_toast(format!("Saved {path}.batm")),
+            Err(e) => state.show_error_toast(format!("Sidecar save failed: {e}")),
+        }
+    });
 }
 
 /// Legacy alias — use `save_annotations` instead.
@@ -318,13 +375,31 @@ fn load_annotations_opfs(state: crate::state::AppState, file_idx: usize, identit
 }
 
 /// Tauri: try central annotations store, then file-adjacent sidecar.
+/// Also probes for file-adjacent sidecar existence and sets `had_sidecar` flag.
 fn load_annotations_tauri(state: crate::state::AppState, file_idx: usize, identity: crate::annotations::FileIdentity) {
-    use leptos::prelude::GetUntracked;
+    use leptos::prelude::{GetUntracked, Update};
 
     let key = opfs_key(&identity);
     let file_path = identity.file_path.clone();
 
     wasm_bindgen_futures::spawn_local(async move {
+        // Read file-adjacent sidecar once (if path known) for both existence check and fallback
+        let sidecar_yaml = if let Some(ref path) = file_path {
+            match tauri_load_sidecar(path).await {
+                Ok(yaml) => yaml,
+                Err(e) => { log::debug!("Tauri sidecar probe for {path}: {e}"); None }
+            }
+        } else {
+            None
+        };
+        if sidecar_yaml.is_some() {
+            state.files.update(|files| {
+                if let Some(f) = files.get_mut(file_idx) {
+                    f.had_sidecar = true;
+                }
+            });
+        }
+
         // Try central annotations store first
         let mut keys_to_try = vec![key.clone()];
         let fallback = opfs_fallback_key(&identity.filename, identity.file_size);
@@ -358,28 +433,23 @@ fn load_annotations_tauri(state: crate::state::AppState, file_idx: usize, identi
             }
         }
 
-        // Fall back to file-adjacent sidecar if we have the path
-        if let Some(ref path) = file_path {
-            match tauri_load_sidecar(path).await {
-                Ok(Some(yaml)) => {
-                    match yaml_serde::from_str::<crate::annotations::AnnotationSet>(&yaml) {
-                        Ok(loaded) => {
-                            let already_has = state.annotation_store.get_untracked()
-                                .sets.get(file_idx)
-                                .and_then(|s| s.as_ref())
-                                .is_some();
-                            if !already_has {
-                                apply_loaded_sidecar(state, file_idx, loaded);
-                                log::debug!("Tauri loaded sidecar for file {file_idx}: {path}.batm");
-                                // Re-save to central store so it's found faster next time
-                                save_annotations(state, file_idx);
-                            }
-                        }
-                        Err(e) => log::warn!("Tauri sidecar deserialize error: {e}"),
+        // Fall back to cached sidecar content
+        if let Some(yaml) = sidecar_yaml {
+            let path = file_path.as_ref().unwrap();
+            match yaml_serde::from_str::<crate::annotations::AnnotationSet>(&yaml) {
+                Ok(loaded) => {
+                    let already_has = state.annotation_store.get_untracked()
+                        .sets.get(file_idx)
+                        .and_then(|s| s.as_ref())
+                        .is_some();
+                    if !already_has {
+                        apply_loaded_sidecar(state, file_idx, loaded);
+                        log::debug!("Tauri loaded sidecar for file {file_idx}: {path}.batm");
+                        // Re-save to central store so it's found faster next time
+                        save_annotations(state, file_idx);
                     }
                 }
-                Ok(None) => {}
-                Err(e) => log::debug!("Tauri sidecar load skipped for {path}: {e}"),
+                Err(e) => log::warn!("Tauri sidecar deserialize error: {e}"),
             }
         }
     });
