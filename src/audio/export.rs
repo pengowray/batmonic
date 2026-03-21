@@ -228,6 +228,7 @@ pub struct ExportInfo {
     pub count: usize,
     pub source_label: &'static str, // "selection" or "region" or "regions"
     pub mode_label: Option<String>,  // e.g. "TE 10x", "HFR", etc.
+    pub estimated_duration_secs: Option<f64>,
 }
 
 /// Determine what will be exported and return info for the button label.
@@ -236,26 +237,36 @@ pub fn get_export_info(state: &AppState) -> Option<ExportInfo> {
     let selection = state.selection.get();
 
     // Count selected annotations that are regions/segments (have time bounds)
-    let region_count = if !selected_ids.is_empty() {
+    let (region_count, region_duration_sum) = if !selected_ids.is_empty() {
         if let Some(idx) = state.current_file_index.get() {
             let store = state.annotation_store.get();
             if let Some(Some(set)) = store.sets.get(idx) {
-                set.annotations.iter()
-                    .filter(|a| selected_ids.contains(&a.id))
-                    .filter(|a| matches!(a.kind, AnnotationKind::Region(_)))
-                    .count()
-            } else { 0 }
-        } else { 0 }
-    } else { 0 };
+                let mut count = 0usize;
+                let mut dur = 0.0f64;
+                for a in &set.annotations {
+                    if selected_ids.contains(&a.id) {
+                        if let AnnotationKind::Region(ref r) = a.kind {
+                            count += 1;
+                            dur += r.time_end - r.time_start;
+                        }
+                    }
+                }
+                (count, dur)
+            } else { (0, 0.0) }
+        } else { (0, 0.0) }
+    } else { (0, 0.0) };
 
-    let (count, source_label) = if region_count > 0 {
+    let (count, source_label, source_duration) = if region_count > 0 {
         let label = if region_count == 1 { "region" } else { "regions" };
-        (region_count, label)
-    } else if selection.is_some() {
-        (1, "selection")
+        (region_count, label, Some(region_duration_sum))
+    } else if let Some(ref sel) = selection {
+        (1, "selection", Some(sel.time_end - sel.time_start))
     } else if state.current_file_index.get().is_some() {
-        // No selection — allow exporting the whole file
-        (1, "file")
+        let files = state.files.get();
+        let file_dur = state.current_file_index.get()
+            .and_then(|idx| files.get(idx))
+            .map(|f| f.audio.duration_secs);
+        (1, "file", file_dur)
     } else {
         return None;
     };
@@ -276,7 +287,28 @@ pub fn get_export_info(state: &AppState) -> Option<ExportInfo> {
         _ => None,
     };
 
-    Some(ExportInfo { count, source_label, mode_label })
+    let estimated_duration_secs = source_duration.map(|d| match mode {
+        PlaybackMode::TimeExpansion => d * state.te_factor.get(),
+        _ => d,
+    });
+
+    Some(ExportInfo { count, source_label, mode_label, estimated_duration_secs })
+}
+
+/// Format a duration in seconds to a human-readable string.
+pub fn format_duration(secs: f64) -> String {
+    if secs < 60.0 {
+        format!("{:.1}s", secs)
+    } else if secs < 3600.0 {
+        let m = (secs / 60.0) as u32;
+        let s = (secs % 60.0) as u32;
+        format!("{}m {:02}s", m, s)
+    } else {
+        let h = (secs / 3600.0) as u32;
+        let m = ((secs % 3600.0) / 60.0) as u32;
+        let s = (secs % 60.0) as u32;
+        format!("{}h {:02}m {:02}s", h, m, s)
+    }
 }
 
 /// Get the list of selected Region annotations.

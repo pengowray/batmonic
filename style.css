@@ -4471,3 +4471,9 @@ body.sidebar-resizing {
 .export-progress-text.export-error {
     color: #e88;
 }
+.export-duration-label {
+    font-size: 10px;
+    color: #888;
+    text-align: right;
+    padding: 2px 0;
+}

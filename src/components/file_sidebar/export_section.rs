@@ -278,6 +278,17 @@ pub fn ExportSection(
                     </button>
                 </div>
 
+                // Duration estimate
+                {move || {
+                    export::get_export_info(&state)
+                        .and_then(|info| info.estimated_duration_secs)
+                        .map(|dur| view! {
+                            <div class="export-duration-label">
+                                {"Est. duration: "}{export::format_duration(dur)}
+                            </div>
+                        })
+                }}
+
                 // Progress bar and status text
                 {move || {
                     let progress = state.video_export_progress.get();
