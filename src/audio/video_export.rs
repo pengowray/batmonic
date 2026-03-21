@@ -57,6 +57,7 @@ pub fn is_available() -> bool {
 pub fn start_export(state: &AppState) {
     let state = *state;
     leptos::task::spawn_local(async move {
+        state.video_export_cancel.set(false);
         state.video_export_progress.set(Some(0.0));
         state.video_export_status.set(Some("Preparing...".to_string()));
 
@@ -64,7 +65,11 @@ pub fn start_export(state: &AppState) {
             Ok(()) => {
                 state.video_export_progress.set(None);
                 state.video_export_status.set(None);
-                log::info!("Video export complete");
+                if state.video_export_cancel.get_untracked() {
+                    log::info!("Video export cancelled");
+                } else {
+                    log::info!("Video export complete");
+                }
             }
             Err(e) => {
                 let msg = format!("{:?}", e);
@@ -433,6 +438,9 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
             log::info!("Video export: static playhead mode, {total_frames} frames");
 
             for frame_idx in 0..total_frames {
+                if state.video_export_cancel.get_untracked() {
+                    break;
+                }
                 if let Some(ref e) = *video_error.borrow() {
                     return Err(JsValue::from_str(e));
                 }
@@ -482,6 +490,9 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
             let scrolling_keyframe_interval = 15u32;
 
             for frame_idx in 0..total_frames {
+                if state.video_export_cancel.get_untracked() {
+                    break;
+                }
                 if let Some(ref e) = *video_error.borrow() {
                     return Err(JsValue::from_str(e));
                 }
@@ -521,6 +532,15 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
                 }
             }
         }
+    }
+
+    // If cancelled, close encoders and return early (skip finalize/download)
+    if state.video_export_cancel.get_untracked() {
+        let _ = wc::close_encoder(&video_encoder);
+        if let Some(ref enc) = audio_encoder {
+            let _ = wc::close_encoder(enc);
+        }
+        return Ok(());
     }
 
     // Flush video encoder

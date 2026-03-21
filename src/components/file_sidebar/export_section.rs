@@ -301,6 +301,21 @@ pub fn ExportSection(
                                 >
                                     {status_text}
                                 </div>
+                                {if !is_error && progress.is_some() {
+                                    Some(view! {
+                                        <button
+                                            class="sidebar-btn"
+                                            style="margin-top: 4px;"
+                                            on:click=move |_| {
+                                                state.video_export_cancel.set(true);
+                                            }
+                                        >
+                                            "Cancel"
+                                        </button>
+                                    })
+                                } else {
+                                    None
+                                }}
                             </div>
                         })
                     } else {

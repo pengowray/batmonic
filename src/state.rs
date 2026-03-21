@@ -1104,6 +1104,8 @@ pub struct AppState {
     pub video_export_progress: RwSignal<Option<f64>>,
     /// Video export status message.
     pub video_export_status: RwSignal<Option<String>>,
+    /// Set to true to request cancellation of an in-progress video export.
+    pub video_export_cancel: RwSignal<bool>,
     /// Selected video resolution preset.
     pub video_resolution: RwSignal<VideoResolution>,
     /// Selected video codec.
@@ -1399,6 +1401,7 @@ impl AppState {
             export_format: RwSignal::new(ExportFormat::default()),
             video_export_progress: RwSignal::new(None),
             video_export_status: RwSignal::new(None),
+            video_export_cancel: RwSignal::new(false),
             video_resolution: RwSignal::new(VideoResolution::default()),
             video_codec: RwSignal::new(VideoCodec::default()),
             video_audio_codec: RwSignal::new(AudioCodecOption::default()),
