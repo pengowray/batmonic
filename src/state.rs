@@ -1003,6 +1003,10 @@ pub struct AppState {
     pub annotation_hover_handle: RwSignal<Option<(AnnotationId, ResizeHandlePosition)>>,
     /// Snapshot of original bounds before resize drag: (time_start, time_end, freq_low, freq_high).
     pub annotation_drag_original: RwSignal<Option<(f64, f64, Option<f64>, Option<f64>)>>,
+    /// Whether the annotation label editing panel is active in the selection combo button.
+    pub annotation_editing: RwSignal<bool>,
+    /// True when editing a just-created annotation (Escape = cancel/delete).
+    pub annotation_is_new_edit: RwSignal<bool>,
 
     // Project
     /// Whether the Projects beta feature is enabled (persisted to localStorage).
@@ -1327,6 +1331,8 @@ impl AppState {
             annotation_drag_handle: RwSignal::new(None),
             annotation_hover_handle: RwSignal::new(None),
             annotation_drag_original: RwSignal::new(None),
+            annotation_editing: RwSignal::new(false),
+            annotation_is_new_edit: RwSignal::new(false),
 
             projects_enabled: RwSignal::new({
                 web_sys::window()

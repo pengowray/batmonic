@@ -61,6 +61,10 @@ fn annotate_selection(state: &AppState) {
         state.annotations_dirty.set(true);
         state.selection.set(None);
         state.selected_annotation_ids.set(vec![ann_id]);
+        // Auto-enter label editing for the new annotation
+        state.annotation_editing.set(true);
+        state.annotation_is_new_edit.set(true);
+        state.layer_panel_open.set(Some(LayerPanel::SelectionCombo));
         state.show_info_toast(if has_freq { "Region annotated" } else { "Segment annotated" });
     }
 }
@@ -220,7 +224,7 @@ struct AnnotationInfo {
 pub fn SelectionComboButton() -> impl IntoView {
     let state = expect_context::<AppState>();
     let is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::SelectionCombo));
-    let editing = RwSignal::new(false);
+    let editing = state.annotation_editing;
 
     // Brief label for the left side value
     let left_value = Signal::derive(move || {
@@ -264,6 +268,7 @@ pub fn SelectionComboButton() -> impl IntoView {
     let toggle_menu = Callback::new(move |_: ()| {
         toggle_panel(&state, LayerPanel::SelectionCombo);
         editing.set(false);
+        state.annotation_is_new_edit.set(false);
     });
 
     let left_click = Callback::new(move |_: web_sys::MouseEvent| {
@@ -372,6 +377,17 @@ pub fn SelectionComboButton() -> impl IntoView {
 
                         if editing.get_untracked() {
                             // Editing mode: show label + tags inputs
+                            let label_ref = NodeRef::<leptos::html::Input>::new();
+                            let label_value = RwSignal::new(initial_label.clone());
+                            let ann_id_cancel = ann_id.clone();
+                            let ann_id_confirm = ann_id.clone();
+                            let ann_id_focusout = ann_id.clone();
+                            // Auto-focus the label input
+                            Effect::new(move |_| {
+                                if let Some(el) = label_ref.get() {
+                                    let _ = el.focus();
+                                }
+                            });
                             view! {
                                 <div class="layer-panel-title">"Edit Annotation"</div>
                                 <div style="padding: 4px 8px;">
@@ -379,25 +395,48 @@ pub fn SelectionComboButton() -> impl IntoView {
                                     <input
                                         class="sel-combo-input"
                                         type="text"
+                                        node_ref=label_ref
                                         prop:value=initial_label.clone()
+                                        on:input=move |ev: web_sys::Event| {
+                                            let input = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>();
+                                            label_value.set(input.value());
+                                        }
                                         on:keydown=move |ev: web_sys::KeyboardEvent| {
                                             if ev.key() == "Escape" {
+                                                ev.prevent_default();
+                                                ev.stop_propagation();
+                                                if state.annotation_is_new_edit.get_untracked() {
+                                                    delete_annotation(state, &ann_id_label);
+                                                }
+                                                state.annotation_is_new_edit.set(false);
                                                 editing.set(false);
                                             } else if ev.key() == "Enter" {
+                                                ev.prevent_default();
                                                 let input = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>();
                                                 let val = input.value();
                                                 let label = if val.trim().is_empty() { None } else { Some(val.trim().to_string()) };
                                                 update_annotation_label(state, &ann_id_label, label);
+                                                state.annotation_is_new_edit.set(false);
                                                 editing.set(false);
                                             }
                                         }
                                         on:focusout={
-                                            let ann_id_label2 = ann_id.clone();
                                             move |ev: web_sys::FocusEvent| {
+                                                if !editing.get_untracked() { return; }
+                                                // Check if focus moved to another element within the editing panel
+                                                if let Some(related) = ev.related_target() {
+                                                    if let Ok(el) = related.dyn_into::<web_sys::HtmlElement>() {
+                                                        if el.closest(".sel-combo-edit-area").ok().flatten().is_some() {
+                                                            return;
+                                                        }
+                                                    }
+                                                }
                                                 let input = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>();
                                                 let val = input.value();
                                                 let label = if val.trim().is_empty() { None } else { Some(val.trim().to_string()) };
-                                                update_annotation_label(state, &ann_id_label2, label);
+                                                update_annotation_label(state, &ann_id_focusout, label);
+                                                state.annotation_is_new_edit.set(false);
+                                                editing.set(false);
                                             }
                                         }
                                     />
@@ -408,8 +447,15 @@ pub fn SelectionComboButton() -> impl IntoView {
                                         prop:value=initial_tags
                                         on:keydown=move |ev: web_sys::KeyboardEvent| {
                                             if ev.key() == "Escape" {
+                                                ev.prevent_default();
+                                                ev.stop_propagation();
+                                                if state.annotation_is_new_edit.get_untracked() {
+                                                    delete_annotation(state, &ann_id_tags);
+                                                }
+                                                state.annotation_is_new_edit.set(false);
                                                 editing.set(false);
                                             } else if ev.key() == "Enter" {
+                                                ev.prevent_default();
                                                 let input = ev.target().unwrap().unchecked_into::<web_sys::HtmlInputElement>();
                                                 let val = input.value();
                                                 let tags: Vec<String> = val.split(',')
@@ -417,15 +463,31 @@ pub fn SelectionComboButton() -> impl IntoView {
                                                     .filter(|s| !s.is_empty())
                                                     .collect();
                                                 update_annotation_tags(state, &ann_id_tags, tags);
+                                                state.annotation_is_new_edit.set(false);
                                                 editing.set(false);
                                             }
                                         }
                                     />
                                 </div>
-                                <div style="padding: 4px 8px;">
+                                <div class="sel-combo-edit-area" style="padding: 4px 8px; display: flex; gap: 4px;">
                                     <button class="sel-combo-action-btn subtle"
-                                        on:click=move |_| editing.set(false)
-                                    >"Done"</button>
+                                        on:click=move |_| {
+                                            let val = label_value.get_untracked();
+                                            let label = if val.trim().is_empty() { None } else { Some(val.trim().to_string()) };
+                                            update_annotation_label(state, &ann_id_confirm, label);
+                                            state.annotation_is_new_edit.set(false);
+                                            editing.set(false);
+                                        }
+                                    >{"\u{2713} Done"}</button>
+                                    <button class="sel-combo-action-btn danger"
+                                        on:click=move |_| {
+                                            if state.annotation_is_new_edit.get_untracked() {
+                                                delete_annotation(state, &ann_id_cancel);
+                                            }
+                                            state.annotation_is_new_edit.set(false);
+                                            editing.set(false);
+                                        }
+                                    >{"\u{2717} Cancel"}</button>
                                 </div>
                                 <div class="layer-panel-divider"></div>
                             }.into_any()
@@ -464,7 +526,10 @@ pub fn SelectionComboButton() -> impl IntoView {
                                 </div>
                                 <div style="padding: 4px 8px; display: flex; flex-direction: column; gap: 3px;">
                                     <button class="sel-combo-action-btn subtle"
-                                        on:click=move |_| editing.set(true)
+                                        on:click=move |_| {
+                                            state.annotation_is_new_edit.set(false);
+                                            editing.set(true);
+                                        }
                                     >{"\u{270E} Edit label & tags"}</button>
                                     {info.is_region.then(|| view! {
                                         <button class="sel-combo-action-btn subtle"

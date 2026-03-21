@@ -178,6 +178,19 @@ pub fn finalize_axis_drag(state: AppState) {
     if range.hi - range.lo > 500.0 && !stack.hfr_enabled() {
         state.toggle_hfr();
     }
+    // Auto-combine: if there's a time-only segment, upgrade to region with FF range
+    if let Some(sel) = state.selection.get_untracked() {
+        if sel.freq_low.is_none() && sel.freq_high.is_none() && sel.time_end - sel.time_start > 0.0001 {
+            let ff = state.focus_stack.get_untracked().effective_range_ignoring_hfr();
+            if ff.is_active() {
+                state.selection.set(Some(Selection {
+                    freq_low: Some(ff.lo),
+                    freq_high: Some(ff.hi),
+                    ..sel
+                }));
+            }
+        }
+    }
     state.axis_drag_start_freq.set(None);
     state.axis_drag_current_freq.set(None);
     state.is_dragging.set(false);
@@ -401,10 +414,15 @@ pub fn on_mousedown(
     // Check for axis drag (left axis frequency range selection) — disabled in xform view
     if let Some((px_x, _, _, freq)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
         if px_x < LABEL_AREA_WIDTH && !state.display_transform.get_untracked() {
-            // Shift+click: extend existing FF range (anchor at far edge)
+            // Single click (non-shift) with active HFR: toggle it off
             let ff_lo = state.ff_freq_lo.get_untracked();
             let ff_hi = state.ff_freq_hi.get_untracked();
             let has_range = ff_hi > ff_lo;
+            if !ev.shift_key() && has_range && state.focus_stack.get_untracked().hfr_enabled() {
+                state.toggle_hfr();
+                ev.prevent_default();
+                return;
+            }
             let (raw_start, snap) = if ev.shift_key() && has_range {
                 // Anchor at the edge farthest from the click
                 let anchor = if (freq - ff_lo).abs() < (freq - ff_hi).abs() { ff_hi } else { ff_lo };
@@ -813,6 +831,16 @@ pub fn on_mouseup(
         if let Some(sel) = state.selection.get_untracked() {
             if sel.time_end - sel.time_start < 0.0001 {
                 state.selection.set(None);
+            } else if sel.freq_low.is_none() {
+                // Auto-combine: if FF range is active, upgrade segment to region
+                let ff = state.focus_stack.get_untracked().effective_range_ignoring_hfr();
+                if ff.is_active() {
+                    state.selection.set(Some(Selection {
+                        freq_low: Some(ff.lo),
+                        freq_high: Some(ff.hi),
+                        ..sel
+                    }));
+                }
             }
         }
         return;
@@ -1076,6 +1104,14 @@ pub fn on_touchstart(
     // Check for axis drag
     if let Some((px_x, _, _, freq)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
         if px_x < LABEL_AREA_WIDTH {
+            // Single tap with active HFR: toggle it off
+            let ff_lo = state.ff_freq_lo.get_untracked();
+            let ff_hi = state.ff_freq_hi.get_untracked();
+            if ff_hi > ff_lo && state.focus_stack.get_untracked().hfr_enabled() {
+                state.toggle_hfr();
+                ev.prevent_default();
+                return;
+            }
             let snap = 5_000.0;
             let snapped = (freq / snap).round() * snap;
             ix.axis_drag_raw_start.set(freq);
@@ -1329,6 +1365,16 @@ pub fn on_touchend(
             if let Some(sel) = state.selection.get_untracked() {
                 if sel.time_end - sel.time_start < 0.0001 {
                     state.selection.set(None);
+                } else if sel.freq_low.is_none() {
+                    // Auto-combine: if FF range is active, upgrade segment to region
+                    let ff = state.focus_stack.get_untracked().effective_range_ignoring_hfr();
+                    if ff.is_active() {
+                        state.selection.set(Some(Selection {
+                            freq_low: Some(ff.lo),
+                            freq_high: Some(ff.hi),
+                            ..sel
+                        }));
+                    }
                 }
             }
             return;
