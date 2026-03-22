@@ -2,6 +2,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use crate::types::{XcGroupTaxonomy, XcRecording};
 
+/// File hashes and size computed from audio bytes.
+#[derive(Clone, Debug)]
+pub struct FileHashes {
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub blake3: String,
+    /// Quick identity hash: BLAKE3 of first 8KB + last 8KB.
+    /// For files under 16KB, same as full BLAKE3.
+    pub spot_hash: String,
+}
+
 /// Sanitize a string for use in filenames.
 pub fn sanitize_filename(name: &str) -> String {
     name.chars()
@@ -115,6 +126,35 @@ pub fn cached_audio_path(root: &Path, id: u64) -> Option<PathBuf> {
     None
 }
 
+/// Compute hashes and size from audio bytes.
+pub fn compute_file_hashes(data: &[u8]) -> FileHashes {
+    use sha2::Digest;
+
+    let size_bytes = data.len() as u64;
+
+    // SHA-256
+    let sha256 = {
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(data);
+        format!("{:x}", hasher.finalize())
+    };
+
+    // BLAKE3 (full file)
+    let blake3 = blake3::hash(data).to_hex().to_string();
+
+    // Spot hash: BLAKE3 of first 8KB + last 8KB (quick identity check)
+    let spot_hash = if data.len() <= 16384 {
+        blake3.clone()
+    } else {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(&data[..8192]);
+        hasher.update(&data[data.len() - 8192..]);
+        hasher.finalize().to_hex().to_string()
+    };
+
+    FileHashes { size_bytes, sha256, blake3, spot_hash }
+}
+
 /// Build the XC metadata sidecar JSON for a recording.
 pub fn build_metadata_json(rec: &XcRecording) -> serde_json::Value {
     let attribution = format!(
@@ -146,6 +186,18 @@ pub fn build_metadata_json(rec: &XcRecording) -> serde_json::Value {
         "attribution": attribution,
         "retrieved": now,
     })
+}
+
+/// Build the XC metadata sidecar JSON for a recording, including file hashes.
+pub fn build_metadata_json_with_hashes(rec: &XcRecording, hashes: &FileHashes) -> serde_json::Value {
+    let mut json = build_metadata_json(rec);
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("file_size".into(), serde_json::json!(hashes.size_bytes));
+        obj.insert("sha256".into(), serde_json::json!(hashes.sha256));
+        obj.insert("blake3".into(), serde_json::json!(hashes.blake3));
+        obj.insert("spot_hash".into(), serde_json::json!(hashes.spot_hash));
+    }
+    json
 }
 
 /// Save a recording's audio and metadata to the cache.
@@ -180,9 +232,10 @@ pub fn save_recording(
     fs::write(&audio_path, audio_bytes)
         .map_err(|e| format!("Failed to write audio: {e}"))?;
 
-    // Write metadata sidecar
+    // Write metadata sidecar (with file hashes)
     let meta_path = sounds_dir.join(&meta_filename);
-    let metadata = build_metadata_json(rec);
+    let hashes = compute_file_hashes(audio_bytes);
+    let metadata = build_metadata_json_with_hashes(rec, &hashes);
     let json_str = serde_json::to_string_pretty(&metadata)
         .map_err(|e| format!("Serialize error: {e}"))?;
     fs::write(&meta_path, format!("{json_str}\n"))
@@ -192,6 +245,79 @@ pub fn save_recording(
     update_index(root, rec, &audio_filename, &meta_filename)?;
 
     Ok(audio_path)
+}
+
+/// Find the cached metadata sidecar path for a recording.
+pub fn cached_metadata_path(root: &Path, id: u64) -> Option<PathBuf> {
+    let sounds_dir = root.join("sounds");
+    let prefix = format!("XC{id} -");
+    if let Ok(entries) = fs::read_dir(&sounds_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) && name.ends_with(".xc.json") {
+                return Some(entry.path());
+            }
+        }
+    }
+    None
+}
+
+/// Delete a recording's audio, metadata sidecar, and index entry.
+/// Accepts either an XC ID or a filename. Returns names of deleted files.
+pub fn delete_recording(root: &Path, id: u64) -> Result<Vec<String>, String> {
+    let sounds_dir = root.join("sounds");
+    let prefix = format!("XC{id} -");
+    let mut deleted = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(&sounds_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(&prefix) {
+                fs::remove_file(entry.path())
+                    .map_err(|e| format!("Failed to delete {}: {e}", name))?;
+                deleted.push(name);
+            }
+        }
+    }
+
+    if deleted.is_empty() {
+        return Err(format!("No cached files found for XC{id}"));
+    }
+
+    // Remove from index.json
+    remove_from_index(root, id)?;
+
+    Ok(deleted)
+}
+
+/// Remove a recording entry from index.json by XC ID.
+fn remove_from_index(root: &Path, id: u64) -> Result<(), String> {
+    let index_path = root.join("index.json");
+    if !index_path.exists() {
+        return Ok(());
+    }
+
+    let mut index = read_index(root);
+    let sounds = index["sounds"]
+        .as_array_mut()
+        .ok_or("index.json 'sounds' is not an array")?;
+
+    let before = sounds.len();
+    sounds.retain(|s| s["xc_id"].as_u64() != Some(id));
+
+    if sounds.len() == before {
+        return Ok(()); // wasn't in the index
+    }
+
+    let tmp_path = root.join("index.json.tmp");
+    let json_str = serde_json::to_string_pretty(&index)
+        .map_err(|e| format!("Serialize error: {e}"))?;
+    fs::write(&tmp_path, format!("{json_str}\n"))
+        .map_err(|e| format!("Failed to write index.json.tmp: {e}"))?;
+    fs::rename(&tmp_path, &index_path)
+        .map_err(|e| format!("Failed to finalize index.json: {e}"))?;
+
+    Ok(())
 }
 
 /// Read and parse the cache index, falling back gracefully on errors.

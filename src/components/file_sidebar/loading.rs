@@ -527,6 +527,47 @@ fn parse_xc_metadata(json: &serde_json::Value) -> Vec<(String, String)> {
 pub(crate) struct DemoEntry {
     pub filename: String,
     pub metadata_file: Option<String>,
+    /// English common name (e.g. "Pond Myotis")
+    pub en: Option<String>,
+    /// Scientific name (e.g. "Myotis dasycneme")
+    pub species: Option<String>,
+    /// XC group if known (e.g. "bats")
+    pub group: Option<String>,
+}
+
+impl DemoEntry {
+    /// Heuristic: is this entry a bat recording?
+    /// Checks group field, then falls back to known bat family name patterns in the species.
+    pub fn is_bat(&self) -> bool {
+        if let Some(grp) = &self.group {
+            return grp == "bats";
+        }
+        // Check filename prefix pattern — bat recordings from XC batch download
+        // will have bat species names. We also check known bat families by genus.
+        // For demo sounds, we check the metadata species or filename.
+        if let Some(sp) = &self.species {
+            return is_bat_species(sp);
+        }
+        false
+    }
+}
+
+/// Known bat family genera patterns (non-exhaustive but covers XC bat listings).
+fn is_bat_species(species: &str) -> bool {
+    // If the filename/species contains known bat genera or family indicators
+    let lower = species.to_lowercase();
+    // Common bat genera/family fragments
+    const BAT_HINTS: &[&str] = &[
+        "myotis", "eptesicus", "pipistrellus", "nyctalus", "vespertilio",
+        "plecotus", "rhinolophus", "hipposideros", "miniopterus", "barbastella",
+        "tadarida", "molossus", "pteropus", "rousettus", "nyctimene",
+        "austronomus", "chalinolobus", "vespadelus", "scotophilus", "lasiurus",
+        "artibeus", "carollia", "desmodus", "glossophaga", "phyllostomus",
+        "noctilio", "mormoops", "pteronotus", "emballonura", "taphozous",
+        "saccolaimus", "coleura", "nycteris", "megaderma", "rhinopoma",
+        "craseonycteris", "thyroptera", "furipterus", "natalus",
+    ];
+    BAT_HINTS.iter().any(|hint| lower.contains(hint))
 }
 
 pub(crate) async fn fetch_demo_index() -> Result<Vec<DemoEntry>, String> {
@@ -544,7 +585,10 @@ pub(crate) async fn fetch_demo_index() -> Result<Vec<DemoEntry>, String> {
         .filter_map(|sound| {
             let filename = sound["filename"].as_str()?.to_string();
             let metadata_file = sound["metadata"].as_str().map(|s| s.to_string());
-            Some(DemoEntry { filename, metadata_file })
+            let en = sound["en"].as_str().map(|s| s.to_string());
+            let species = sound["species"].as_str().map(|s| s.to_string());
+            let group = sound["group"].as_str().map(|s| s.to_string());
+            Some(DemoEntry { filename, metadata_file, en, species, group })
         })
         .collect();
 

@@ -49,6 +49,41 @@ enum Commands {
         #[arg(long)]
         cache_dir: Option<PathBuf>,
     },
+    /// Batch download best-quality recordings for each bat species
+    BatchBats {
+        /// Number of recordings to download per species (default: 2)
+        #[arg(long, default_value_t = 2)]
+        per_species: u32,
+
+        /// Output/cache directory (default: current directory)
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+
+        /// API key (overrides stored key and XC_API_KEY env var)
+        #[arg(long)]
+        key: Option<String>,
+
+        /// Delay between downloads in seconds (default: 3)
+        #[arg(long, default_value_t = 3)]
+        delay: u64,
+
+        /// Skip species that already have enough cached recordings
+        #[arg(long, default_value_t = true)]
+        skip_cached: bool,
+
+        /// Dry run — show what would be downloaded without actually downloading
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Delete a cached recording by XC number or filename
+    Delete {
+        /// XC number (e.g. 928094, XC928094) or filename
+        recording: String,
+
+        /// Cache directory (default: current directory)
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+    },
     /// Save your XC API key (shared with the batmonic desktop app)
     SetKey {
         /// The API key to store
@@ -241,7 +276,246 @@ async fn main() {
 
             print_taxonomy(&taxonomy);
         }
+
+        Commands::BatchBats {
+            per_species,
+            cache_dir,
+            key,
+            delay,
+            skip_cached,
+            dry_run,
+        } => {
+            let api_key = require_api_key(&key);
+            let cache_root = cache_dir.unwrap_or_else(|| PathBuf::from("."));
+
+            // Step 1: Get bat taxonomy (use cache if available)
+            let taxonomy = match cache::load_taxonomy(&cache_root, "bats", None) {
+                Ok(Some(cached)) => {
+                    let age = cache::taxonomy_age_string(&cache_root, "bats", None)
+                        .unwrap_or_default();
+                    eprintln!("Using cached bat taxonomy ({age})");
+                    cached
+                }
+                _ => {
+                    eprintln!("Fetching bat species list...");
+                    let tax = taxonomy::build_species_list(
+                        &client, &api_key, "bats", None,
+                        |page, total| { eprint!("\rPage {page}/{total}..."); },
+                    )
+                    .await
+                    .unwrap_or_else(|e| {
+                        eprintln!("\nError: {e}");
+                        std::process::exit(1);
+                    });
+                    eprintln!();
+                    let _ = cache::save_taxonomy(&cache_root, "bats", None, &tax);
+                    tax
+                }
+            };
+
+            eprintln!(
+                "{} bat species, {} total recordings",
+                taxonomy.species.len(),
+                taxonomy.total_recordings
+            );
+
+            // Step 2: For each species, find and download best recordings
+            let mut total_downloaded = 0u32;
+            let mut total_skipped = 0u32;
+            let mut total_errors = 0u32;
+
+            for (sp_idx, species) in taxonomy.species.iter().enumerate() {
+                let species_name = format!("{} {} ({})", species.genus, species.sp, species.en);
+                eprint!(
+                    "\r[{}/{}] {}",
+                    sp_idx + 1,
+                    taxonomy.species.len(),
+                    species_name,
+                );
+
+                if species.recording_count == 0 {
+                    eprintln!(" — no recordings");
+                    continue;
+                }
+
+                // Check how many we already have cached for this species
+                let existing = if skip_cached {
+                    count_cached_for_species(&cache_root, &species.genus, &species.sp)
+                } else {
+                    0
+                };
+
+                if existing >= per_species {
+                    total_skipped += 1;
+                    eprintln!(" — already have {existing} cached, skipping");
+                    continue;
+                }
+
+                let needed = per_species - existing;
+
+                // Search for best quality recordings of this species
+                // Quality sort: q:A first, then by sample rate descending
+                let query = format!(
+                    "grp:bats gen:{} sp:{}",
+                    species.genus, species.sp
+                );
+
+                let search_result = match api::search(&client, &api_key, &query, 1, 50).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!(" — search error: {e}");
+                        total_errors += 1;
+                        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                        continue;
+                    }
+                };
+
+                // Sort by quality (A > B > C > D > E), then by sample rate descending
+                let mut candidates = search_result.recordings;
+                candidates.sort_by(|a, b| {
+                    let qa = quality_rank(&a.q);
+                    let qb = quality_rank(&b.q);
+                    qa.cmp(&qb).then_with(|| {
+                        let sa = a.smp.parse::<u64>().unwrap_or(0);
+                        let sb = b.smp.parse::<u64>().unwrap_or(0);
+                        sb.cmp(&sa) // higher sample rate first
+                    })
+                });
+
+                // Filter out already-cached recordings
+                let candidates: Vec<_> = candidates
+                    .into_iter()
+                    .filter(|r| !cache::is_recording_cached(&cache_root, r.id))
+                    .collect();
+
+                if candidates.is_empty() {
+                    eprintln!(" — no new candidates");
+                    continue;
+                }
+
+                let to_fetch: Vec<_> = candidates.into_iter().take(needed as usize).collect();
+                eprintln!();
+
+                for rec in &to_fetch {
+                    let smp_display = rec.smp.parse::<u64>().unwrap_or(0);
+                    eprintln!(
+                        "  Downloading XC{}: q={}, {}kHz, {}",
+                        rec.id, rec.q, smp_display / 1000, rec.length
+                    );
+
+                    if dry_run {
+                        total_downloaded += 1;
+                        continue;
+                    }
+
+                    // Rate-limit between downloads
+                    tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+
+                    match api::download_audio(&client, &rec.file_url).await {
+                        Ok(audio_bytes) => {
+                            match cache::save_recording(&cache_root, rec, &audio_bytes) {
+                                Ok(path) => {
+                                    eprintln!(
+                                        "    Saved {} ({:.1} MB)",
+                                        path.file_name().unwrap_or_default().to_string_lossy(),
+                                        audio_bytes.len() as f64 / 1_048_576.0
+                                    );
+                                    total_downloaded += 1;
+                                }
+                                Err(e) => {
+                                    eprintln!("    Save error: {e}");
+                                    total_errors += 1;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("    Download error: {e}");
+                            total_errors += 1;
+                        }
+                    }
+                }
+            }
+
+            eprintln!();
+            println!(
+                "Done. Downloaded: {total_downloaded}, Skipped: {total_skipped}, Errors: {total_errors}"
+            );
+        }
+
+        Commands::Delete {
+            recording,
+            cache_dir,
+        } => {
+            let cache_root = cache_dir.unwrap_or_else(|| PathBuf::from("."));
+
+            // Try to parse as XC number first
+            let id = match api::parse_xc_number(&recording) {
+                Ok(n) => n,
+                Err(_) => {
+                    // Try to extract XC number from filename (e.g. "XC928094 - ...")
+                    if let Some(rest) = recording.strip_prefix("XC") {
+                        rest.split(|c: char| !c.is_ascii_digit())
+                            .next()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or_else(|| {
+                                eprintln!("Can't parse XC number from: {recording}");
+                                std::process::exit(1);
+                            })
+                    } else {
+                        eprintln!("Can't parse XC number from: {recording}");
+                        std::process::exit(1);
+                    }
+                }
+            };
+
+            match cache::delete_recording(&cache_root, id) {
+                Ok(deleted) => {
+                    for name in &deleted {
+                        println!("Deleted: {name}");
+                    }
+                    println!("Removed {} file(s) for XC{id}", deleted.len());
+                }
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
     }
+}
+
+/// Rank quality ratings: A=0 (best), B=1, C=2, D=3, E=4, unknown=5
+fn quality_rank(q: &str) -> u8 {
+    match q.trim() {
+        "A" => 0,
+        "B" => 1,
+        "C" => 2,
+        "D" => 3,
+        "E" => 4,
+        _ => 5,
+    }
+}
+
+/// Count how many recordings for a species are already cached.
+fn count_cached_for_species(root: &std::path::Path, genus: &str, sp: &str) -> u32 {
+    let sounds_dir = root.join("sounds");
+    if !sounds_dir.exists() {
+        return 0;
+    }
+    let suffix = format!(" - {} {}", genus, sp);
+    let mut count = 0u32;
+    if let Ok(entries) = std::fs::read_dir(&sounds_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("XC") && !name.ends_with(".xc.json") {
+                let without_ext = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(&name);
+                if without_ext.ends_with(&suffix) {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
 }
 
 fn print_taxonomy(taxonomy: &xc_lib::XcGroupTaxonomy) {

@@ -193,12 +193,49 @@ pub(super) fn FilesPanel() -> impl IntoView {
                             {move || {
                                 if demo_picker_open.get() {
                                     let entries = demo_entries.get();
+
+                                    // "Random bat" button — pick a random bat from the demos
+                                    let bat_entries: Vec<DemoEntry> = entries.iter()
+                                        .filter(|e| e.is_bat())
+                                        .cloned()
+                                        .collect();
+                                    let has_bats = !bat_entries.is_empty();
+                                    let random_bat_btn = if has_bats {
+                                        Some(view! {
+                                            <button
+                                                class="demo-item demo-random-bat"
+                                                on:click=move |_| {
+                                                    let bats = bat_entries.clone();
+                                                    let idx = (js_sys::Math::random() * bats.len() as f64) as usize;
+                                                    let entry = bats[idx.min(bats.len() - 1)].clone();
+                                                    let label = entry.en.clone()
+                                                        .unwrap_or_else(|| entry.filename.clone());
+                                                    let load_id = state.loading_start(&format!("Random bat: {label}"));
+                                                    spawn_local(async move {
+                                                        match load_single_demo(&entry, state, load_id).await {
+                                                            Ok(()) => {}
+                                                            Err(e) => log::error!("Failed to load random bat: {e}"),
+                                                        }
+                                                        state.loading_done(load_id);
+                                                    });
+                                                }
+                                            >
+                                                "Random bat"
+                                            </button>
+                                        })
+                                    } else {
+                                        None
+                                    };
+
                                     let items: Vec<_> = entries.iter().map(|entry| {
                                         let entry_clone = entry.clone();
-                                        let display_name = entry.filename
-                                            .trim_end_matches(".wav")
-                                            .trim_end_matches(".flac")
-                                            .to_string();
+                                        let display_name = entry.en.clone().unwrap_or_else(|| {
+                                            entry.filename
+                                                .trim_end_matches(".wav")
+                                                .trim_end_matches(".flac")
+                                                .trim_end_matches(".mp3")
+                                                .to_string()
+                                        });
                                         view! {
                                             <button
                                                 class="demo-item"
@@ -219,7 +256,10 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                         }
                                     }).collect();
                                     view! {
-                                        <div class="demo-picker">{items}</div>
+                                        <div class="demo-picker">
+                                            {random_bat_btn}
+                                            {items}
+                                        </div>
                                     }.into_any()
                                 } else {
                                     view! { <span></span> }.into_any()
