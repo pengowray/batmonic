@@ -1631,6 +1631,90 @@ body.sidebar-resizing {
     font-size: 15px;
     color: #eee;
     letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+/* Title center area — file name + status + info/CC */
+.toolbar-title-center {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0; /* allow shrinking */
+    overflow: hidden;
+}
+
+.toolbar-status-icons {
+    flex-shrink: 0;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.toolbar-title-filename {
+    color: #bbb;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    /* Direction trick: ellipsis in the middle — the filename shows start and end,
+       truncating in the middle. We achieve "middle ellipsis" by using a combination:
+       the CSS text-overflow only does end-ellipsis, but the direction:rtl trick
+       clips from the left which is useful for paths. For file names we just use
+       normal end-ellipsis which is fine since extensions are short. */
+    direction: ltr;
+}
+
+.toolbar-info-btn {
+    flex-shrink: 0;
+    background: none !important;
+    border: none !important;
+    color: #888;
+    font-size: 16px;
+    padding: 2px 4px !important;
+    cursor: pointer;
+    line-height: 1;
+    border-radius: 3px;
+}
+
+.toolbar-info-btn:hover {
+    color: #ccc;
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.toolbar-cc-badge {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    color: #ccc;
+    font-size: 11px;
+    padding: 2px 6px !important;
+    cursor: pointer;
+    border-radius: 3px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 160px;
+}
+
+.toolbar-cc-badge:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    color: #eee;
+}
+
+.toolbar-cc-icon {
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.toolbar-cc-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* Undo/Redo buttons in toolbar */
