@@ -301,9 +301,17 @@ pub enum SpectrogramHandle {
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum PlayStartMode {
     #[default]
+    Auto,      // automatically choose: Selected > FromHere > All
     All,       // play from start of file
     FromHere,  // play from current scroll position
     Selected,  // play selection (falls back to All if no selection)
+}
+
+impl PlayStartMode {
+    /// Whether this mode uses "from-here" scrolling (negative scroll allowed, "here" marker shown).
+    pub fn uses_from_here(&self) -> bool {
+        matches!(self, PlayStartMode::FromHere | PlayStartMode::Auto)
+    }
 }
 
 /// What happens when the Record button is pressed.

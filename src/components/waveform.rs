@@ -5,7 +5,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::waveform_renderer;
 use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast, cascaded_lowpass};
 use crate::dsp::zc_divide::zc_rate_per_bin;
-use crate::state::{AppState, CanvasTool, FilterQuality, PlayStartMode, PlaybackMode};
+use crate::state::{AppState, CanvasTool, FilterQuality, PlaybackMode};
 use crate::audio::source::ChannelView;
 use crate::viewport;
 
@@ -341,7 +341,7 @@ pub fn Waveform() -> impl IntoView {
             }
 
             // Draw "play here" marker when not playing
-            if !clean_view && state.play_start_mode.get() == PlayStartMode::FromHere && !is_playing && canvas_tool == CanvasTool::Hand {
+            if !clean_view && state.play_start_mode.get() .uses_from_here() && !is_playing && canvas_tool == CanvasTool::Hand {
                 let visible_time = viewport::visible_time(display_w as f64, zoom, file.spectrogram.time_resolution);
                 let here_x = display_w as f64 * viewport::PLAY_FROM_HERE_FRACTION;
                 let here_time = viewport::play_from_here_time(scroll, visible_time);
@@ -396,7 +396,7 @@ pub fn Waveform() -> impl IntoView {
             .unwrap_or((1.0, 0.0));
         let zoom = state.zoom_level.get_untracked();
         let scroll = state.scroll_offset.get_untracked();
-        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+        let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
 
         let visible_time = viewport::visible_time(display_w, zoom, time_res);
         let playhead_rel = playhead - scroll;
@@ -449,7 +449,7 @@ pub fn Waveform() -> impl IntoView {
                 .get(state.current_file_index.get_untracked().unwrap_or(0))
                 .map(|f| f.audio.duration_secs)
                 .unwrap_or(0.0);
-            let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+            let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
             state.suspend_follow();
             state.scroll_offset.update(|s| {
                 *s = viewport::clamp_scroll_for_mode(*s + delta, duration, visible_time, from_here_mode);
@@ -479,7 +479,7 @@ pub fn Waveform() -> impl IntoView {
         let zoom = state.zoom_level.get_untracked();
         let visible_time = viewport::visible_time(cw, zoom, time_res);
         let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
-        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+        let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
         state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
@@ -527,7 +527,7 @@ pub fn Waveform() -> impl IntoView {
                     initial_mid_client_x: mid_x,
                     time_res,
                     duration,
-                    from_here_mode: state.play_start_mode.get_untracked() == PlayStartMode::FromHere,
+                    from_here_mode: state.play_start_mode.get_untracked() .uses_from_here(),
                 }));
             }
             state.is_dragging.set(false);
@@ -584,7 +584,7 @@ pub fn Waveform() -> impl IntoView {
         let zoom = state.zoom_level.get_untracked();
         let visible_time = viewport::visible_time(cw, zoom, time_res);
         let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
-                let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+                let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
                 state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
@@ -625,7 +625,7 @@ pub fn Waveform() -> impl IntoView {
                         let file = idx.and_then(|i| files.get(i));
                         let time_res = file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
                         let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX);
-                        let from_here_mode = state.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+                        let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
                         crate::components::inertia::start_inertia(
                             state, vel, cw, time_res, duration, from_here_mode, inertia_generation,
                         );

@@ -62,11 +62,29 @@ pub fn BottomToolbar() -> impl IntoView {
     });
 
     let play_left_value = Signal::derive(move || "\u{25B6}".to_string()); // ▶
+    let play_right_label = Signal::derive(move || {
+        match state.play_start_mode.get() {
+            PlayStartMode::Auto => "Auto".to_string(),
+            _ => String::new(),
+        }
+    });
     let play_right_value = Signal::derive(move || {
         match state.play_start_mode.get() {
             PlayStartMode::All => "All".to_string(),
             PlayStartMode::FromHere => "Here".to_string(),
             PlayStartMode::Selected => "Sel".to_string(),
+            PlayStartMode::Auto => {
+                // Subscribe to selection-related signals for reactivity
+                let _sel = state.selection.get();
+                let _ann = state.selected_annotation_ids.get();
+                if playback::effective_selection(&state).is_some() {
+                    "Sel".to_string()
+                } else if state.scroll_offset.get() == 0.0 {
+                    "All".to_string()
+                } else {
+                    "Here".to_string()
+                }
+            }
         }
     });
 
@@ -82,6 +100,15 @@ pub fn BottomToolbar() -> impl IntoView {
                         playback::play(&state);
                     } else {
                         playback::play_from_start(&state);
+                    }
+                }
+                PlayStartMode::Auto => {
+                    if playback::effective_selection(&state).is_some() {
+                        playback::play(&state);
+                    } else if state.scroll_offset.get_untracked() == 0.0 {
+                        playback::play_from_start(&state);
+                    } else {
+                        playback::play_from_here(&state);
                     }
                 }
             }
@@ -227,6 +254,7 @@ pub fn BottomToolbar() -> impl IntoView {
                     left_class=play_left_class
                     right_value=play_right_value
                     right_class=play_right_class
+                    right_label=play_right_label
                     is_open=play_is_open
                     toggle_menu=play_toggle_menu
                     left_title="Play / Stop"
@@ -234,6 +262,12 @@ pub fn BottomToolbar() -> impl IntoView {
                     menu_direction="above"
                     panel_style="min-width: 180px;"
                 >
+                    <button class=move || layer_opt_class(state.play_start_mode.get() == PlayStartMode::Auto)
+                        on:click=move |_| {
+                            state.play_start_mode.set(PlayStartMode::Auto);
+                            state.layer_panel_open.set(None);
+                        }
+                    >"Auto \u{2014} Selected / Here / All"</button>
                     <button class=move || layer_opt_class(state.play_start_mode.get() == PlayStartMode::All)
                         on:click=move |_| {
                             state.play_start_mode.set(PlayStartMode::All);

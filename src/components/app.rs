@@ -277,7 +277,7 @@ pub fn App() -> impl IntoView {
         let scroll = state.scroll_offset.get();
         let zoom = state.zoom_level.get();
         let canvas_w = state.spectrogram_canvas_width.get();
-        let from_here_mode = state.play_start_mode.get() == PlayStartMode::FromHere;
+        let from_here_mode = state.play_start_mode.get().uses_from_here();
         let timeline = state.active_timeline.get();
         let files = state.files.get();
         let idx = state.current_file_index.get();
@@ -605,6 +605,15 @@ pub fn App() -> impl IntoView {
                                 playback::play_from_start(&state_kb);
                             }
                         }
+                        PlayStartMode::Auto => {
+                            if playback::effective_selection(&state_kb).is_some() {
+                                playback::play(&state_kb);
+                            } else if state_kb.scroll_offset.get_untracked() == 0.0 {
+                                playback::play_from_start(&state_kb);
+                            } else {
+                                playback::play_from_here(&state_kb);
+                            }
+                        }
                     }
                 }
             }
@@ -770,7 +779,7 @@ pub fn App() -> impl IntoView {
                 let zoom = state_kb.zoom_level.get_untracked();
                 let canvas_w = state_kb.spectrogram_canvas_width.get_untracked();
                 let visible_time = viewport::visible_time(canvas_w, zoom, time_res);
-                let from_here_mode = state_kb.play_start_mode.get_untracked() == PlayStartMode::FromHere;
+                let from_here_mode = state_kb.play_start_mode.get_untracked().uses_from_here();
                 let (_min_scroll, max_scroll) = viewport::scroll_bounds_for_mode(duration, visible_time, from_here_mode);
                 let new_scroll = match key.as_str() {
                     "Home" => viewport::clamp_scroll_for_mode(0.0, duration, visible_time, from_here_mode),

@@ -478,7 +478,7 @@ fn ProjectView(project: BatProject) -> impl IntoView {
                     let fit_zoom = ((canvas_w * primary_time_res) / timeline_duration).clamp(0.1, 400.0);
                     state.zoom_level.set(fit_zoom);
                     let visible_time = viewport::visible_time(canvas_w, fit_zoom, primary_time_res);
-                    let from_here_mode = state.play_start_mode.get_untracked() == crate::state::PlayStartMode::FromHere;
+                    let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
                     state.scroll_offset.set(viewport::clamp_scroll_for_mode(0.0, timeline_duration, visible_time, from_here_mode));
                 } else {
                     state.scroll_offset.set(0.0);
@@ -720,7 +720,7 @@ fn ProjectView(project: BatProject) -> impl IntoView {
                                     let fit_zoom = ((canvas_w * primary_time_res) / timeline_duration).clamp(0.1, 400.0);
                                     state.zoom_level.set(fit_zoom);
                                     let visible_time = viewport::visible_time(canvas_w, fit_zoom, primary_time_res);
-                                    let from_here_mode = state.play_start_mode.get_untracked() == crate::state::PlayStartMode::FromHere;
+                                    let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
                                     state.scroll_offset.set(viewport::clamp_scroll_for_mode(0.0, timeline_duration, visible_time, from_here_mode));
                                 } else {
                                     state.scroll_offset.set(0.0);

@@ -35,6 +35,9 @@ pub fn ComboButton(
     /// Tooltip for the right button
     #[prop(default = "")]
     right_title: &'static str,
+    /// Optional reactive label for the right button's category text (small top text)
+    #[prop(optional, into)]
+    right_label: Option<Signal<String>>,
     /// "below" or "above" — direction the panel opens
     #[prop(default = "below")]
     menu_direction: &'static str,
@@ -169,7 +172,15 @@ pub fn ComboButton(
                 on:contextmenu=move |ev: web_sys::MouseEvent| ev.prevent_default()
             >
                 <span class="combo-btn-text combo-btn-text-right">
-                    <span class="layer-btn-category">{"\u{00A0}"}</span>
+                    <span class="layer-btn-category">{move || {
+                        match right_label {
+                            Some(sig) => {
+                                let v = sig.get();
+                                if v.is_empty() { "\u{00A0}".to_string() } else { v }
+                            }
+                            None => "\u{00A0}".to_string(),
+                        }
+                    }}</span>
                     <span class="layer-btn-value">{move || right_value.get()}</span>
                 </span>
                 <span class="combo-btn-arrow">{"\u{25BE}"}</span>
