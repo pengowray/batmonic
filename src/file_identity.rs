@@ -280,11 +280,11 @@ pub fn start_identity_computation(
     // Try loading annotations with Layer 1 key
     crate::opfs::load_annotations(state, file_index, identity);
 
-    // Layer 2: compute BLAKE3 spot hash async
+    // Layer 2: compute BLAKE3 spot hash async (+ Layers 3+4 when bytes available)
     wasm_bindgen_futures::spawn_local(async move {
-        let spot_hash = if let Some(bytes) = file_bytes {
+        let spot_hash = if let Some(ref bytes) = file_bytes {
             // In-memory: compute synchronously
-            Some(compute_spot_hash_b3_sync(&bytes, data_offset, data_size))
+            Some(compute_spot_hash_b3_sync(bytes, data_offset, data_size))
         } else {
             // No bytes available (streaming load) — need file handle for range reads
             let handle = state.files.with_untracked(|files| {
@@ -314,6 +314,49 @@ pub fn start_identity_computation(
             if let Some(id) = identity {
                 crate::opfs::load_annotations(state, file_index, id);
             }
+        }
+
+        // When we have in-memory bytes, also compute full BLAKE3 + SHA-256 (Layers 3+4)
+        if let Some(bytes) = file_bytes {
+            yield_now().await; // yield before heavy computation
+
+            // Layer 3: content hash (header zeroed) + Layer 4: full BLAKE3
+            let header_end = data_offset.unwrap_or(0) as usize;
+            let content_hash = {
+                let mut hasher = blake3::Hasher::new();
+                if header_end > 0 && header_end < bytes.len() {
+                    let zeroed = vec![0u8; header_end];
+                    hasher.update(&zeroed);
+                    hasher.update(&bytes[header_end..]);
+                } else {
+                    hasher.update(&bytes);
+                }
+                hasher.finalize().to_hex().to_string()
+            };
+            let full_blake3 = blake3::hash(&bytes).to_hex().to_string();
+
+            yield_now().await;
+
+            // Layer 4-alt: full SHA-256
+            let full_sha256 = {
+                use sha2::{Sha256, Digest};
+                let mut hasher = Sha256::new();
+                hasher.update(&bytes);
+                format!("{:x}", hasher.finalize())
+            };
+
+            state.files.update(|files| {
+                if let Some(f) = files.get_mut(file_index) {
+                    if let Some(ref mut id) = f.identity {
+                        id.content_hash = Some(content_hash);
+                        id.full_blake3 = Some(full_blake3);
+                        id.full_sha256 = Some(full_sha256);
+                    }
+                }
+            });
+
+            // Save updated identity to sidecar
+            crate::opfs::save_annotations_to_opfs(state, file_index);
         }
     });
 }
