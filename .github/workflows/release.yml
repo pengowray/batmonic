@@ -28,7 +28,7 @@ jobs:
           version: latest
 
       - name: Build
-        run: trunk build --release --public-url /oversample/ --dist docs
+        run: trunk build --release --public-url / --dist docs
 
       - name: Bypass Jekyll
         run: touch docs/.nojekyll

@@ -1,4 +1,4 @@
-package com.batmonic.app
+package com.oversample.app
 
 import android.Manifest
 import android.app.Activity
