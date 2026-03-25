@@ -7,6 +7,7 @@ use crate::canvas::spectrogram_renderer::{self, FreqMarkerState, FreqShiftMode};
 use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast};
 use crate::dsp::zc_divide::zc_rate_per_bin;
 use crate::state::{AppState, CanvasTool, FilterQuality, SpectrogramHandle};
+use crate::components::spectrogram_events::freq_snap;
 use crate::viewport;
 
 const ZC_BIN_DURATION: f64 = 0.001; // 1ms bins
@@ -461,7 +462,7 @@ pub fn ZcDotChart() -> impl IntoView {
         // Check for axis drag (left label area)
         if let Some((px_x, _px_y, freq)) = mouse_to_xf(&ev) {
             if px_x < LABEL_AREA_WIDTH {
-                let snap = if ev.shift_key() { 10_000.0 } else { 5_000.0 };
+                let snap = freq_snap(freq, ev.shift_key());
                 let snapped = (freq / snap).round() * snap;
                 axis_drag_raw_start.set(freq);
                 state.axis_drag_start_freq.set(Some(snapped));
@@ -534,7 +535,7 @@ pub fn ZcDotChart() -> impl IntoView {
                 // Axis drag takes second priority
                 if state.axis_drag_start_freq.get_untracked().is_some() {
                     let raw_start = axis_drag_raw_start.get_untracked();
-                    let snap = if ev.shift_key() { 10_000.0 } else { 5_000.0 };
+                    let snap = freq_snap(freq, ev.shift_key());
                     let (snapped_start, snapped_end) = if freq > raw_start {
                         ((raw_start / snap).floor() * snap, (freq / snap).ceil() * snap)
                     } else if freq < raw_start {

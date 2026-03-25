@@ -8,6 +8,16 @@ use crate::viewport;
 
 pub const LABEL_AREA_WIDTH: f64 = 60.0;
 
+/// Frequency-dependent snap increment for y-axis selection.
+/// Below 20 kHz: 1 kHz (shift: 2 kHz). At/above 20 kHz: 5 kHz (shift: 10 kHz).
+pub fn freq_snap(freq: f64, shift: bool) -> f64 {
+    if freq < 20_000.0 {
+        if shift { 2_000.0 } else { 1_000.0 }
+    } else {
+        if shift { 10_000.0 } else { 5_000.0 }
+    }
+}
+
 /// Local interaction state for the spectrogram component.
 /// These signals are only used by event handlers, not by rendering.
 #[derive(Copy, Clone)]
@@ -409,7 +419,7 @@ pub fn on_mousedown(
                 ix.corner_drag_saved_selection.set(state.selection.get_untracked());
 
                 // Y-axis (freq) init
-                let _snap = if ev.shift_key() { 10_000.0 } else { 5_000.0 };
+                let _snap = freq_snap(freq, ev.shift_key());
                 let has_range = ff_hi > ff_lo;
                 let raw_start_freq = if ev.shift_key() && has_range {
                     
@@ -453,9 +463,9 @@ pub fn on_mousedown(
             let (raw_start, snap) = if ev.shift_key() && has_range {
                 // Anchor at the edge farthest from the click
                 let anchor = if (freq - ff_lo).abs() < (freq - ff_hi).abs() { ff_hi } else { ff_lo };
-                (anchor, 5_000.0)
+                (anchor, freq_snap(freq, ev.shift_key()))
             } else {
-                let snap = if ev.shift_key() { 10_000.0 } else { 5_000.0 };
+                let snap = freq_snap(freq, ev.shift_key());
                 (freq, snap)
             };
             let snapped = (freq / snap).round() * snap;
@@ -658,7 +668,7 @@ pub fn on_mousemove(
                         ix.time_axis_dragging.set(false);
                         // Set up freq axis drag signals
                         let raw_start = ix.axis_drag_raw_start.get_untracked();
-                        let snap = if ev.shift_key() { 10_000.0 } else { 5_000.0 };
+                        let snap = freq_snap(raw_start, ev.shift_key());
                         let snapped = (raw_start / snap).round() * snap;
                         state.axis_drag_start_freq.set(Some(snapped));
                         state.axis_drag_current_freq.set(Some(snapped));
@@ -677,7 +687,7 @@ pub fn on_mousemove(
                 // Apply the committed axis's drag update
                 if want_y_axis {
                     let raw_start = ix.axis_drag_raw_start.get_untracked();
-                    let snap = if ev.shift_key() { 10_000.0 } else { 5_000.0 };
+                    let snap = freq_snap(f, ev.shift_key());
                     apply_axis_drag(state, raw_start, f, snap);
                 } else {
                     let t0 = ix.time_axis_drag_raw_start.get_untracked();
@@ -696,7 +706,7 @@ pub fn on_mousemove(
             // Axis drag takes third priority
             if state.axis_drag_start_freq.get_untracked().is_some() {
                 let raw_start = ix.axis_drag_raw_start.get_untracked();
-                let snap = if ev.shift_key() { 10_000.0 } else { 5_000.0 };
+                let snap = freq_snap(f, ev.shift_key());
                 apply_axis_drag(state, raw_start, f, snap);
                 return;
             }
@@ -1183,7 +1193,7 @@ pub fn on_touchstart(
     // Check for axis drag — tap to toggle HFR off is deferred to touchend via finalize_axis_drag
     if let Some((px_x, _, _, freq)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
         if px_x < LABEL_AREA_WIDTH {
-            let snap = 5_000.0;
+            let snap = freq_snap(freq, false);
             let snapped = (freq / snap).round() * snap;
             ix.axis_drag_raw_start.set(freq);
             state.axis_drag_start_freq.set(Some(snapped));
@@ -1290,7 +1300,7 @@ pub fn on_touchmove(
                     state.selection.set(saved_sel);
                     ix.time_axis_dragging.set(false);
                     let raw_start = ix.axis_drag_raw_start.get_untracked();
-                    let snap = 5_000.0;
+                    let snap = freq_snap(raw_start, false);
                     let snapped = (raw_start / snap).round() * snap;
                     state.axis_drag_start_freq.set(Some(snapped));
                     state.axis_drag_current_freq.set(Some(snapped));
@@ -1307,7 +1317,7 @@ pub fn on_touchmove(
             }
             if want_y_axis {
                 let raw_start = ix.axis_drag_raw_start.get_untracked();
-                let snap = 5_000.0;
+                let snap = freq_snap(f, false);
                 apply_axis_drag(state, raw_start, f, snap);
             } else {
                 let t0 = ix.time_axis_drag_raw_start.get_untracked();
@@ -1328,7 +1338,7 @@ pub fn on_touchmove(
     if state.axis_drag_start_freq.get_untracked().is_some() {
         if let Some((_, _, _, f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
             let raw_start = ix.axis_drag_raw_start.get_untracked();
-            let snap = 5_000.0;
+            let snap = freq_snap(f, false);
             apply_axis_drag(state, raw_start, f, snap);
         }
         return;
