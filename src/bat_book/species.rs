@@ -5077,3 +5077,227 @@ pub const PTEROPUS_GIGANTEUS: BatSpecies = BatSpecies {
     description: "No echolocation. Largest bat in South Asia (wingspan up to 1.5 m). Large noisy roost camps in tall trees. Pakistan, India, Nepal, Bangladesh, Sri Lanka. Important pollinator and seed disperser.",
     echolocates: false,
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Antarctica — echolocating marine mammals of the Southern Ocean
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Toothed whales (Odontoceti) echolocate using biosonar clicks produced in
+// nasal air sacs and focused by the melon. Frequencies and mechanisms vary
+// widely: sperm whales use powerful low-frequency clicks, dolphins and orcas
+// use broadband clicks up to 100+ kHz, and porpoises produce narrow-band
+// high-frequency (NBHF) clicks above 100 kHz. Baleen whales and seals do
+// not echolocate and are listed as non-echolocating, analogous to fruit bats.
+//
+// Sources:
+// - Au (1993) "The Sonar of Dolphins" — dolphin/porpoise biosonar
+// - Møhl et al. (2003) JASA: Sperm whale click source parameters
+// - Kyhn et al. (2009) JASA: Spectacled porpoise NBHF clicks
+// - Johnson et al. (2004) Proc R Soc B: Beaked whale echolocation
+// - Schevill & Watkins (1966): Early cetacean bioacoustics
+
+// ── Delphinidae (oceanic dolphins & orcas) ──────────────────────────────────
+
+pub const ORCINUS_ORCA: BatSpecies = BatSpecies {
+    id: "orcinus_orca",
+    name: "Orca",
+    scientific_name: "Orcinus orca",
+    family: "Delphinidae",
+    call_type: "clicks",
+    freq_lo_hz: 500.0,
+    freq_hi_hz: 80_000.0,
+    description: "Apex predator of the Southern Ocean. Produces broadband echolocation clicks (peak ~20 kHz, energy to 80+ kHz) plus complex pulsed calls and whistles for communication. Antarctic populations include fish-eating Type C, mammal-hunting Type A, and pack-ice specialist Type B. Highly social; pods use distinct vocal dialects.",
+    echolocates: true,
+};
+
+pub const LAGENORHYNCHUS_CRUCIGER: BatSpecies = BatSpecies {
+    id: "lagenorhynchus_cruciger",
+    name: "Hourglass Dolphin",
+    scientific_name: "Lagenorhynchus cruciger",
+    family: "Delphinidae",
+    call_type: "clicks",
+    freq_lo_hz: 2_000.0,
+    freq_hi_hz: 130_000.0,
+    description: "The only small dolphin found exclusively in cold Antarctic and sub-Antarctic waters. Named for its striking black-and-white hourglass flank pattern. Produces broadband echolocation clicks. One of the least-studied cetaceans due to its remote pelagic habitat; rarely approaches vessels.",
+    echolocates: true,
+};
+
+pub const LISSODELPHIS_PERONII: BatSpecies = BatSpecies {
+    id: "lissodelphis_peronii",
+    name: "Southern Right Whale Dolphin",
+    scientific_name: "Lissodelphis peronii",
+    family: "Delphinidae",
+    call_type: "clicks",
+    freq_lo_hz: 1_000.0,
+    freq_hi_hz: 100_000.0,
+    description: "Slender, finless dolphin of the Southern Ocean — the only dolphin in the Southern Hemisphere lacking a dorsal fin. Jet black above, bright white below. Fast, graceful swimmer found in large schools. Produces broadband clicks for echolocation. Circumpolar in cool temperate to sub-Antarctic waters.",
+    echolocates: true,
+};
+
+pub const GLOBICEPHALA_MELAS: BatSpecies = BatSpecies {
+    id: "globicephala_melas",
+    name: "Long-finned Pilot Whale",
+    scientific_name: "Globicephala melas",
+    family: "Delphinidae",
+    call_type: "clicks",
+    freq_lo_hz: 1_000.0,
+    freq_hi_hz: 80_000.0,
+    description: "Large, gregarious dolphin with a bulbous melon and sickle-shaped flippers. Echolocates with broadband clicks; also produces complex social calls and buzzes during deep squid-hunting dives. Found throughout sub-Antarctic waters in large, tightly bonded pods. Prone to mass strandings.",
+    echolocates: true,
+};
+
+// ── Phocoenidae (porpoises) ─────────────────────────────────────────────────
+
+pub const PHOCOENA_DIOPTRICA: BatSpecies = BatSpecies {
+    id: "phocoena_dioptrica",
+    name: "Spectacled Porpoise",
+    scientific_name: "Phocoena dioptrica",
+    family: "Phocoenidae",
+    call_type: "NBHF",
+    freq_lo_hz: 110_000.0,
+    freq_hi_hz: 140_000.0,
+    description: "Elusive sub-Antarctic porpoise with distinctive dark eye patches. Uses narrow-band high-frequency (NBHF) clicks around 128–130 kHz — a stealth sonar strategy thought to evade orca predation, as orcas hear poorly above ~100 kHz. Rarely seen alive; mostly known from strandings on Tierra del Fuego and the Falklands.",
+    echolocates: true,
+};
+
+// ── Physeteridae (sperm whales) ─────────────────────────────────────────────
+
+pub const PHYSETER_MACROCEPHALUS: BatSpecies = BatSpecies {
+    id: "physeter_macrocephalus",
+    name: "Sperm Whale",
+    scientific_name: "Physeter macrocephalus",
+    family: "Physeteridae",
+    call_type: "clicks",
+    freq_lo_hz: 200.0,
+    freq_hi_hz: 30_000.0,
+    description: "The loudest animal on Earth — produces echolocation clicks exceeding 230 dB re 1µPa. The enormous spermaceti organ acts as an acoustic lens, focusing powerful, directional clicks for hunting giant squid at depths beyond 1,000 m. Also produces codas: rhythmic click patterns used for social communication between matrilineal clans. Males range into Antarctic waters seasonally.",
+    echolocates: true,
+};
+
+// ── Ziphiidae (beaked whales) ───────────────────────────────────────────────
+
+pub const HYPEROODON_PLANIFRONS: BatSpecies = BatSpecies {
+    id: "hyperoodon_planifrons",
+    name: "Southern Bottlenose Whale",
+    scientific_name: "Hyperoodon planifrons",
+    family: "Ziphiidae",
+    call_type: "FM clicks",
+    freq_lo_hz: 20_000.0,
+    freq_hi_hz: 70_000.0,
+    description: "Deep-diving beaked whale of the circumpolar Southern Ocean. Produces frequency-modulated echolocation clicks during foraging dives exceeding 1,000 m. One of the most commonly sighted beaked whales in Antarctic waters. Bulbous forehead; males develop a pronounced melon with age.",
+    echolocates: true,
+};
+
+pub const BERARDIUS_ARNUXII: BatSpecies = BatSpecies {
+    id: "berardius_arnuxii",
+    name: "Arnoux's Beaked Whale",
+    scientific_name: "Berardius arnuxii",
+    family: "Ziphiidae",
+    call_type: "FM clicks",
+    freq_lo_hz: 15_000.0,
+    freq_hi_hz: 65_000.0,
+    description: "Largest beaked whale in the Southern Hemisphere (up to 10 m). Produces FM echolocation clicks during deep foraging dives. Two teeth erupt at the tip of the lower jaw in both sexes. Circumpolar in cold southern waters, occasionally sighted near the ice edge. Closely related to Baird's Beaked Whale of the North Pacific.",
+    echolocates: true,
+};
+
+pub const MESOPLODON_LAYARDII: BatSpecies = BatSpecies {
+    id: "mesoplodon_layardii",
+    name: "Strap-toothed Whale",
+    scientific_name: "Mesoplodon layardii",
+    family: "Ziphiidae",
+    call_type: "FM clicks",
+    freq_lo_hz: 20_000.0,
+    freq_hi_hz: 70_000.0,
+    description: "Remarkable beaked whale whose males grow long strap-like teeth that curl over the upper jaw, eventually preventing it from opening fully — yet they still catch squid using suction feeding. Produces FM echolocation clicks for deep-water prey detection. Circumpolar in southern temperate and sub-Antarctic seas.",
+    echolocates: true,
+};
+
+// ── Balaenopteridae (rorquals) — non-echolocating ──────────────────────────
+
+pub const MEGAPTERA_NOVAEANGLIAE: BatSpecies = BatSpecies {
+    id: "megaptera_novaeangliae",
+    name: "Humpback Whale",
+    scientific_name: "Megaptera novaeangliae",
+    family: "Balaenopteridae",
+    call_type: "song",
+    freq_lo_hz: 80.0,
+    freq_hi_hz: 4_000.0,
+    description: "No echolocation. Famous for complex, evolving songs lasting up to 30 minutes. Migrates from tropical breeding grounds to Antarctic feeding waters each summer, using bubble-net feeding to corral krill. Songs propagate hundreds of kilometres and shift culturally across populations.",
+    echolocates: false,
+};
+
+pub const BALAENOPTERA_MUSCULUS: BatSpecies = BatSpecies {
+    id: "balaenoptera_musculus",
+    name: "Blue Whale",
+    scientific_name: "Balaenoptera musculus",
+    family: "Balaenopteridae",
+    call_type: "infrasonic",
+    freq_lo_hz: 10.0,
+    freq_hi_hz: 200.0,
+    description: "No echolocation. The largest animal ever to have lived. Produces infrasonic calls (10–40 Hz) detectable across ocean basins. Antarctic blue whales (B. m. intermedia) feed on enormous quantities of krill in the Southern Ocean during austral summer. Critically endangered; slowly recovering from whaling.",
+    echolocates: false,
+};
+
+pub const BALAENOPTERA_BONAERENSIS: BatSpecies = BatSpecies {
+    id: "balaenoptera_bonaerensis",
+    name: "Antarctic Minke Whale",
+    scientific_name: "Balaenoptera bonaerensis",
+    family: "Balaenopteridae",
+    call_type: "pulse",
+    freq_lo_hz: 50.0,
+    freq_hi_hz: 9_400.0,
+    description: "No echolocation. The most abundant baleen whale in Antarctic waters. Produces a distinctive \"bio-duck\" sound — a repetitive, quacking pulse train — that puzzled researchers for decades before being attributed to this species. Small for a rorqual; frequently seen in pack ice.",
+    echolocates: false,
+};
+
+pub const BALAENOPTERA_PHYSALUS: BatSpecies = BatSpecies {
+    id: "balaenoptera_physalus",
+    name: "Fin Whale",
+    scientific_name: "Balaenoptera physalus",
+    family: "Balaenopteridae",
+    call_type: "infrasonic",
+    freq_lo_hz: 15.0,
+    freq_hi_hz: 850.0,
+    description: "No echolocation. Second-largest animal on Earth. Produces powerful 20 Hz pulses that carry across ocean basins — among the loudest sustained biological sounds. Asymmetric colouration: white right lower jaw, dark left. Fast swimmer, nicknamed the 'greyhound of the sea'. Regular summer visitor to Antarctic waters.",
+    echolocates: false,
+};
+
+// ── Balaenidae (right whales) — non-echolocating ───────────────────────────
+
+pub const EUBALAENA_AUSTRALIS: BatSpecies = BatSpecies {
+    id: "eubalaena_australis",
+    name: "Southern Right Whale",
+    scientific_name: "Eubalaena australis",
+    family: "Balaenidae",
+    call_type: "moans",
+    freq_lo_hz: 50.0,
+    freq_hi_hz: 2_500.0,
+    description: "No echolocation. Slow, rotund baleen whale with distinctive callosities (rough skin patches colonised by cyamid whale lice). Produces low-frequency moans and up-calls for contact. Once hunted to near-extinction — the 'right' whale to hunt because it floated when dead. Sub-Antarctic; calves in sheltered bays.",
+    echolocates: false,
+};
+
+// ── Phocidae (true seals) — non-echolocating ───────────────────────────────
+
+pub const LEPTONYCHOTES_WEDDELLII: BatSpecies = BatSpecies {
+    id: "leptonychotes_weddellii",
+    name: "Weddell Seal",
+    scientific_name: "Leptonychotes weddellii",
+    family: "Phocidae",
+    call_type: "trills",
+    freq_lo_hz: 200.0,
+    freq_hi_hz: 13_000.0,
+    description: "Not echolocation. Southernmost breeding mammal in the world. Produces an extraordinary repertoire of underwater sounds: eerie descending trills, chirps, and otherworldly whistles audible through the ice. Dives to 600+ m and maintains breathing holes by grinding ice with its teeth. Lives on fast ice year-round.",
+    echolocates: false,
+};
+
+pub const HYDRURGA_LEPTONYX: BatSpecies = BatSpecies {
+    id: "hydrurga_leptonyx",
+    name: "Leopard Seal",
+    scientific_name: "Hydrurga leptonyx",
+    family: "Phocidae",
+    call_type: "trills",
+    freq_lo_hz: 200.0,
+    freq_hi_hz: 8_000.0,
+    description: "Not echolocation. Apex predator of the Antarctic pack ice. Males produce haunting, pulsing underwater trills and low-frequency broadcast calls during the breeding season — audible over great distances beneath the ice. Feeds on penguins, seals, krill, and fish. Solitary; sinuous and powerful.",
+    echolocates: false,
+};

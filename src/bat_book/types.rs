@@ -139,6 +139,7 @@ pub enum BatBookRegion {
     CostaRica,
     Japan,
     UK,
+    Antarctica,
 }
 
 impl BatBookRegion {
@@ -158,6 +159,7 @@ impl BatBookRegion {
             Self::CostaRica => "Costa Rica",
             Self::Japan => "Japan",
             Self::UK => "United Kingdom",
+            Self::Antarctica => "Antarctica",
         }
     }
 
@@ -177,6 +179,7 @@ impl BatBookRegion {
             Self::CostaRica => "Costa Rica",
             Self::Japan => "Japan",
             Self::UK => "UK",
+            Self::Antarctica => "Antarctica",
         }
     }
 
@@ -195,6 +198,7 @@ impl BatBookRegion {
         Self::Japan,
         Self::Australia,
         Self::VicAustralia,
+        Self::Antarctica,
     ];
 
     pub fn storage_key(self) -> &'static str {
@@ -213,6 +217,7 @@ impl BatBookRegion {
             Self::CostaRica => "costa_rica",
             Self::Japan => "japan",
             Self::UK => "uk",
+            Self::Antarctica => "antarctica",
         }
     }
 

@@ -2958,6 +2958,117 @@ const AUSTRALIA_BOOK: &[BookEntryDef] = &[
 
 /// Get the bat book manifest for a given region.
 ///
+// ══════════════════════════════════════════════════════════════════════════════
+// Antarctica — echolocating marine mammals of the Southern Ocean (easter egg)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ANTARCTICA_BOOK: &[BookEntryDef] = &[
+    // ── Toothed whales — echolocating ───────────────────────────────────────
+
+    BookEntryDef {
+        species: &species::ORCINUS_ORCA,
+        commonness: Some(Commonness::VeryCommon),
+        description: Some("Abundant throughout Antarctic waters year-round. Type A (large, open-water, hunts minke whales), Type B (pack-ice specialist, hunts seals using wave-washing), and smaller Type C (found in dense pack ice near Ross Sea, hunts fish). All types echolocate with broadband clicks."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::PHYSETER_MACROCEPHALUS,
+        commonness: Some(Commonness::Common),
+        description: Some("Males migrate to rich Antarctic feeding grounds in summer, diving deep for squid. Produces the most powerful biosonar on Earth — clicks exceeding 230 dB. The massive spermaceti organ focuses sound into a directional beam for hunting at abyssal depths. Females and calves stay in warmer waters."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::LAGENORHYNCHUS_CRUCIGER,
+        commonness: Some(Commonness::Common),
+        description: Some("The only small dolphin endemic to Antarctic and sub-Antarctic waters. Distinctive black-and-white hourglass pattern. Echolocates with broadband clicks. Among the least-studied dolphins on Earth — almost everything known comes from at-sea sightings and strandings. Often bow-rides with vessels."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::GLOBICEPHALA_MELAS,
+        commonness: Some(Commonness::Common),
+        description: Some("Common in sub-Antarctic and Southern Ocean waters. Highly social; travels in large, tight pods. Echolocates with broadband clicks during deep squid-hunting dives. Also produces complex pulsed social calls. Known for mass strandings, particularly in New Zealand and Tasmania."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::LISSODELPHIS_PERONII,
+        commonness: Some(Commonness::Uncommon),
+        description: Some("Graceful, finless dolphin of the Southern Ocean — unique among southern dolphins in lacking a dorsal fin. Travels in large schools, sometimes thousands strong. Echolocates with broadband clicks. Circumpolar in cool to sub-Antarctic waters. Swift and acrobatic."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::HYPEROODON_PLANIFRONS,
+        commonness: Some(Commonness::Uncommon),
+        description: Some("The most frequently sighted beaked whale in Antarctic waters. Deep-diving; forages with frequency-modulated echolocation clicks. Males develop a prominent, bulging forehead with age. Circumpolar south of 30°S. Curious and approachable; sometimes spy-hops near ships."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::BERARDIUS_ARNUXII,
+        commonness: Some(Commonness::Rare),
+        description: Some("Largest beaked whale in the Southern Hemisphere. Echolocates with FM clicks during deep dives. Two teeth at the tip of the lower jaw erupt in both sexes. Occasionally sighted near the Antarctic ice edge. Very poorly known; much of its biology is inferred from its northern relative, Baird's Beaked Whale."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::MESOPLODON_LAYARDII,
+        commonness: Some(Commonness::Rare),
+        description: Some("A bizarre beaked whale: males grow long, strap-shaped teeth that curve over the upper jaw, eventually preventing it from opening more than a few centimetres. Despite this, they catch squid by suction feeding. Uses FM echolocation clicks. Circumpolar in sub-Antarctic waters; rarely seen alive."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::PHOCOENA_DIOPTRICA,
+        commonness: Some(Commonness::Rare),
+        description: Some("Cryptic sub-Antarctic porpoise with dark eye rings. Uses narrow-band high-frequency (NBHF) clicks at ~130 kHz — acoustic camouflage against orca predation, exploiting the orca's poor high-frequency hearing. Among the least-known cetaceans; almost all records are from strandings on Tierra del Fuego and the Falkland Islands."),
+        name: None,
+    },
+
+    // ── Baleen whales — non-echolocating (analogous to fruit bats) ──────────
+
+    BookEntryDef {
+        species: &species::MEGAPTERA_NOVAEANGLIAE,
+        commonness: Some(Commonness::VeryCommon),
+        description: Some("No echolocation. Migrates thousands of kilometres from tropical breeding grounds to Antarctic krill-rich feeding waters each summer. Males sing haunting, complex songs lasting up to 30 minutes. Uses bubble-net feeding — spiralling underwater while blowing bubbles to corral krill into dense columns."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::BALAENOPTERA_BONAERENSIS,
+        commonness: Some(Commonness::VeryCommon),
+        description: Some("No echolocation. The most abundant baleen whale in Antarctic waters, commonly seen in pack ice. Source of the mysterious 'bio-duck' signal — a repetitive quacking sound recorded for decades before being attributed to this species via acoustic tags. Small for a rorqual but plays a huge role in the krill ecosystem."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::BALAENOPTERA_MUSCULUS,
+        commonness: Some(Commonness::Rare),
+        description: Some("No echolocation. The largest animal that has ever lived — up to 30 m and 180 tonnes. Produces infrasonic calls (10–40 Hz) audible across entire ocean basins. Antarctic blue whales (B. m. intermedia) were hunted to near-extinction; fewer than 3,000 may remain. A single blue whale can consume 4 tonnes of krill per day."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::BALAENOPTERA_PHYSALUS,
+        commonness: Some(Commonness::Uncommon),
+        description: Some("No echolocation. Second-largest animal on Earth. Produces powerful 20 Hz pulses — among the loudest sustained biological sounds. Distinctive asymmetric colouration: white right lower jaw, dark left. Nicknamed the 'greyhound of the sea' for its speed. Summers in Antarctic waters feeding on krill and small fish."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::EUBALAENA_AUSTRALIS,
+        commonness: Some(Commonness::Uncommon),
+        description: Some("No echolocation. Slow, rotund whale with callosities — rough white skin patches unique to each individual, used for photo-ID. Produces low-frequency moans and up-calls. Named the 'right' whale to hunt because it floated when dead. Ranges into sub-Antarctic waters to feed. Recovering from near-extinction."),
+        name: None,
+    },
+
+    // ── Seals — non-echolocating ────────────────────────────────────────────
+
+    BookEntryDef {
+        species: &species::LEPTONYCHOTES_WEDDELLII,
+        commonness: Some(Commonness::VeryCommon),
+        description: Some("Not echolocation. The southernmost breeding mammal, living on Antarctic fast ice year-round. Produces an extraordinary repertoire of underwater sounds: eerie descending trills, chirps, and sci-fi whistles that can be heard through the ice. Maintains breathing holes by grinding ice with its teeth. Dives to 600+ m."),
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::HYDRURGA_LEPTONYX,
+        commonness: Some(Commonness::Common),
+        description: Some("Not echolocation. Solitary apex predator of Antarctic pack ice. Males produce haunting, pulsing underwater trills and low broadcast calls during breeding season. Feeds on penguins (ambushing them at ice edges), krill, fish, and even other seals. Sinuous and powerful, with a massive gape and lobed teeth for krill filtering."),
+        name: None,
+    },
+];
+
 /// Non-echolocating species are always sorted to the end (stable sort preserves
 /// relative order within each group).
 pub fn get_manifest(region: BatBookRegion) -> BatBookManifest {
@@ -2975,6 +3086,7 @@ pub fn get_manifest(region: BatBookRegion) -> BatBookManifest {
         BatBookRegion::SouthAsia => SOUTH_ASIA_BOOK,
         BatBookRegion::EastAsia => EAST_ASIA_BOOK,
         BatBookRegion::MiddleEast => MIDDLE_EAST_BOOK,
+        BatBookRegion::Antarctica => ANTARCTICA_BOOK,
         _ => GLOBAL_BOOK,
     };
     let mut entries: Vec<_> = book.iter().map(|e| e.materialize()).collect();
