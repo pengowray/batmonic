@@ -225,3 +225,41 @@ impl BatBookRegion {
         Self::ALL.iter().find(|r| r.storage_key() == key).copied()
     }
 }
+
+/// Whether the bat book is in Auto mode (resolve from file metadata) or manually pinned.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum BatBookMode {
+    #[default]
+    Auto,
+    Manual(BatBookRegion),
+}
+
+impl BatBookMode {
+    pub fn storage_key(&self) -> &str {
+        match self {
+            Self::Auto => "auto",
+            Self::Manual(r) => r.storage_key(),
+        }
+    }
+
+    pub fn from_storage_key(key: &str) -> Self {
+        if key == "auto" {
+            Self::Auto
+        } else {
+            BatBookRegion::from_storage_key(key)
+                .map(Self::Manual)
+                .unwrap_or(Self::Auto)
+        }
+    }
+}
+
+/// Result of auto-resolving the bat book from file metadata.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AutoResolved {
+    /// The region chosen by auto-resolve.
+    pub region: BatBookRegion,
+    /// Species id matched from metadata (if found in a book).
+    pub matched_species_id: Option<String>,
+    /// Human-readable label for what Auto resolved to, e.g. "UK", "France", "Global".
+    pub source_label: String,
+}

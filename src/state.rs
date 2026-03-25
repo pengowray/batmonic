@@ -1108,7 +1108,15 @@ pub struct AppState {
 
     // Bat Book
     pub bat_book_open: RwSignal<bool>,
+    /// Auto or Manual(region). Drives `bat_book_region` via an Effect.
+    pub bat_book_mode: RwSignal<crate::bat_book::types::BatBookMode>,
+    /// Effective region — set by the auto-resolve Effect or manual selection.
+    /// Downstream code (manifest Memo, ref panel, etc.) reads this.
     pub bat_book_region: RwSignal<crate::bat_book::types::BatBookRegion>,
+    /// Result of auto-resolution (None when in Manual mode).
+    pub bat_book_auto_resolved: RwSignal<Option<crate::bat_book::types::AutoResolved>>,
+    /// User's starred/favourite bat book regions.
+    pub bat_book_favourites: RwSignal<Vec<crate::bat_book::types::BatBookRegion>>,
     /// Currently selected bat book entry IDs (supports multi-select via shift-click).
     pub bat_book_selected_ids: RwSignal<Vec<String>>,
     pub bat_book_ref_open: RwSignal<bool>,
@@ -1422,12 +1430,40 @@ impl AppState {
             psd_hover_freqs: RwSignal::new(Vec::new()),
 
             bat_book_open: RwSignal::new(false),
-            bat_book_region: RwSignal::new({
+            bat_book_mode: RwSignal::new({
+                use crate::bat_book::types::{BatBookMode, BatBookRegion};
+                let ls = web_sys::window()
+                    .and_then(|w: web_sys::Window| w.local_storage().ok().flatten());
+                // Try new-format key first
+                let new_key = ls.as_ref()
+                    .and_then(|s| s.get_item("oversample_bat_book_mode").ok().flatten());
+                match new_key {
+                    Some(k) => BatBookMode::from_storage_key(&k),
+                    None => {
+                        // Migration: check legacy key
+                        let legacy = ls.as_ref()
+                            .and_then(|s| s.get_item("oversample_bat_book_region").ok().flatten());
+                        match legacy {
+                            Some(k) => BatBookRegion::from_storage_key(&k)
+                                .map(BatBookMode::Manual)
+                                .unwrap_or(BatBookMode::Auto),
+                            None => BatBookMode::Auto, // brand new user
+                        }
+                    }
+                }
+            }),
+            bat_book_region: RwSignal::new(crate::bat_book::types::BatBookRegion::Global),
+            bat_book_auto_resolved: RwSignal::new(None),
+            bat_book_favourites: RwSignal::new({
                 web_sys::window()
                     .and_then(|w: web_sys::Window| w.local_storage().ok().flatten())
-                    .and_then(|ls: web_sys::Storage| ls.get_item("oversample_bat_book_region").ok().flatten())
-                    .and_then(|v| crate::bat_book::types::BatBookRegion::from_storage_key(&v))
-                    .unwrap_or(crate::bat_book::types::BatBookRegion::Global)
+                    .and_then(|ls: web_sys::Storage| ls.get_item("oversample_bat_book_favourites").ok().flatten())
+                    .map(|v| {
+                        v.split(',')
+                            .filter_map(|k| crate::bat_book::types::BatBookRegion::from_storage_key(k.trim()))
+                            .collect()
+                    })
+                    .unwrap_or_default()
             }),
             bat_book_selected_ids: RwSignal::new(Vec::new()),
             bat_book_ref_open: RwSignal::new(false),

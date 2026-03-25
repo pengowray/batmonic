@@ -4209,6 +4209,47 @@ body.sidebar-resizing {
     align-self: center;
 }
 
+/* Auto-matched species chip — distinct styling */
+.bat-book-chip.auto-matched {
+    border-color: rgba(100, 200, 255, 0.5);
+    background: rgba(20, 40, 60, 0.9);
+}
+.bat-book-chip.auto-matched:hover {
+    background: rgba(30, 55, 80, 0.95);
+}
+.bat-book-chip.auto-matched.selected {
+    border-color: rgba(100, 200, 255, 0.7);
+    background: rgba(20, 50, 70, 0.95);
+}
+
+/* Vertical divider between auto-matched species and regional book */
+.bat-book-auto-divider {
+    flex-shrink: 0;
+    width: 2px;
+    background: rgba(100, 200, 255, 0.25);
+    margin: 4px 6px;
+    align-self: stretch;
+    border-radius: 1px;
+}
+
+/* Star toggle in region dropdown */
+.bat-book-star {
+    cursor: pointer;
+    margin-right: 4px;
+    opacity: 0.3;
+    font-size: 11px;
+    transition: opacity 0.15s;
+}
+.bat-book-star:hover { opacity: 0.7; }
+.bat-book-star.active { opacity: 1; color: #fc0; }
+
+/* Separator in region dropdown */
+.bat-book-region-separator {
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 3px 0;
+}
+
 /* Reference panel (floating overlay, right side of main view) */
 .bat-book-ref-panel {
     position: absolute;
