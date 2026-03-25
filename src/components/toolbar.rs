@@ -296,7 +296,7 @@ pub fn Toolbar() -> impl IntoView {
                         </div>
                         <p class="about-desc">"Bat call viewer and acoustic analysis tool."</p>
                         <div style="margin-top: 12px; font-size: 11px; color: #999; line-height: 1.8;">
-                            "Thanks to the libraries that make this possible:"
+                            "Thanks to the libraries and code that make this possible:"
                             <div style="margin-top: 6px; columns: 2; column-gap: 16px;">
                                 <div><a href="https://leptos.dev" target="_blank" style="color: #8cf; text-decoration: none;">"Leptos"</a></div>
                                 <div><a href="https://tauri.app" target="_blank" style="color: #8cf; text-decoration: none;">"Tauri"</a></div>
@@ -309,7 +309,7 @@ pub fn Toolbar() -> impl IntoView {
                                 <div><a href="https://crates.io/crates/wasm-bindgen" target="_blank" style="color: #8cf; text-decoration: none;">"wasm-bindgen"</a></div>
                                 <div><a href="https://crates.io/crates/web-sys" target="_blank" style="color: #8cf; text-decoration: none;">"web-sys"</a></div>
                             </div>
-                            <div style="margin-top: 8px;">"and "<a href="https://github.com/jmears63/batgizmo-app-public" target="_blank" style="color: #8cf; text-decoration: none;">"batgizmo-app"</a>" for inspiration."</div>
+                            <div style="margin-top: 8px;">"and "<a href="https://github.com/jmears63/batgizmo-app-public" target="_blank" style="color: #8cf; text-decoration: none;">"batgizmo"</a>"."</div>
                         </div>
                         <button class="about-close" on:click=move |_| show_about.set(false)>"Close"</button>
                     </div>

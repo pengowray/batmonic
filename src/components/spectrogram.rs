@@ -720,10 +720,21 @@ pub fn Spectrogram() -> impl IntoView {
             }
 
             // FF overlay (dim outside focus range) — skip in xform view
-            if ff_hi > ff_lo && !xform_on {
+            // During axis drag with HFR off, show the overlay using the drag range
+            // so the user gets visual feedback of their selection
+            let (overlay_lo, overlay_hi) = if ff_hi > ff_lo {
+                (ff_lo, ff_hi)
+            } else if let (Some(a), Some(b)) = (axis_drag_start, axis_drag_current) {
+                let lo = a.min(b);
+                let hi = a.max(b);
+                if hi - lo > 500.0 { (lo, hi) } else { (0.0, 0.0) }
+            } else {
+                (0.0, 0.0)
+            };
+            if overlay_hi > overlay_lo && !xform_on {
                 spectrogram_renderer::draw_ff_overlay(
                     &ctx,
-                    ff_lo, ff_hi,
+                    overlay_lo, overlay_hi,
                     min_freq, max_freq,
                     display_h as f64, display_w as f64,
                     spec_hover, spec_drag,
