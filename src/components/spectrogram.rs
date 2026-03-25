@@ -317,26 +317,58 @@ pub fn Spectrogram() -> impl IntoView {
             gain_db: spect_gain - ref_db + display_boost,
         };
 
-        // During recording, clip the canvas so partial tiles don't show black padding.
-        // The clipping region ends at the rightmost column with actual data.
+        // ── Live waterfall rendering (recording / listening) ──
+        // When the waterfall is active, render directly from it and skip the
+        // tile-based pipeline entirely. This gives immediate column-by-column
+        // display without any tile cache or LOD complexity.
         let is_recording = state.mic_recording.get_untracked();
+        let is_listening = state.mic_listening.get_untracked();
         let live_data_cols = state.mic_live_data_cols.get_untracked();
-        if is_recording && live_data_cols > 0 {
-            ctx.save();
-            let data_end_col = live_data_cols as f64;
-            let data_end_px = (data_end_col - scroll_col) * zoom;
-            // Clip to [0, 0, data_end_px, canvas_height]
-            ctx.begin_path();
-            ctx.rect(0.0, 0.0, data_end_px.max(0.0), display_h as f64);
-            ctx.clip();
-        }
+        let waterfall_active = (is_recording || is_listening) && crate::canvas::live_waterfall::is_active();
+
+        let base_drawn = if waterfall_active {
+            // Use waterfall's own time_res and max_freq for correct viewport mapping
+            let wf_time_res = crate::canvas::live_waterfall::time_resolution();
+            let wf_max_freq = crate::canvas::live_waterfall::max_freq();
+            let wf_scroll_col = scroll / wf_time_res;
+            let wf_freq_crop_lo = min_freq / wf_max_freq;
+            let wf_freq_crop_hi = (max_display_freq.unwrap_or(wf_max_freq).min(wf_max_freq) / wf_max_freq).min(1.0);
+
+            // Auto-gain from waterfall's running max magnitude
+            let wf_ref_db = if display_auto_gain {
+                let max_mag = crate::canvas::live_waterfall::get_max_magnitude();
+                if max_mag > 0.0 { 20.0 * max_mag.log10() } else { fixed_ref_db }
+            } else {
+                fixed_ref_db
+            };
+            let wf_display_settings = SpectDisplaySettings {
+                floor_db: spect_floor,
+                range_db: spect_range,
+                gamma: spect_gamma,
+                gain_db: spect_gain - wf_ref_db + display_boost,
+            };
+
+            crate::canvas::live_waterfall::render_viewport(
+                &ctx,
+                display_w as f64,
+                display_h as f64,
+                wf_scroll_col,
+                zoom,
+                wf_freq_crop_lo,
+                wf_freq_crop_hi,
+                &wf_display_settings,
+                colormap,
+                live_data_cols,
+            )
+        } else {
+
         // Pre-compute per-frequency dB adjustments for display EQ / noise filter
         let tile_height = state.spect_fft_mode.get_untracked().max_fft_size() / 2 + 1;
         let freq_adjustments = compute_freq_adjustments(&state, file_max_freq, tile_height);
 
-        // Step 1: Render base spectrogram.
+        // Render base spectrogram.
         // Priority: timeline | flow tiles | normal tiles > pre_rendered > preview > black
-        let base_drawn = if let Some(tl) = timeline.as_ref() {
+        if let Some(tl) = timeline.as_ref() {
             // ── Timeline mode: render each visible segment ──
             let px_per_sec = zoom / time_res;
             let visible_start = scroll;
@@ -537,12 +569,8 @@ pub fn Spectrogram() -> impl IntoView {
             ctx.set_fill_style_str("#000");
             ctx.fill_rect(0.0, 0.0, display_w as f64, display_h as f64);
             false
-        };
-
-        // Restore canvas state if we clipped for recording
-        if is_recording && live_data_cols > 0 {
-            ctx.restore();
         }
+        }; // end of waterfall-or-tile if/else
 
         // Tile debug overlay (drawn on top of tiles, under other overlays)
         if debug_tiles {

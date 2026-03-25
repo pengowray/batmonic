@@ -48,8 +48,8 @@ pub(crate) fn start_live_recording(state: &AppState, sample_rate: u32) -> usize 
         },
     };
 
-    // Fixed FFT=256/hop=64 for all sample rates during live recording
-    let (live_fft, live_hop) = (256.0, 64.0);
+    // FFT=256/hop=256 for live waterfall rendering
+    let (live_fft, live_hop) = (256.0, 256.0);
     let placeholder_spec = SpectrogramData {
         columns: Arc::new(Vec::new()),
         total_columns: 0,
@@ -96,13 +96,13 @@ pub(crate) fn start_live_recording(state: &AppState, sample_rate: u32) -> usize 
 }
 
 /// Spawns an async processing loop that incrementally computes STFT columns
-/// and renders tiles from the live recording buffer while recording is active.
+/// and pushes them to the live waterfall for direct canvas rendering.
+/// No tile cache or spectral store is used — the waterfall renders directly.
 pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sample_rate: u32) {
-    use crate::canvas::{spectral_store, tile_cache::{self, TILE_COLS}};
+    use crate::canvas::live_waterfall;
 
-    // Fixed FFT=256/hop=64 for all sample rates during live recording.
-    // Small FFT gives good temporal resolution and low CPU cost.
-    let (fft_size, hop_size): (usize, usize) = (256, 64);
+    // FFT=256 for low latency, hop=256 for reasonable column rate.
+    let (fft_size, hop_size): (usize, usize) = (256, 256);
     const PROCESS_INTERVAL_MS: i32 = 50;
 
     wasm_bindgen_futures::spawn_local(async move {
@@ -110,11 +110,10 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
         let mut last_snapshot_len: usize = 0;
         let is_tauri = state.is_tauri;
 
-        // Initialize spectral store (will grow as recording progresses)
-        spectral_store::init(file_index, 0, fft_size);
+        // Initialize waterfall for direct rendering
+        live_waterfall::create(fft_size, hop_size, sample_rate);
 
         loop {
-            // Wait ~200ms
             let p = js_sys::Promise::new(&mut |resolve, _| {
                 if let Some(w) = web_sys::window() {
                     let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(
@@ -124,41 +123,31 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
             });
             let _ = JsFuture::from(p).await;
 
-            // Check if still recording
-            if !state.mic_recording.get_untracked() {
+            // Check if still recording/listening
+            let is_recording = state.mic_recording.get_untracked();
+            let is_listening = state.mic_listening.get_untracked();
+            if !is_recording && !is_listening {
                 break;
             }
-            // Check file still valid
-            if state.mic_live_file_idx.get_untracked() != Some(file_index) {
+            // Check file still valid (recording mode only)
+            if is_recording && state.mic_live_file_idx.get_untracked() != Some(file_index) {
                 break;
             }
 
-            // Phase 1: Compute FFT columns (blocking, but fast with small FFT sizes)
-            // Returns tile rendering info to be done after yielding.
-            struct TileWork {
-                total_cols: usize,
-                first_tile: usize,
-                last_tile: usize,
-                live_tile_idx: usize,
-                live_tile_start: usize,
-                live_cols: usize,
-            }
-            let work = with_live_samples(is_tauri, |samples| -> Option<TileWork> {
+            // Compute new FFT columns from the live buffer
+            let any_update = with_live_samples(is_tauri, |samples| -> bool {
                 if samples.len() < fft_size {
-                    return None;
+                    return false;
                 }
 
                 let total_possible_cols = (samples.len() - fft_size) / hop_size + 1;
                 if total_possible_cols <= last_processed_col {
-                    return None;
+                    return false;
                 }
 
                 let new_col_count = total_possible_cols - last_processed_col;
 
-                // Grow spectral store to accommodate new columns
-                spectral_store::ensure_capacity(file_index, total_possible_cols);
-
-                // Compute new STFT columns directly from the buffer
+                // Compute new STFT columns
                 let new_cols = compute_stft_columns(
                     samples,
                     sample_rate,
@@ -169,79 +158,50 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
                 );
 
                 if new_cols.is_empty() {
-                    return None;
+                    return false;
                 }
 
-                // Insert into spectral store
-                spectral_store::insert_columns(file_index, last_processed_col, &new_cols);
+                // Push to waterfall for direct rendering
+                live_waterfall::push_columns(&new_cols);
 
-                // Update file metadata
-                let duration = samples.len() as f64 / sample_rate as f64;
-                state.files.update(|files| {
-                    if let Some(f) = files.get_mut(file_index) {
-                        f.spectrogram.total_columns = total_possible_cols;
-                        f.audio.duration_secs = duration;
-                    }
-                });
-
-                // Periodically snapshot the full buffer for waveform rendering (~1s interval)
-                let snapshot_threshold = (sample_rate as usize).max(44100);
-                let do_snapshot = samples.len() - last_snapshot_len >= snapshot_threshold || last_snapshot_len == 0;
-                if do_snapshot {
-                    let snapshot = Arc::new(samples.to_vec());
+                // Update file metadata (recording mode)
+                if is_recording {
+                    let duration = samples.len() as f64 / sample_rate as f64;
                     state.files.update(|files| {
                         if let Some(f) = files.get_mut(file_index) {
-                            f.audio.samples = snapshot;
+                            f.spectrogram.total_columns = total_possible_cols;
+                            f.audio.duration_secs = duration;
                         }
                     });
-                    last_snapshot_len = samples.len();
                 }
 
-                let first_tile = last_processed_col / TILE_COLS;
-                let last_tile = (total_possible_cols.saturating_sub(1)) / TILE_COLS;
-                let live_tile_idx = total_possible_cols.saturating_sub(1) / TILE_COLS;
-                let live_tile_start = live_tile_idx * TILE_COLS;
-                let live_cols = total_possible_cols.saturating_sub(live_tile_start);
+                // Periodically snapshot for waveform rendering (~1s interval)
+                if is_recording {
+                    let snapshot_threshold = (sample_rate as usize).max(44100);
+                    let do_snapshot = samples.len() - last_snapshot_len >= snapshot_threshold || last_snapshot_len == 0;
+                    if do_snapshot {
+                        let snapshot = Arc::new(samples.to_vec());
+                        state.files.update(|files| {
+                            if let Some(f) = files.get_mut(file_index) {
+                                f.audio.samples = snapshot;
+                            }
+                        });
+                        last_snapshot_len = samples.len();
+                    }
+                }
 
                 last_processed_col = total_possible_cols;
-                Some(TileWork {
-                    total_cols: total_possible_cols,
-                    first_tile, last_tile,
-                    live_tile_idx, live_tile_start, live_cols,
-                })
+                true
             });
 
-            // Phase 2: Yield to browser so timer/events can update
-            let any_update = work.is_some();
-            if let Some(tw) = work {
-                tile_cache::yield_to_browser().await;
-
-                // Phase 3: Render tiles (after yielding)
-                for tile_idx in tw.first_tile..tw.last_tile {
-                    let tile_start = tile_idx * TILE_COLS;
-                    let tile_end = tile_start + TILE_COLS;
-                    if tile_end <= tw.total_cols
-                        && spectral_store::tile_complete(file_index, tile_start, tile_end) {
-                            tile_cache::render_tile_from_store_sync(file_index, tile_idx, fft_size);
-                        }
-                }
-
-                // Render the rightmost partial (live) tile
-                if tw.live_cols > 0 && tw.live_cols < TILE_COLS {
-                    tile_cache::render_live_tile_sync(file_index, tw.live_tile_idx, tw.live_tile_start, tw.live_cols, fft_size);
-                }
-            }
-
             if any_update {
-                // Update live data column count for canvas clipping
-                let total_cols = state.files.with_untracked(|files| {
-                    files.get(file_index).map(|f| f.spectrogram.total_columns).unwrap_or(0)
-                });
+                let total_cols = live_waterfall::total_columns();
                 state.mic_live_data_cols.set(total_cols);
 
+                // Trigger spectrogram redraw
                 state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
 
-                // Set target scroll (rAF animation loop will smoothly interpolate)
+                // Set target scroll for waterfall effect
                 if total_cols > 0 {
                     let time_res = hop_size as f64 / sample_rate as f64;
                     let recording_time = total_cols as f64 * time_res;
@@ -250,7 +210,6 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
                     if zoom > 0.0 && canvas_w > 0.0 {
                         let visible_cols = canvas_w / zoom;
                         let visible_time = visible_cols * time_res;
-                        // Pin recording edge to the right side of viewport
                         let target_scroll = (recording_time - visible_time).max(0.0);
                         state.mic_recording_target_scroll.set(target_scroll);
                     }
@@ -259,6 +218,10 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
         }
 
         // Processing loop exited — clean up
+        if !state.mic_recording.get_untracked() {
+            // Only clear waterfall when fully done (not when switching from listen to record)
+            live_waterfall::clear();
+        }
         state.mic_live_file_idx.set(None);
         state.mic_live_data_cols.set(0);
         state.mic_recording_target_scroll.set(0.0);
@@ -267,7 +230,7 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
 
 /// Spawns a requestAnimationFrame loop that smoothly interpolates
 /// `scroll_offset` toward `mic_recording_target_scroll` for waterfall scrolling.
-/// Automatically stops when recording ends.
+/// Automatically stops when recording and listening both end.
 pub(crate) fn spawn_smooth_scroll_animation(state: AppState) {
     use std::rc::Rc;
     use std::cell::RefCell;
@@ -276,8 +239,8 @@ pub(crate) fn spawn_smooth_scroll_animation(state: AppState) {
     let cb_clone = cb.clone();
 
     *cb.borrow_mut() = Some(Closure::new(move || {
-        if !state.mic_recording.get_untracked() {
-            // Recording stopped — exit the animation loop
+        if !state.mic_recording.get_untracked() && !state.mic_listening.get_untracked() {
+            // Neither recording nor listening — exit the animation loop
             return;
         }
         let target = state.mic_recording_target_scroll.get_untracked();
@@ -312,7 +275,7 @@ pub(crate) fn spawn_smooth_scroll_animation(state: AppState) {
 /// Clears the progressive tiles and re-runs full spectrogram computation for
 /// accurate normalization. Works for both web and Tauri modes.
 pub(crate) fn finalize_live_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
-    use crate::canvas::{spectral_store, tile_cache};
+    use crate::canvas::{spectral_store, tile_cache, live_waterfall};
 
     let live_idx = state.mic_live_file_idx.get_untracked();
     state.mic_live_file_idx.set(None);
@@ -402,7 +365,8 @@ pub(crate) fn finalize_live_recording(samples: Vec<f32>, sample_rate: u32, state
         }
     });
 
-    // Clear progressive tiles and spectral store — will be re-rendered with final normalization
+    // Clear live waterfall, progressive tiles, and spectral store — will be re-rendered with final normalization
+    live_waterfall::clear();
     tile_cache::clear_file(file_index);
     spectral_store::clear_file(file_index);
 

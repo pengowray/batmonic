@@ -12,3 +12,4 @@ pub mod tile_cache;
 pub mod tile_scheduler;
 pub mod spectral_store;
 pub mod time_markers;
+pub mod live_waterfall;

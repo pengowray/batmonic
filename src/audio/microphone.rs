@@ -608,10 +608,13 @@ async fn ensure_mic_open_web(state: &AppState) -> bool {
             let _ = output_buffer.copy_to_channel(&zeros, 0);
         }
 
-        if state_cb.mic_recording.get_untracked() {
+        // Accumulate samples for live waterfall display during recording OR listening
+        if state_cb.mic_recording.get_untracked() || state_cb.mic_listening.get_untracked() {
             MIC_BUFFER.with(|buf| {
                 buf.borrow_mut().extend_from_slice(&input_data);
-                state_cb.mic_samples_recorded.set(buf.borrow().len());
+                if state_cb.mic_recording.get_untracked() {
+                    state_cb.mic_samples_recorded.set(buf.borrow().len());
+                }
             });
         }
     });
@@ -657,6 +660,7 @@ fn close_mic_web(state: &AppState) {
 
     MIC_BUFFER.with(|buf| buf.borrow_mut().clear());
     RT_HET.with(|h| h.borrow_mut().reset());
+    crate::canvas::live_waterfall::clear();
 
     state.mic_samples_recorded.set(0);
     // Don't clear mic info signals — persist for settings display
@@ -806,10 +810,12 @@ async fn ensure_mic_open_tauri(state: &AppState) -> bool {
             .map(|i| array.get(i as u32).as_f64().unwrap_or(0.0) as f32)
             .collect();
 
-        // Update sample count and accumulate samples for live visualization
-        if state_cb.mic_recording.get_untracked() {
-            state_cb.mic_samples_recorded.update(|n| *n += len);
+        // Accumulate samples for live waterfall display during recording OR listening
+        if state_cb.mic_recording.get_untracked() || state_cb.mic_listening.get_untracked() {
             TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().extend_from_slice(&input_data));
+            if state_cb.mic_recording.get_untracked() {
+                state_cb.mic_samples_recorded.update(|n| *n += len);
+            }
         }
 
         // HET listening: process and play through speakers
@@ -870,6 +876,7 @@ async fn close_mic_tauri(state: &AppState) {
     RT_HET.with(|h| h.borrow_mut().reset());
     TAURI_MIC_OPEN.with(|o| *o.borrow_mut() = false);
     TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().clear());
+    crate::canvas::live_waterfall::clear();
 
     state.mic_samples_recorded.set(0);
     // Don't clear mic info signals — persist for settings display
@@ -886,6 +893,9 @@ async fn maybe_close_mic_tauri(state: &AppState) {
 async fn toggle_listen_tauri(state: &AppState) {
     if state.mic_listening.get_untracked() {
         state.mic_listening.set(false);
+        // Waterfall + processing loop will self-stop via the is_listening check
+        crate::canvas::live_waterfall::clear();
+        TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().clear());
         // Tell backend to stop streaming audio chunks
         let args = js_sys::Object::new();
         js_sys::Reflect::set(&args, &"listening".into(), &JsValue::FALSE).ok();
@@ -897,6 +907,12 @@ async fn toggle_listen_tauri(state: &AppState) {
         js_sys::Reflect::set(&args, &"listening".into(), &JsValue::TRUE).ok();
         let _ = tauri_invoke("mic_set_listening", &args.into()).await;
         state.mic_listening.set(true);
+        // Start live waterfall processing loop for listening
+        TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().clear());
+        let sr = state.mic_sample_rate.get_untracked();
+        // file_index 0 is a dummy — listening doesn't create a file
+        spawn_live_processing_loop(*state, 0, sr);
+        spawn_smooth_scroll_animation(*state);
     }
 }
 
@@ -1335,9 +1351,12 @@ async fn ensure_mic_open_usb(state: &AppState) -> bool {
             .map(|i| array.get(i as u32).as_f64().unwrap_or(0.0) as f32)
             .collect();
 
-        if state_cb.mic_recording.get_untracked() {
-            state_cb.mic_samples_recorded.update(|n| *n += len);
+        // Accumulate samples for live waterfall during recording OR listening
+        if state_cb.mic_recording.get_untracked() || state_cb.mic_listening.get_untracked() {
             TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().extend_from_slice(&input_data));
+            if state_cb.mic_recording.get_untracked() {
+                state_cb.mic_samples_recorded.update(|n| *n += len);
+            }
         }
 
         if state_cb.mic_listening.get_untracked() {
@@ -1442,6 +1461,8 @@ async fn close_mic_usb(state: &AppState) {
 
     RT_HET.with(|h| h.borrow_mut().reset());
     USB_MIC_OPEN.with(|o| *o.borrow_mut() = false);
+    TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().clear());
+    crate::canvas::live_waterfall::clear();
 
     state.mic_samples_recorded.set(0);
     // Don't clear mic info signals — persist for settings display
@@ -1457,9 +1478,15 @@ async fn maybe_close_mic_usb(state: &AppState) {
 async fn toggle_listen_usb(state: &AppState) {
     if state.mic_listening.get_untracked() {
         state.mic_listening.set(false);
+        crate::canvas::live_waterfall::clear();
+        TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().clear());
         maybe_close_mic_usb(state).await;
     } else if ensure_mic_open_usb(state).await {
+        TAURI_REC_BUFFER.with(|buf| buf.borrow_mut().clear());
         state.mic_listening.set(true);
+        let sr = state.mic_sample_rate.get_untracked();
+        spawn_live_processing_loop(*state, 0, sr);
+        spawn_smooth_scroll_animation(*state);
     }
 }
 
@@ -1560,9 +1587,16 @@ pub async fn toggle_listen(state: &AppState) {
             // Browser mode or non-Tauri fallback
             if state.mic_listening.get_untracked() {
                 state.mic_listening.set(false);
+                crate::canvas::live_waterfall::clear();
+                MIC_BUFFER.with(|buf| buf.borrow_mut().clear());
                 maybe_close_mic_web(state);
             } else if ensure_mic_open_web(state).await {
+                MIC_BUFFER.with(|buf| buf.borrow_mut().clear());
                 state.mic_listening.set(true);
+                // Start live waterfall processing loop for listening
+                let sr = state.mic_sample_rate.get_untracked();
+                spawn_live_processing_loop(*state, 0, sr);
+                spawn_smooth_scroll_animation(*state);
             }
         }
     }
