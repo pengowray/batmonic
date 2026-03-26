@@ -4273,6 +4273,10 @@ body.sidebar-resizing {
     bottom: calc(100% + 4px);
     left: 0;
     min-width: 160px;
+    max-height: 60vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     background: rgba(16, 16, 16, 0.97);
     backdrop-filter: blur(10px);
     border: 1px solid #444;

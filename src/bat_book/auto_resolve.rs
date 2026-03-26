@@ -96,10 +96,12 @@ pub fn resolve_auto(file: Option<&LoadedFile>, favourites: &[BatBookRegion]) -> 
     let fallback_region = favourites.first().copied().unwrap_or(BatBookRegion::Global);
 
     let Some(file) = file else {
+        let is_fav = favourites.first().is_some();
         return AutoResolved {
             region: fallback_region,
             matched_species_id: None,
             source_label: fallback_region.short_label().to_string(),
+            from_favourite: is_fav,
         };
     };
 
@@ -134,6 +136,7 @@ pub fn resolve_auto(file: Option<&LoadedFile>, favourites: &[BatBookRegion]) -> 
                 region: final_region,
                 matched_species_id: Some(final_id),
                 source_label: label,
+                from_favourite: false,
             };
         }
     }
@@ -149,14 +152,17 @@ pub fn resolve_auto(file: Option<&LoadedFile>, favourites: &[BatBookRegion]) -> 
             region,
             matched_species_id: None,
             source_label: label,
+            from_favourite: false,
         };
     }
 
     // Nothing useful — fallback
+    let is_fav = favourites.first().is_some();
     AutoResolved {
         region: fallback_region,
         matched_species_id: None,
         source_label: fallback_region.short_label().to_string(),
+        from_favourite: is_fav,
     }
 }
 

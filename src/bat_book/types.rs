@@ -303,4 +303,6 @@ pub struct AutoResolved {
     pub matched_species_id: Option<String>,
     /// Human-readable label for what Auto resolved to, e.g. "UK", "France", "Global".
     pub source_label: String,
+    /// True when the region was chosen because it's the user's favourite (fallback).
+    pub from_favourite: bool,
 }

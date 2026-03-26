@@ -133,7 +133,11 @@ pub fn BatBookStrip() -> impl IntoView {
                         match mode {
                             BatBookMode::Auto => {
                                 if let Some(resolved) = state.bat_book_auto_resolved.get() {
-                                    format!("Auto: {}", resolved.source_label)
+                                    if resolved.from_favourite {
+                                        format!("Auto: {} \u{2605}", resolved.source_label)
+                                    } else {
+                                        format!("Auto: {}", resolved.source_label)
+                                    }
                                 } else {
                                     "Auto".to_string()
                                 }
