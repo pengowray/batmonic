@@ -207,6 +207,8 @@ pub(crate) fn export_one_region(
     end_time: f64,
     params: &PlaybackParams,
     filename: &str,
+    source_filename: &str,
+    source_guano: Option<&crate::audio::guano::GuanoMetadata>,
 ) {
     let samples = process_region(source, sample_rate, start_time, end_time, params);
 
@@ -219,8 +221,95 @@ pub(crate) fn export_one_region(
         _ => sample_rate,
     };
 
-    let wav_data = encode_wav(&samples, output_rate);
+    let mut wav_data = encode_wav(&samples, output_rate);
+
+    // Build GUANO metadata for the export
+    let guano = build_export_guano(
+        output_rate, &samples, params, filename, source_filename, source_guano,
+    );
+    crate::audio::guano::append_guano_chunk(&mut wav_data, &guano.to_text());
+
     trigger_browser_download(&wav_data, filename);
+}
+
+/// Build GUANO metadata for an exported WAV file.
+fn build_export_guano(
+    output_rate: u32,
+    samples: &[f32],
+    params: &PlaybackParams,
+    _filename: &str,
+    source_filename: &str,
+    source_guano: Option<&crate::audio::guano::GuanoMetadata>,
+) -> crate::audio::guano::GuanoMetadata {
+    use crate::audio::guano::GuanoMetadata;
+    let version = env!("CARGO_PKG_VERSION");
+    let duration_secs = samples.len() as f64 / output_rate as f64;
+
+    let mut g = GuanoMetadata::new();
+    g.add("GUANO|Version", "1.0");
+
+    // Preserve source timestamp if available
+    if let Some(src) = source_guano {
+        for (k, v) in &src.fields {
+            if k == "Timestamp" {
+                g.add("Timestamp", v);
+                break;
+            }
+        }
+    }
+
+    g.add("Length", &format!("{:.6}", duration_secs));
+    g.add("Samplerate", &output_rate.to_string());
+    g.add("Make", "Oversample");
+    g.add("Firmware Version", version);
+
+    // TE factor
+    let te = match params.mode {
+        PlaybackMode::TimeExpansion => params.te_factor,
+        _ => 1.0,
+    };
+    g.add("TE", &format!("{}", te));
+
+    g.add("Original Filename", source_filename);
+
+    // Preserve location from source if present
+    if let Some(src) = source_guano {
+        for (k, v) in &src.fields {
+            match k.as_str() {
+                "Loc Position" | "Loc Elevation" | "Microphone" => {
+                    g.add(k, v);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Export filter settings (these are actually applied to the audio)
+    if params.filter_enabled {
+        let hp_khz = params.filter_freq_low / 1000.0;
+        let lp_khz = params.filter_freq_high / 1000.0;
+        if hp_khz > 0.0 {
+            g.add("Filter HP", &format!("{:.1}", hp_khz));
+        }
+        if lp_khz > 0.0 && lp_khz < output_rate as f64 / 2000.0 {
+            g.add("Filter LP", &format!("{:.1}", lp_khz));
+        }
+    }
+
+    // Build mode description for note
+    let mode_str = match params.mode {
+        PlaybackMode::Normal => "Normal",
+        PlaybackMode::Heterodyne => "Heterodyne",
+        PlaybackMode::TimeExpansion => "Time Expansion",
+        PlaybackMode::PitchShift => "Pitch Shift",
+        PlaybackMode::ZeroCrossing => "Zero Crossing",
+        PlaybackMode::PhaseVocoder => "Phase Vocoder",
+    };
+    g.add("Note", &format!(
+        "Exported from {} with Oversample v{} ({})", source_filename, version, mode_str
+    ));
+
+    g
 }
 
 /// Information about what will be exported, used for button text.
@@ -347,6 +436,8 @@ pub fn export_selected(state: &AppState) {
     let source = &file.audio.source;
     let sample_rate = file.audio.sample_rate;
     let use_region_focus = state.export_use_region_focus.get_untracked();
+    let source_filename = &file.name;
+    let source_guano = file.audio.metadata.guano.as_ref();
 
     // Strip extension from source filename for export naming
     let base_name = file.name.trim_end_matches(".wav")
@@ -383,6 +474,7 @@ pub fn export_selected(state: &AppState) {
                 source.as_ref(), sample_rate,
                 region.time_start, region.time_end,
                 &params, &filename,
+                source_filename, source_guano,
             );
         }
     } else if let Some(sel) = state.selection.get_untracked() {
@@ -393,6 +485,7 @@ pub fn export_selected(state: &AppState) {
             source.as_ref(), sample_rate,
             sel.time_start, sel.time_end,
             &params, &filename,
+            source_filename, source_guano,
         );
     } else {
         // No selection — export the whole file
@@ -403,6 +496,7 @@ pub fn export_selected(state: &AppState) {
             source.as_ref(), sample_rate,
             0.0, duration,
             &params, &filename,
+            source_filename, source_guano,
         );
     }
 }

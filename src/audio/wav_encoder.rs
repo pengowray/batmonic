@@ -35,43 +35,27 @@ pub fn encode_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
 }
 
 /// Encode WAV with GUANO metadata for a new recording.
-pub(crate) fn encode_wav_with_guano(samples: &[f32], sample_rate: u32, filename: &str) -> Vec<u8> {
+pub(crate) fn encode_wav_with_guano(
+    samples: &[f32],
+    sample_rate: u32,
+    filename: &str,
+    is_tauri: bool,
+    mic_device_name: Option<&str>,
+) -> Vec<u8> {
     use crate::audio::guano;
     let mut wav_data = encode_wav(samples, sample_rate);
-
-    let now = js_sys::Date::new_0();
     let duration_secs = samples.len() as f64 / sample_rate as f64;
-    // Approximate recording start time
-    let start_ms = now.get_time() - (duration_secs * 1000.0);
-    let start = js_sys::Date::new(&JsValue::from_f64(start_ms));
-    let timestamp = format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-        start.get_full_year(),
-        start.get_month() + 1,
-        start.get_date(),
-        start.get_hours(),
-        start.get_minutes(),
-        start.get_seconds(),
+
+    let guano_meta = guano::build_recording_guano(
+        sample_rate, duration_secs, filename, is_tauri, mic_device_name,
     );
-    let version = env!("CARGO_PKG_VERSION");
-
-    let mut guano_meta = guano::GuanoMetadata::new();
-    guano_meta.add("GUANO|Version", "1.0");
-    guano_meta.add("Timestamp", &timestamp);
-    guano_meta.add("Length", &format!("{:.6}", duration_secs));
-    guano_meta.add("Samplerate", &sample_rate.to_string());
-    guano_meta.add("Make", "Oversample");
-    guano_meta.add("Firmware Version", version);
-    guano_meta.add("Original Filename", filename);
-    guano_meta.add("Note", &format!("Recorded with Oversample v{} (browser)", version));
-
     guano::append_guano_chunk(&mut wav_data, &guano_meta.to_text());
     wav_data
 }
 
 /// Trigger a browser download of WAV data.
-pub fn download_wav(samples: &[f32], sample_rate: u32, filename: &str) {
-    let wav_data = encode_wav_with_guano(samples, sample_rate, filename);
+pub fn download_wav(samples: &[f32], sample_rate: u32, filename: &str, is_tauri: bool, mic_device_name: Option<&str>) {
+    let wav_data = encode_wav_with_guano(samples, sample_rate, filename, is_tauri, mic_device_name);
 
     let array = js_sys::Uint8Array::new_with_length(wav_data.len() as u32);
     array.copy_from(&wav_data);

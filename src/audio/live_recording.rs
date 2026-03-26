@@ -307,27 +307,10 @@ pub(crate) fn finalize_live_recording(samples: Vec<f32>, sample_rate: u32, state
         files.get(file_index).map(|f| f.name.clone()).unwrap_or_default()
     });
 
-    let guano = {
-        use crate::audio::guano::GuanoMetadata;
-        let now = js_sys::Date::new_0();
-        let start_ms = now.get_time() - (duration_secs * 1000.0);
-        let start = js_sys::Date::new(&JsValue::from_f64(start_ms));
-        let timestamp = format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-            start.get_full_year(), start.get_month() + 1, start.get_date(),
-            start.get_hours(), start.get_minutes(), start.get_seconds(),
-        );
-        let version = env!("CARGO_PKG_VERSION");
-        let mut g = GuanoMetadata::new();
-        g.add("GUANO|Version", "1.0");
-        g.add("Timestamp", &timestamp);
-        g.add("Length", &format!("{:.6}", duration_secs));
-        g.add("Samplerate", &sample_rate.to_string());
-        g.add("Make", "Oversample");
-        g.add("Firmware Version", version);
-        g.add("Original Filename", &name_check);
-        g
-    };
+    let mic_name = state.mic_device_name.get_untracked();
+    let guano = crate::audio::guano::build_recording_guano(
+        sample_rate, duration_secs, &name_check, state.is_tauri, mic_name.as_deref(),
+    );
 
     let samples: Arc<Vec<f32>> = samples.into();
     let source = Arc::new(InMemorySource {
@@ -383,9 +366,10 @@ pub(crate) fn finalize_live_recording(samples: Vec<f32>, sample_rate: u32, state
 
     // Try Tauri auto-save in background
     if is_tauri {
+        let mic_name = state.mic_device_name.get_untracked();
         let samples_ref = state.files.get_untracked();
         if let Some(file) = samples_ref.get(file_index) {
-            let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save);
+            let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, mic_name.as_deref());
             let filename = name_for_save;
             wasm_bindgen_futures::spawn_local(async move {
                 if try_tauri_save(&wav_data, &filename).await {
@@ -424,26 +408,10 @@ fn finalize_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
         now.get_seconds(),
     );
 
-    let guano = {
-        use crate::audio::guano::GuanoMetadata;
-        let start_ms = now.get_time() - (duration_secs * 1000.0);
-        let start = js_sys::Date::new(&JsValue::from_f64(start_ms));
-        let timestamp = format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-            start.get_full_year(), start.get_month() + 1, start.get_date(),
-            start.get_hours(), start.get_minutes(), start.get_seconds(),
-        );
-        let version = env!("CARGO_PKG_VERSION");
-        let mut g = GuanoMetadata::new();
-        g.add("GUANO|Version", "1.0");
-        g.add("Timestamp", &timestamp);
-        g.add("Length", &format!("{:.6}", duration_secs));
-        g.add("Samplerate", &sample_rate.to_string());
-        g.add("Make", "Oversample");
-        g.add("Firmware Version", version);
-        g.add("Original Filename", &name);
-        g
-    };
+    let mic_name = state.mic_device_name.get_untracked();
+    let guano = crate::audio::guano::build_recording_guano(
+        sample_rate, duration_secs, &name, state.is_tauri, mic_name.as_deref(),
+    );
 
     let samples: Arc<Vec<f32>> = samples.into();
     let source = Arc::new(InMemorySource {
@@ -532,7 +500,7 @@ fn finalize_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
     if is_tauri {
         let samples_ref = state.files.get_untracked();
         if let Some(file) = samples_ref.get(file_index) {
-            let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save);
+            let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, mic_name.as_deref());
             let filename = name_for_save;
             wasm_bindgen_futures::spawn_local(async move {
                 if try_tauri_save(&wav_data, &filename).await {

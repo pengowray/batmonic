@@ -212,7 +212,8 @@ pub fn Toolbar() -> impl IntoView {
             if let Some(f) = files.get(idx) {
                 let total = f.audio.source.total_samples() as usize;
                 let samples = f.audio.source.read_region(crate::audio::source::ChannelView::MonoMix, 0, total);
-                microphone::download_wav(&samples, f.audio.sample_rate, &f.name);
+                let mic = state.mic_device_name.get_untracked();
+                microphone::download_wav(&samples, f.audio.sample_rate, &f.name, state.is_tauri, mic.as_deref());
                 // Clear unsaved state
                 state.files.update(|files| {
                     if let Some(f) = files.get_mut(idx) {

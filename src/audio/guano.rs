@@ -99,6 +99,51 @@ pub fn parse_guano_chunk(chunk_body: &[u8]) -> Option<GuanoMetadata> {
     Some(parse_guano_text(text))
 }
 
+/// Build GUANO metadata for a recording (WASM side).
+/// Consolidates the duplicated inline GUANO construction from wav_encoder,
+/// live_recording, etc. into a single shared function.
+pub fn build_recording_guano(
+    sample_rate: u32,
+    duration_secs: f64,
+    filename: &str,
+    is_tauri: bool,
+    mic_device_name: Option<&str>,
+) -> GuanoMetadata {
+    let now = js_sys::Date::new_0();
+    let start_ms = now.get_time() - (duration_secs * 1000.0);
+    let start = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(start_ms));
+    let timestamp = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        start.get_full_year(),
+        start.get_month() + 1,
+        start.get_date(),
+        start.get_hours(),
+        start.get_minutes(),
+        start.get_seconds(),
+    );
+    let version = env!("CARGO_PKG_VERSION");
+    let model = if is_tauri { "Desktop" } else { "Web" };
+
+    let mut g = GuanoMetadata::new();
+    g.add("GUANO|Version", "1.0");
+    g.add("Timestamp", &timestamp);
+    g.add("Length", &format!("{:.6}", duration_secs));
+    g.add("Samplerate", &sample_rate.to_string());
+    g.add("Make", "Oversample");
+    g.add("Model", model);
+    g.add("Firmware Version", version);
+    g.add("TE", "1");
+    g.add("Original Filename", filename);
+    if let Some(mic) = mic_device_name {
+        if !mic.is_empty() {
+            g.add("Microphone", mic);
+        }
+    }
+    let platform = if is_tauri { "Tauri" } else { "browser" };
+    g.add("Note", &format!("Recorded with Oversample v{} ({})", version, platform));
+    g
+}
+
 fn parse_guano_text(text: &str) -> GuanoMetadata {
     let mut fields = Vec::new();
     for line in text.lines() {

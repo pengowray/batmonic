@@ -6,6 +6,7 @@ use crate::state::AppState;
 /// return the prefix (e.g. "BatGizmo App") as section and the last segment as display key.
 fn categorize_guano_key(key: &str) -> (String, String) {
     let known = match key {
+        // Pipe-separated variants
         "Loc|Lat" => Some("Latitude"),
         "Loc|Lon" => Some("Longitude"),
         "Loc|Elev" => Some("Elevation"),
@@ -13,6 +14,19 @@ fn categorize_guano_key(key: &str) -> (String, String) {
         "Filter|LP" => Some("Low-pass Filter"),
         "Species|Auto" => Some("Species (Auto)"),
         "Species|Manual" => Some("Species (Manual)"),
+        // Standard GUANO space-separated field names
+        "Loc Position" => Some("GPS Position"),
+        "Loc Elevation" => Some("Elevation"),
+        "Filter HP" => Some("High-pass Filter (kHz)"),
+        "Filter LP" => Some("Low-pass Filter (kHz)"),
+        "Species Auto ID" => Some("Species (Auto)"),
+        "Species Manual ID" => Some("Species (Manual)"),
+        "Temperature Int" => Some("Internal Temp"),
+        "Temperature Ext" => Some("External Temp"),
+        "Model" => Some("Model"),
+        "Serial" => Some("Serial"),
+        "Microphone" => Some("Microphone"),
+        // Common fields
         "TE" => Some("Time Expansion"),
         "Samplerate" => Some("Sample Rate"),
         "Length" => Some("Length"),

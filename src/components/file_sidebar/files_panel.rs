@@ -390,7 +390,8 @@ pub(super) fn FilesPanel() -> impl IntoView {
                             if let Some(f) = files.get(i) {
                                 let total = f.audio.source.total_samples() as usize;
                                 let samples = f.audio.source.read_region(crate::audio::source::ChannelView::MonoMix, 0, total);
-                                microphone::download_wav(&samples, f.audio.sample_rate, &name_dl);
+                                let mic = state.mic_device_name.get_untracked();
+                                microphone::download_wav(&samples, f.audio.sample_rate, &name_dl, state.is_tauri, mic.as_deref());
                             }
                             // Clear unsaved state after download
                             state.files.update(|files| {

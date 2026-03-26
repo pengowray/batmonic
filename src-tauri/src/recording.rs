@@ -541,19 +541,23 @@ pub fn build_recording_guano(
     let start_time = *timestamp - chrono::Duration::milliseconds((duration_secs * 1000.0) as i64);
 
     let mut text = String::new();
-    for (key, value) in [
+    let fields: Vec<(&str, String)> = vec![
         ("GUANO|Version", "1.0".to_string()),
         ("Timestamp", start_time.format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string()),
         ("Length", format!("{:.6}", duration_secs)),
         ("Samplerate", sample_rate.to_string()),
         ("Make", "Oversample".to_string()),
+        ("Model", "Desktop".to_string()),
         ("Firmware Version", version.to_string()),
+        ("TE", "1".to_string()),
         ("Original Filename", filename.to_string()),
+        ("Microphone", device_name.to_string()),
         ("Note", format!("Recorded with Oversample v{} ({})", version, device_name)),
-    ] {
+    ];
+    for (key, value) in &fields {
         text.push_str(key);
         text.push_str(": ");
-        text.push_str(&value);
+        text.push_str(value);
         text.push('\n');
     }
     text
