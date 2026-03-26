@@ -1,4 +1,5 @@
 pub(crate) mod file_groups;
+pub(crate) mod file_badges;
 mod files_panel;
 mod config_panel;
 mod export_section;

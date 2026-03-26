@@ -1,44 +1,19 @@
 use leptos::prelude::*;
 use crate::state::{AppState, RightSidebarTab, ListenMode};
-
-/// Parse a CC license URL/string (from XC metadata "lic" field) into a short label.
-/// e.g. "//creativecommons.org/licenses/by-nc-sa/4.0/" -> "CC BY-NC-SA 4.0"
-fn parse_cc_license(lic: &str) -> Option<String> {
-    let lower = lic.to_lowercase();
-    // Match URLs like //creativecommons.org/licenses/by-nc-sa/4.0/
-    // or text like "CC BY-NC-SA 4.0" or "CC-BY-NC 4.0"
-    if lower.contains("creativecommons.org/licenses/") {
-        // Extract the path part after /licenses/
-        if let Some(idx) = lower.find("/licenses/") {
-            let rest = &lic[idx + 10..]; // after "/licenses/"
-            let parts: Vec<&str> = rest.trim_matches('/').split('/').collect();
-            if parts.len() >= 2 {
-                let license_type = parts[0].to_uppercase();
-                let version = parts[1];
-                return Some(format!("CC {} {}", license_type, version));
-            } else if !parts.is_empty() {
-                return Some(format!("CC {}", parts[0].to_uppercase()));
-            }
-        }
-    }
-    // Already in short form like "CC BY-NC-SA 4.0" or "CC-BY-NC 4.0"
-    if lower.starts_with("cc") {
-        return Some(lic.to_string());
-    }
-    None
-}
-
-/// Get XC metadata field value by key from the loaded file's metadata pairs.
-fn get_xc_field(metadata: &[(String, String)], key: &str) -> Option<String> {
-    metadata.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
-}
+use crate::audio::streaming_source;
+use crate::audio::microphone;
+use crate::components::file_sidebar::file_groups;
+use crate::components::file_sidebar::file_badges::{FileBadgeData, FileBadgeRow, parse_cc_license, get_xc_field};
 
 #[component]
 pub fn Toolbar() -> impl IntoView {
     let state = expect_context::<AppState>();
     let show_about = RwSignal::new(false);
+    let seq_dropdown_open = RwSignal::new(false);
+    let track_dropdown_open = RwSignal::new(false);
 
     let is_mobile = state.is_mobile.get_untracked();
+    let is_tauri = state.is_tauri;
 
     // Derived: current file name
     let file_name = Memo::new(move |_| {
@@ -67,48 +42,116 @@ pub fn Toolbar() -> impl IntoView {
         get_xc_field(&meta, "Attribution")
     });
 
-    // Derived: status prefix for document title (text-only — no CSS possible in <title>)
+    // Derived: is current file unsaved (web recording)
+    let is_unsaved = Memo::new(move |_| {
+        let files = state.files.get();
+        let idx = state.current_file_index.get();
+        idx.and_then(|i| files.get(i))
+            .map(|f| f.is_recording && !is_tauri)
+            .unwrap_or(false)
+    });
+
+    // Derived: badge data for current file
+    let current_badge_data = Memo::new(move |_| {
+        let files = state.files.get();
+        let idx = state.current_file_index.get()?;
+        let f = files.get(idx)?;
+        let names: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
+        let groups = file_groups::compute_all_groups(&names, &files);
+        let gi = groups.get(idx)?;
+
+        let cc_info = f.xc_metadata.as_ref().and_then(|meta| {
+            let lic = get_xc_field(meta, "License")?;
+            let label = parse_cc_license(&lic)?;
+            Some(label)
+        });
+
+        Some(FileBadgeData {
+            sample_rate: f.audio.sample_rate,
+            bits_per_sample: f.audio.metadata.bits_per_sample,
+            is_float: f.audio.metadata.is_float,
+            duration_secs: f.audio.duration_secs,
+            is_unsaved: f.is_recording && !is_tauri,
+            is_streaming: streaming_source::is_streaming(f.audio.source.as_ref()),
+            track: gi.track.clone(),
+            sequence: gi.sequence.clone(),
+            cc_license: cc_info,
+            cc_tooltip: None, // toolbar renders CC separately
+            file_index: idx,
+        })
+    });
+
+    // Derived: sequence group files (for dropdown)
+    let seq_group_files = Memo::new(move |_| {
+        let files = state.files.get();
+        let idx = state.current_file_index.get()?;
+        let names: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
+        let groups = file_groups::compute_all_groups(&names, &files);
+        let cur_seq = groups.get(idx)?.sequence.as_ref()?;
+        let key = cur_seq.sequence_key.clone();
+        let mut matches: Vec<(usize, String, u32)> = groups.iter().enumerate()
+            .filter_map(|(i, g)| {
+                let s = g.sequence.as_ref()?;
+                if s.sequence_key == key {
+                    Some((i, files[i].name.clone(), s.sequence_number))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        matches.sort_by_key(|(_, _, n)| *n);
+        Some(matches)
+    });
+
+    // Derived: track group files (for dropdown)
+    let track_group_files = Memo::new(move |_| {
+        let files = state.files.get();
+        let idx = state.current_file_index.get()?;
+        let names: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
+        let groups = file_groups::compute_all_groups(&names, &files);
+        let cur_track = groups.get(idx)?.track.as_ref()?;
+        let key = cur_track.group_key.clone();
+        let matches: Vec<(usize, String, String)> = groups.iter().enumerate()
+            .filter_map(|(i, g)| {
+                let t = g.track.as_ref()?;
+                if t.group_key == key {
+                    Some((i, files[i].name.clone(), t.label.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Some(matches)
+    });
+
+    // Derived: status prefix for document title
     let status_prefix = Memo::new(move |_| {
         let recording = state.mic_recording.get();
         let listening = state.mic_listening.get();
         let playing = state.is_playing.get();
 
         let mut parts = Vec::new();
-
         if recording {
             parts.push("\u{1F534}"); // 🔴
         }
-
         if listening {
             let listen_mode = state.listen_mode.get();
             if listen_mode == ListenMode::Normal {
-                parts.push("\u{1F3A4}"); // 🎤 (mic — 1:1 passthrough)
+                parts.push("\u{1F3A4}"); // 🎤
             } else {
-                parts.push("\u{1F3A4}\u{1F987}"); // 🎤🦇 (mic + bat — HFR processing)
+                parts.push("\u{1F3A4}\u{1F987}"); // 🎤🦇
             }
         } else if playing && !recording {
             parts.push("\u{25B6}\u{FE0F}"); // ▶️
         }
-
-        if parts.is_empty() {
-            None
-        } else {
-            Some(parts.join(""))
-        }
+        if parts.is_empty() { None } else { Some(parts.join("")) }
     });
 
-    // Derived: recording file name when both recording and listening
+    // Derived: recording file name
     let recording_file_name = Memo::new(move |_| {
         let recording = state.mic_recording.get();
         let listening = state.mic_listening.get();
-        if recording && listening {
-            // Show recording file name
-            let files = state.files.get();
-            state.mic_live_file_idx.get()
-                .and_then(|idx| files.get(idx).map(|f| f.name.clone()))
-                .or_else(|| file_name.get())
-        } else if recording {
-            // Just recording — show normal file name or recording name
+        if recording || (recording && listening) {
             let files = state.files.get();
             state.mic_live_file_idx.get()
                 .and_then(|idx| files.get(idx).map(|f| f.name.clone()))
@@ -118,13 +161,12 @@ pub fn Toolbar() -> impl IntoView {
         }
     });
 
-    // Derived: full title text (for both recording+listening and normal states)
+    // Derived: center text
     let center_text = Memo::new(move |_| {
         let recording = state.mic_recording.get();
         let listening = state.mic_listening.get();
 
         if recording && listening {
-            // Show recording file name (not "Listening...")
             recording_file_name.get().unwrap_or_default()
         } else if listening {
             "Listening...".to_string()
@@ -155,6 +197,32 @@ pub fn Toolbar() -> impl IntoView {
         }
     });
 
+    // Close dropdowns on click-outside
+    Effect::new(move |_| {
+        // Close dropdowns when file changes
+        let _ = state.current_file_index.get();
+        seq_dropdown_open.set(false);
+        track_dropdown_open.set(false);
+    });
+
+    // Download handler for toolbar
+    let on_toolbar_download = move |_: web_sys::MouseEvent| {
+        let files = state.files.get_untracked();
+        if let Some(idx) = state.current_file_index.get_untracked() {
+            if let Some(f) = files.get(idx) {
+                let total = f.audio.source.total_samples() as usize;
+                let samples = f.audio.source.read_region(crate::audio::source::ChannelView::MonoMix, 0, total);
+                microphone::download_wav(&samples, f.audio.sample_rate, &f.name);
+                // Clear unsaved state
+                state.files.update(|files| {
+                    if let Some(f) = files.get_mut(idx) {
+                        f.is_recording = false;
+                    }
+                });
+            }
+        }
+    };
+
     view! {
         <div class="toolbar">
             // Left: mobile menu + brand
@@ -179,17 +247,14 @@ pub fn Toolbar() -> impl IntoView {
                 title="About"
             ><b>"Oversample"</b></span>
 
-            // Center: status indicators + file name (row 1) + info/CC (row 2)
+            // Center: status indicators + file name (row 1) + badges (row 2)
             <div class="toolbar-title-center">
-                // Row 1: status icons + filename
+                // Row 1: status icons + filename (with unsaved asterisk)
                 <div class="toolbar-title-row">
-                    // Status icons container (always present to reserve space)
                     <span class="toolbar-status-icons">
-                        // Recording: CSS-rendered red dot (not emoji — looks better cross-platform)
                         {move || state.mic_recording.get().then(|| view! {
                             <span class="toolbar-rec-dot"></span>
                         })}
-                        // Listening: mic emoji (+ bat for HFR)
                         {move || {
                             let listening = state.mic_listening.get();
                             let playing = state.is_playing.get();
@@ -198,19 +263,18 @@ pub fn Toolbar() -> impl IntoView {
                             if listening {
                                 let listen_mode = state.listen_mode.get();
                                 if listen_mode == ListenMode::Normal {
-                                    Some("\u{1F3A4}".to_string()) // 🎤
+                                    Some("\u{1F3A4}".to_string())
                                 } else {
-                                    Some("\u{1F3A4}\u{1F987}".to_string()) // 🎤🦇
+                                    Some("\u{1F3A4}\u{1F987}".to_string())
                                 }
                             } else if playing && !recording {
-                                Some("\u{25B6}\u{FE0F}".to_string()) // ▶️
+                                Some("\u{25B6}\u{FE0F}".to_string())
                             } else {
                                 None
                             }
                         }}
                     </span>
 
-                    // File name (with end ellipsis via CSS)
                     <span
                         class="toolbar-title-filename"
                         title=move || {
@@ -218,62 +282,152 @@ pub fn Toolbar() -> impl IntoView {
                             if name.is_empty() { String::new() } else { name }
                         }
                     >
+                        {move || is_unsaved.get().then(|| view! {
+                            <span class="file-unsaved-asterisk" title="Unsaved recording">"*"</span>
+                        })}
                         {move || center_text.get()}
                     </span>
                 </div>
 
-                // Row 2: Info / CC license button
-                <div class="toolbar-info-row">
+                // Row 2: badge row (replaces old info-row)
+                <div class="toolbar-badge-row">
                     {move || {
                         let has_file = file_name.get().is_some();
                         if !has_file {
                             return None;
                         }
 
+                        let badge_data = current_badge_data.get();
                         let cc = cc_license.get();
                         let attr = attribution.get();
+                        let unsaved = is_unsaved.get();
 
-                        if let Some(cc_label) = cc {
-                            // Strip leading "CC " from label since the logo replaces it
-                            let short_label = cc_label.strip_prefix("CC ").unwrap_or(&cc_label).to_string();
-                            // Build tooltip: "Creative Commons BY-NC-SA 4.0 — attribution text"
-                            let tooltip = if let Some(attr_text) = attr {
-                                format!("Creative Commons {} \u{2014} {}", short_label, attr_text)
+                        Some(view! {
+                            // FileBadgeRow (sample rate, bit depth, duration, streaming, seq, track)
+                            {badge_data.map(|data| {
+                                let on_seq = Callback::new(move |()| {
+                                    track_dropdown_open.set(false);
+                                    seq_dropdown_open.update(|v| *v = !*v);
+                                });
+                                let on_track = Callback::new(move |()| {
+                                    seq_dropdown_open.set(false);
+                                    track_dropdown_open.update(|v| *v = !*v);
+                                });
+                                view! {
+                                    <FileBadgeRow
+                                        data=data
+                                        context="toolbar"
+                                        show_group_badges=Signal::derive(move || true)
+                                        group_dropdowns=true
+                                        on_seq_click=on_seq
+                                        on_track_click=on_track
+                                    />
+                                }
+                            })}
+
+                            // Unsaved badge + download button (toolbar-specific)
+                            {unsaved.then(|| view! {
+                                <span class="toolbar-unsaved-badge">"* File unsaved"</span>
+                                <button
+                                    class="toolbar-download-btn"
+                                    title="Download WAV"
+                                    on:click=on_toolbar_download
+                                >"\u{1F4BE} Download"</button>
+                            })}
+
+                            // CC badge or info button
+                            {if let Some(cc_label) = cc {
+                                let short_label = cc_label.strip_prefix("CC ").unwrap_or(&cc_label).to_string();
+                                let tooltip = if let Some(attr_text) = attr {
+                                    format!("Creative Commons {} \u{2014} {}", short_label, attr_text)
+                                } else {
+                                    format!("Creative Commons {}", short_label)
+                                };
+                                Some(leptos::either::Either::Left(view! {
+                                    <button
+                                        class="toolbar-cc-badge"
+                                        title=tooltip
+                                        on:click=move |e: web_sys::MouseEvent| {
+                                            e.stop_propagation();
+                                            state.right_sidebar_tab.set(RightSidebarTab::Metadata);
+                                            state.right_sidebar_collapsed.set(false);
+                                        }
+                                    >
+                                        <span class="toolbar-cc-icon"></span>
+                                        <span class="toolbar-cc-label">{short_label}</span>
+                                    </button>
+                                }))
                             } else {
-                                format!("Creative Commons {}", short_label)
-                            };
-                            Some(leptos::either::Either::Left(view! {
-                                <button
-                                    class="toolbar-cc-badge"
-                                    title=tooltip
-                                    on:click=move |e: web_sys::MouseEvent| {
-                                        e.stop_propagation();
-                                        state.right_sidebar_tab.set(RightSidebarTab::Metadata);
-                                        state.right_sidebar_collapsed.set(false);
-                                    }
-                                >
-                                    <span class="toolbar-cc-icon"></span>
-                                    <span class="toolbar-cc-label">{short_label}</span>
-                                </button>
-                            }))
-                        } else {
-                            // Plain info icon
-                            let title_str = "File info".to_string();
-                            Some(leptos::either::Either::Right(view! {
-                                <button
-                                    class="toolbar-info-btn"
-                                    title=title_str
-                                    on:click=move |e: web_sys::MouseEvent| {
-                                        e.stop_propagation();
-                                        state.right_sidebar_tab.set(RightSidebarTab::Metadata);
-                                        state.right_sidebar_collapsed.set(false);
-                                    }
-                                >
-                                    {"\u{24D8}"} // ⓘ
-                                </button>
-                            }))
-                        }
+                                Some(leptos::either::Either::Right(view! {
+                                    <button
+                                        class="toolbar-info-btn"
+                                        title="File info"
+                                        on:click=move |e: web_sys::MouseEvent| {
+                                            e.stop_propagation();
+                                            state.right_sidebar_tab.set(RightSidebarTab::Metadata);
+                                            state.right_sidebar_collapsed.set(false);
+                                        }
+                                    >
+                                        {"\u{24D8}"}
+                                    </button>
+                                }))
+                            }}
+                        })
                     }}
+
+                    // Sequence dropdown panel
+                    {move || seq_dropdown_open.get().then(|| {
+                        let items = seq_group_files.get().unwrap_or_default();
+                        let current = state.current_file_index.get();
+                        view! {
+                            <div class="badge-dropdown-panel">
+                                {items.into_iter().map(|(idx, name, seq_num)| {
+                                    let is_current = current == Some(idx);
+                                    let cls = if is_current { "badge-dropdown-item active" } else { "badge-dropdown-item" };
+                                    view! {
+                                        <div
+                                            class=cls
+                                            on:click=move |e: web_sys::MouseEvent| {
+                                                e.stop_propagation();
+                                                state.current_file_index.set(Some(idx));
+                                                seq_dropdown_open.set(false);
+                                            }
+                                        >
+                                            <span class="file-badge file-badge-seq">{format!("#{}", seq_num)}</span>
+                                            <span>{name}</span>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </div>
+                        }
+                    })}
+
+                    // Track dropdown panel
+                    {move || track_dropdown_open.get().then(|| {
+                        let items = track_group_files.get().unwrap_or_default();
+                        let current = state.current_file_index.get();
+                        view! {
+                            <div class="badge-dropdown-panel">
+                                {items.into_iter().map(|(idx, name, label)| {
+                                    let is_current = current == Some(idx);
+                                    let cls = if is_current { "badge-dropdown-item active" } else { "badge-dropdown-item" };
+                                    view! {
+                                        <div
+                                            class=cls
+                                            on:click=move |e: web_sys::MouseEvent| {
+                                                e.stop_propagation();
+                                                state.current_file_index.set(Some(idx));
+                                                track_dropdown_open.set(false);
+                                            }
+                                        >
+                                            <span class="file-badge file-badge-track">{format!("[{}]", label)}</span>
+                                            <span>{name}</span>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>()}
+                            </div>
+                        }
+                    })}
                 </div>
             </div>
 
@@ -301,7 +455,6 @@ pub fn Toolbar() -> impl IntoView {
                         on:click=move |ev: web_sys::MouseEvent| {
                             ev.stop_propagation();
                             state.right_sidebar_collapsed.update(|c| *c = !*c);
-                            // Close left sidebar when opening right
                             if !state.right_sidebar_collapsed.get_untracked() {
                                 state.sidebar_collapsed.set(true);
                             }

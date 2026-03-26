@@ -10,6 +10,7 @@ use crate::canvas::tile_cache;
 use crate::state::{AppState, FileSortMode, LoadedFile};
 use crate::types::PreviewImage;
 use super::file_groups;
+use super::file_badges;
 use crate::format_time::format_duration_compact;
 
 use super::loading::{read_and_load_file, load_native_file, DemoEntry, fetch_demo_index, load_single_demo};
@@ -276,59 +277,68 @@ pub(super) fn FilesPanel() -> impl IntoView {
                         .and_then(|idx| group_infos.get(idx))
                         .and_then(|g| g.track.as_ref())
                         .map(|ti| ti.group_key.clone());
+                    let active_seq_key: Option<String> = current_idx.get()
+                        .and_then(|idx| group_infos.get(idx))
+                        .and_then(|g| g.sequence.as_ref())
+                        .map(|s| s.sequence_key.clone());
 
                     // Compute sorted display order
                     let sort_mode = state.file_sort_mode.get();
                     let sorted_indices = compute_sorted_indices(&file_vec, sort_mode, &names, &group_infos);
 
                     let mut items: Vec<leptos::tachys::view::any_view::AnyView> = Vec::new();
-                    for (pos, &i) in sorted_indices.iter().enumerate() {
-                        // Insert gap separator between consecutive sequence files
-                        if pos > 0 {
-                            let prev_i = sorted_indices[pos - 1];
-                            if let (Some(prev_seq), Some(cur_seq)) = (
-                                group_infos[prev_i].sequence.as_ref(),
-                                group_infos[i].sequence.as_ref(),
-                            ) {
-                                if prev_seq.sequence_key == cur_seq.sequence_key {
-                                    let gap_view = if let Some(gap) = cur_seq.gap_from_prev_secs {
-                                        let (label, cls) = if gap.abs() < 0.01 {
-                                            ("continuous".to_string(), "seq-gap-row continuous")
-                                        } else if gap > 60.0 {
-                                            (format!("{} gap", format_duration_compact(gap)), "seq-gap-row large-gap")
-                                        } else {
-                                            (format!("{} gap", format_duration_compact(gap)), "seq-gap-row")
-                                        };
-                                        view! { <div class=cls>{label}</div> }.into_any()
-                                    } else {
-                                        view! { <div class="seq-gap-row unknown">"? gap"</div> }.into_any()
-                                    };
-                                    items.push(gap_view);
-                                }
-                            }
-                        }
+                    for (_pos, &i) in sorted_indices.iter().enumerate() {
                     {
                         let f = &file_vec[i];
                         let name = f.name.clone();
-                        let dur = f.audio.duration_secs;
-                        let sr = f.audio.sample_rate;
                         let preview = f.preview.clone();
                         let is_rec = f.is_recording;
                         let gi = &group_infos[i];
                         let track_badge = gi.track.clone();
                         let seq_badge = gi.sequence.clone();
-                        let is_group_highlighted = track_badge.as_ref()
-                            .map(|ti| Some(&ti.group_key) == active_group_key.as_ref())
-                            .unwrap_or(false);
                         let is_streaming = streaming_source::is_streaming(f.audio.source.as_ref());
                         let is_active = move || current_idx.get() == Some(i);
                         let is_selected = move || state.selected_file_indices.with(|sel| sel.contains(&i));
+
+                        // Determine if group badges should show for this file
+                        let show_groups = seq_badge.as_ref()
+                            .map(|s| Some(&s.sequence_key) == active_seq_key.as_ref())
+                            .unwrap_or(false)
+                            || track_badge.as_ref()
+                            .map(|t| Some(&t.group_key) == active_group_key.as_ref())
+                            .unwrap_or(false);
+
+                        // Build badge data
+                        let cc_info = f.xc_metadata.as_ref().and_then(|meta| {
+                            let lic = file_badges::get_xc_field(meta, "License")?;
+                            let label = file_badges::parse_cc_license(&lic)?;
+                            let attr = file_badges::get_xc_field(meta, "Attribution");
+                            let tooltip = if let Some(attr_text) = attr {
+                                format!("Creative Commons {} \u{2014} {}", label, attr_text)
+                            } else {
+                                format!("Creative Commons {}", label)
+                            };
+                            Some((label, tooltip))
+                        });
+                        let badge_data = file_badges::FileBadgeData {
+                            sample_rate: f.audio.sample_rate,
+                            bits_per_sample: f.audio.metadata.bits_per_sample,
+                            is_float: f.audio.metadata.is_float,
+                            duration_secs: f.audio.duration_secs,
+                            is_unsaved: is_rec && !is_tauri,
+                            is_streaming,
+                            track: track_badge,
+                            sequence: seq_badge,
+                            cc_license: cc_info.as_ref().map(|(l, _)| l.clone()),
+                            cc_tooltip: cc_info.map(|(_, t)| t),
+                            file_index: i,
+                        };
+
                         let on_click = move |ev: MouseEvent| {
                             let ctrl = ev.ctrl_key() || ev.meta_key();
                             let shift = ev.shift_key();
 
                             if ctrl {
-                                // Toggle this file in multi-selection
                                 state.selected_file_indices.update(|sel| {
                                     if let Some(pos) = sel.iter().position(|&x| x == i) {
                                         sel.remove(pos);
@@ -340,19 +350,15 @@ pub(super) fn FilesPanel() -> impl IntoView {
                             }
 
                             if shift {
-                                // Range select from current_file_index (or first selected) to i
                                 let anchor = current_idx.get_untracked().unwrap_or(0);
                                 let (lo, hi) = if anchor <= i { (anchor, i) } else { (i, anchor) };
-                                // Use the sorted_indices order for the range
                                 state.selected_file_indices.set((lo..=hi).collect());
                                 return;
                             }
 
-                            // Plain click: switch to single file, clear multi-selection
                             state.selected_file_indices.set(Vec::new());
                             state.active_timeline.set(None);
                             state.active_timeline_track.set(None);
-                            // Clear navigation history and bookmarks when switching files
                             state.nav_history.set(vec![]);
                             state.nav_index.set(0);
                             state.bookmarks.set(vec![]);
@@ -379,17 +385,14 @@ pub(super) fn FilesPanel() -> impl IntoView {
                             });
                         };
                         let name_dl = name.clone();
-                        let on_download = move |ev: MouseEvent| {
-                            ev.stop_propagation();
+                        let on_download = move |_: ()| {
                             let files = state.files.get_untracked();
                             if let Some(f) = files.get(i) {
                                 let total = f.audio.source.total_samples() as usize;
                                 let samples = f.audio.source.read_region(crate::audio::source::ChannelView::MonoMix, 0, total);
                                 microphone::download_wav(&samples, f.audio.sample_rate, &name_dl);
                             }
-                        };
-                        let on_mark_saved = move |ev: MouseEvent| {
-                            ev.stop_propagation();
+                            // Clear unsaved state after download
                             state.files.update(|files| {
                                 if let Some(f) = files.get_mut(i) {
                                     f.is_recording = false;
@@ -404,14 +407,13 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                 }
                             });
                         };
-                        // Returns (read_only, had_sidecar) for the batm badge
                         let batm_badge_state = move || {
                             state.files.with(|files| {
                                 files.get(i).map(|f| (f.read_only, f.had_sidecar)).unwrap_or((false, false))
                             })
                         };
-                        // Show unsaved badge on web recordings only
                         let show_unsaved = is_rec && !is_tauri;
+                        let has_download = is_rec && !is_tauri;
                         let file_view = view! {
                             <div
                                 class=move || {
@@ -432,29 +434,6 @@ pub(super) fn FilesPanel() -> impl IntoView {
                 })}
                                 <div class="file-item-header">
                                     <div class="file-item-name">
-                                        {if show_unsaved {
-                                            Some(view! { <span class="file-unsaved-badge" title="Unsaved recording"></span> })
-                                        } else {
-                                            None
-                                        }}
-                                        {track_badge.map(|ti| {
-                                            let cls = if is_group_highlighted {
-                                                "file-badge file-badge-track highlighted"
-                                            } else {
-                                                "file-badge file-badge-track"
-                                            };
-                                            view! { <span class=cls>{format!("[{}]", ti.label)}</span> }
-                                        })}
-                                        {seq_badge.map(|si| {
-                                            view! { <span class="file-badge file-badge-seq"
-                                                title=si.gap_from_prev_secs.map(|g| format!("Gap: {}", format_duration_compact(g))).unwrap_or_default()
-                                            >{format!("#{}", si.sequence_number)}</span> }
-                                        })}
-                                        {if is_streaming {
-                                            Some(view! { <span class="file-badge file-badge-streaming" title="Streaming (large file)">"[~]"</span> })
-                                        } else {
-                                            None
-                                        }}
                                         {if is_tauri {
                                             Some(view! {
                                                 <span
@@ -489,22 +468,23 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                         } else {
                                             None
                                         }}
+                                        {if show_unsaved {
+                                            Some(view! { <span class="file-unsaved-asterisk" title="Unsaved recording">"*"</span> })
+                                        } else {
+                                            None
+                                        }}
                                         {name}
                                     </div>
-                                    {if show_unsaved {
-                                        Some(view! {
-                                            <button class="file-download-btn" on:click=on_download title="Download WAV"
-                                            >"\u{2B73}"</button>
-                                            <button class="file-mark-saved-btn" on:click=on_mark_saved title="Mark as saved"
-                                            >"\u{2713}"</button>
-                                        })
-                                    } else {
-                                        None
-                                    }}
                                     <button class="file-item-close" on:click=on_close>"×"</button>
                                 </div>
                                 <div class="file-item-info">
-                                    {format!("{}  {}kHz", format_duration_compact(dur), sr / 1000)}
+                                    <file_badges::FileBadgeRow
+                                        data=badge_data
+                                        context="file-menu"
+                                        show_group_badges=Signal::derive(move || show_groups)
+                                        show_download=has_download
+                                        on_download=Callback::new(on_download)
+                                    />
                                 </div>
                             </div>
                         }.into_any();
