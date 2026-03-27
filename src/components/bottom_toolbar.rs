@@ -20,7 +20,14 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
 #[component]
 pub fn BottomToolbar() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let has_file = move || state.current_file_index.get().is_some() || state.active_timeline.get().is_some();
+    let has_file = move || {
+        // During recording with no prior files, keep toolbar minimal (just Record + Listen)
+        // so the user doesn't lose track of where the stop button is
+        if state.mic_recording.get() && state.files.with(|f| f.len() <= 1) {
+            return false;
+        }
+        state.current_file_index.get().is_some() || state.active_timeline.get().is_some()
+    };
     let is_mobile = state.is_mobile.get_untracked();
 
     // ── Recording timer ──
@@ -620,7 +627,11 @@ pub fn BottomToolbar() -> impl IntoView {
                 </div>
             </Show>
 
-            <div class="bottom-toolbar-sep"></div>
+            // Separator before record — hide during recording-only mode
+            {move || {
+                let recording_no_files = state.mic_recording.get() && state.files.with(|f| f.len() <= 1);
+                (!recording_no_files).then(|| view! { <div class="bottom-toolbar-sep"></div> })
+            }}
 
             // ── Record combo button ──
             <ComboButton
