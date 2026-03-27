@@ -1593,8 +1593,9 @@ async fn start_listening(state: &AppState, backend: MicBackend) {
 
 /// Stop listening without closing the mic (may still be recording).
 async fn stop_listening(state: &AppState) {
-    state.mic_listening.set(false);
-    crate::canvas::live_waterfall::clear();
+    // Don't set mic_listening to false here — the backend-specific toggle
+    // functions check it to decide whether to stop or start. Setting it
+    // early caused them to see "not listening" and re-start listening.
 
     // Determine which backend to stop
     let backend = state.mic_backend.get_untracked();
@@ -1607,6 +1608,8 @@ async fn stop_listening(state: &AppState) {
             toggle_listen_tauri(state).await;
         }
         _ => {
+            state.mic_listening.set(false);
+            crate::canvas::live_waterfall::clear();
             MIC_BUFFER.with(|buf| buf.borrow_mut().clear());
             if !state.mic_recording.get_untracked() {
                 maybe_close_mic_web(state);
