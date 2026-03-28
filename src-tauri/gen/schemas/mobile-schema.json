@@ -2169,12 +2169,6 @@
           "markdownDescription": "Enables the finalizeRecordingEntry command without any pre-configured scope."
         },
         {
-          "description": "Enables the migrateRecordings command without any pre-configured scope.",
-          "type": "string",
-          "const": "media-store:allow-migrateRecordings",
-          "markdownDescription": "Enables the migrateRecordings command without any pre-configured scope."
-        },
-        {
           "description": "Enables the saveToSharedStorage command without any pre-configured scope.",
           "type": "string",
           "const": "media-store:allow-saveToSharedStorage",
@@ -2209,12 +2203,6 @@
           "type": "string",
           "const": "media-store:deny-finalizeRecordingEntry",
           "markdownDescription": "Denies the finalizeRecordingEntry command without any pre-configured scope."
-        },
-        {
-          "description": "Denies the migrateRecordings command without any pre-configured scope.",
-          "type": "string",
-          "const": "media-store:deny-migrateRecordings",
-          "markdownDescription": "Denies the migrateRecordings command without any pre-configured scope."
         },
         {
           "description": "Denies the saveToSharedStorage command without any pre-configured scope.",
