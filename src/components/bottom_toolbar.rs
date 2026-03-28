@@ -1027,6 +1027,34 @@ pub fn BottomToolbar() -> impl IntoView {
                             </div>
                         </Show>
 
+                        // ── Buffer size (PS/PV only) ──
+                        <Show when=move || matches!(state.listen_mode.get(), ListenMode::PitchShift | ListenMode::PhaseVocoder)>
+                            <hr />
+                            <div class="layer-panel-title">"Buffer"</div>
+                            <div style="display: flex; gap: 2px; padding: 0 6px 4px;">
+                                <button class=move || layer_opt_class(state.listen_context_chunks.get() == 1)
+                                    on:click=move |_| state.listen_context_chunks.set(1)
+                                    title="Minimum buffer (more clicks, lowest latency)"
+                                >"1x"</button>
+                                <button class=move || layer_opt_class(state.listen_context_chunks.get() == 2)
+                                    on:click=move |_| state.listen_context_chunks.set(2)
+                                    title="Small buffer"
+                                >"2x"</button>
+                                <button class=move || layer_opt_class(state.listen_context_chunks.get() == 4)
+                                    on:click=move |_| state.listen_context_chunks.set(4)
+                                    title="Medium buffer (default)"
+                                >"4x"</button>
+                                <button class=move || layer_opt_class(state.listen_context_chunks.get() == 8)
+                                    on:click=move |_| state.listen_context_chunks.set(8)
+                                    title="Large buffer (smoother, more CPU)"
+                                >"8x"</button>
+                                <button class=move || layer_opt_class(state.listen_context_chunks.get() == 16)
+                                    on:click=move |_| state.listen_context_chunks.set(16)
+                                    title="Maximum buffer (smoothest, most CPU)"
+                                >"16x"</button>
+                            </div>
+                        </Show>
+
                         // ── Bandpass filter ──
                         <hr />
                         <div class="layer-panel-title">"Bandpass Filter"</div>

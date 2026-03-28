@@ -1044,6 +1044,8 @@ pub struct AppState {
     pub listen_mode: RwSignal<ListenMode>,
     pub listen_het_frequency: RwSignal<f64>,
     pub listen_het_cutoff: RwSignal<f64>,
+    /// Number of context chunks for PS/PV overlap-save buffering (2/4/8/16).
+    pub listen_context_chunks: RwSignal<u32>,
     pub listen_bandpass_enabled: RwSignal<bool>,
     pub listen_bandpass_lo: RwSignal<f64>,
     pub listen_bandpass_hi: RwSignal<f64>,
@@ -1437,6 +1439,7 @@ impl AppState {
             listen_mode: RwSignal::new(ListenMode::default()),
             listen_het_frequency: RwSignal::new(45_000.0),
             listen_het_cutoff: RwSignal::new(15_000.0),
+            listen_context_chunks: RwSignal::new(4),
             listen_bandpass_enabled: RwSignal::new(false),
             listen_bandpass_lo: RwSignal::new(18_000.0),
             listen_bandpass_hi: RwSignal::new(96_000.0),

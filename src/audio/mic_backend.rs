@@ -155,11 +155,8 @@ impl TauriRecordingResult {
 
 // ── Live listen DSP dispatch ──────────────────────────────────────────
 
-/// Minimum context buffer size for PS/PV overlap processing.
-/// With 4096-sample chunks this gives ~4 chunks of context, enough for
-/// PV's 4096-pt FFT to produce ~13 STFT frames with full OLA coverage
-/// in the tail region we extract.
-const LISTEN_CONTEXT_MIN: usize = 16384;
+/// Absolute minimum context for PS/PV (must cover at least one PV FFT window).
+const LISTEN_CONTEXT_FLOOR: usize = 4096;
 
 /// Crossfade length (samples) between consecutive output chunks to
 /// eliminate any residual boundary discontinuity after overlap-save.
@@ -194,6 +191,7 @@ fn process_listen_audio(
     sample_rate: u32,
     rt_het: &mut RealtimeHet,
     dsp_state: &mut ListenDspState,
+    context_chunks: u32,
     het_freq: f64,
     het_cutoff: f64,
     ps_factor: f64,
@@ -210,7 +208,7 @@ fn process_listen_audio(
         ListenMode::PitchShift | ListenMode::PhaseVocoder => {
             // Accumulate input into sliding context window
             dsp_state.context.extend_from_slice(input);
-            let max_ctx = LISTEN_CONTEXT_MIN.max(input.len() * 4);
+            let max_ctx = LISTEN_CONTEXT_FLOOR.max(input.len() * context_chunks as usize);
             if dsp_state.context.len() > max_ctx {
                 let excess = dsp_state.context.len() - max_ctx;
                 dsp_state.context.drain(..excess);
@@ -617,6 +615,7 @@ fn create_native_chunk_handler(state: AppState) -> Closure<dyn FnMut(JsValue)> {
                         sr,
                         &mut h.borrow_mut(),
                         &mut s.borrow_mut(),
+                        state_cb.listen_context_chunks.get_untracked(),
                         state_cb.listen_het_frequency.get_untracked(),
                         state_cb.listen_het_cutoff.get_untracked(),
                         state_cb.ps_factor.get_untracked(),
@@ -801,6 +800,7 @@ async fn open_web(state: &AppState) -> bool {
                         sr,
                         &mut h.borrow_mut(),
                         &mut s.borrow_mut(),
+                        state_cb.listen_context_chunks.get_untracked(),
                         state_cb.listen_het_frequency.get_untracked(),
                         state_cb.listen_het_cutoff.get_untracked(),
                         state_cb.ps_factor.get_untracked(),
