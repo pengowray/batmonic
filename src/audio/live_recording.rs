@@ -149,13 +149,14 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
     let (fft_size, hop_size): (usize, usize) = (256, 256);
     const PROCESS_INTERVAL_MS: i32 = 50;
 
+    // Initialize waterfall synchronously so the renderer sees it immediately
+    // (before any async yield that could allow a spectrogram draw)
+    live_waterfall::create(fft_size, hop_size, sample_rate);
+
     wasm_bindgen_futures::spawn_local(async move {
         let mut last_processed_col: usize = 0;
         let mut last_snapshot_len: usize = 0;
         let is_tauri = state.is_tauri;
-
-        // Initialize waterfall for direct rendering
-        live_waterfall::create(fft_size, hop_size, sample_rate);
 
         loop {
             let p = js_sys::Promise::new(&mut |resolve, _| {
@@ -478,11 +479,26 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
     // Clear live waterfall
     live_waterfall::clear();
 
-    // Set file handle if native backend already saved the file
-    if !saved_path.is_empty() {
+    // Set file handle if native backend already saved the file (to internal storage)
+    let native_saved = !saved_path.is_empty();
+    if native_saved {
         state.files.update(|files| {
             if let Some(f) = files.get_mut(file_index) {
                 f.file_handle = Some(crate::audio::streaming_source::FileHandle::TauriPath(saved_path));
+            }
+        });
+    }
+
+    // is_recording doubles as "unsaved" flag for the toolbar badge.
+    // Mark saved (false) only when a file was actually persisted to disk.
+    let record_mode = state.record_mode.get_untracked();
+    let is_tauri = state.is_tauri;
+    let is_mobile = state.is_mobile.get_untracked();
+    let to_memory = record_mode == crate::state::RecordMode::ToMemory;
+
+    if native_saved && !to_memory {
+        state.files.update(|files| {
+            if let Some(f) = files.get_mut(file_index) {
                 f.is_recording = false;
             }
         });
@@ -496,34 +512,39 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
         None, None, None,
     );
 
-    // Save WAV if not already saved by native backend
-    let is_tauri = state.is_tauri;
+    // Save WAV to appropriate destination (skip for ToMemory mode)
     let name_for_save = name_check.clone();
-    if is_tauri && state.files.with_untracked(|f| f.get(file_index).map_or(true, |f| f.file_handle.is_none())) {
+    let needs_save = if to_memory {
+        false
+    } else if is_mobile {
+        // On mobile, always save to shared storage (Recordings/Oversample) —
+        // even if native backend saved to internal storage, the user needs it
+        // in a visible location accessible from their file manager.
+        true
+    } else {
+        // On desktop, only save from WASM if native backend didn't already save
+        is_tauri && !native_saved
+    };
+    if needs_save {
         let samples_ref = state.files.get_untracked();
         if let Some(file) = samples_ref.get(file_index) {
             let extra = crate::audio::guano::RecordingGuanoExtra {
                 connection_type: conn_type,
             };
-            let is_mobile = state.is_mobile.get_untracked();
             let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, is_mobile, mic_name.as_deref(), &extra);
             let filename = name_for_save;
             wasm_bindgen_futures::spawn_local(async move {
-                // On mobile, save directly to shared storage (Recordings/Oversample)
-                if state.is_mobile.get_untracked() {
+                if is_mobile {
                     crate::audio::wav_encoder::save_wav_to_shared(&wav_data, &filename).await;
-                    state.files.update(|files| {
-                        if let Some(f) = files.get_mut(file_index) {
-                            f.is_recording = false;
-                        }
-                    });
-                } else if try_tauri_save(&wav_data, &filename).await.is_some() {
-                    state.files.update(|files| {
-                        if let Some(f) = files.get_mut(file_index) {
-                            f.is_recording = false;
-                        }
-                    });
+                }  else if try_tauri_save(&wav_data, &filename).await.is_some() {
+                    // Desktop WASM save succeeded
                 }
+                // Mark as saved after successful write
+                state.files.update(|files| {
+                    if let Some(f) = files.get_mut(file_index) {
+                        f.is_recording = false;
+                    }
+                });
             });
         }
     }
