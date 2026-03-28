@@ -20,13 +20,10 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
 #[component]
 pub fn BottomToolbar() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let has_file = move || {
-        // During recording with no prior files, keep toolbar minimal (just Record + Listen)
-        // so the user doesn't lose track of where the stop button is
-        if state.mic_recording.get() && state.files.with(|f| f.len() <= 1) {
-            return false;
-        }
-        state.current_file_index.get().is_some() || state.active_timeline.get().is_some()
+    // Always show all buttons; use has_file/is_file_disabled for enable/disable logic
+    let has_file = move || true;
+    let is_file_disabled = move || {
+        state.current_file_index.get().is_none() && state.active_timeline.get().is_none()
     };
     let is_mobile = state.is_mobile.get_untracked();
 
@@ -58,14 +55,24 @@ pub fn BottomToolbar() -> impl IntoView {
     let play_is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::PlayMode));
 
     let play_left_class = Signal::derive(move || {
-        if state.is_playing.get() {
+        let no_file = state.current_file_index.get().is_none() && state.active_timeline.get().is_none();
+        let recording_and_listening = state.mic_recording.get() && state.mic_listening.get();
+        if no_file || recording_and_listening {
+            "layer-btn combo-btn-left disabled"
+        } else if state.is_playing.get() {
             "layer-btn combo-btn-left active"
         } else {
             "layer-btn combo-btn-left"
         }
     });
     let play_right_class = Signal::derive(move || {
-        if play_is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+        if is_file_disabled() {
+            "layer-btn combo-btn-right disabled"
+        } else if play_is_open.get() {
+            "layer-btn combo-btn-right open"
+        } else {
+            "layer-btn combo-btn-right"
+        }
     });
 
     let play_left_value = Signal::derive(move || "\u{25B6}".to_string()); // ▶
@@ -113,6 +120,9 @@ pub fn BottomToolbar() -> impl IntoView {
     });
 
     let play_left_click = Callback::new(move |_: web_sys::MouseEvent| {
+        let no_file = state.current_file_index.get_untracked().is_none() && state.active_timeline.get_untracked().is_none();
+        let recording_and_listening = state.mic_recording.get_untracked() && state.mic_listening.get_untracked();
+        if no_file || recording_and_listening { return; }
         if state.is_playing.get_untracked() {
             playback::stop(&state);
         } else {
@@ -342,13 +352,16 @@ pub fn BottomToolbar() -> impl IntoView {
                 let gain_is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::Gain));
 
                 let gain_left_class = Signal::derive(move || {
-                    if state.gain_mode.get() != GainMode::Off {
+                    if is_file_disabled() {
+                        "layer-btn combo-btn-left disabled"
+                    } else if state.gain_mode.get() != GainMode::Off {
                         "layer-btn combo-btn-left active"
                     } else {
                         "layer-btn combo-btn-left no-annotation"
                     }
                 });
                 let gain_right_class = Signal::derive(move || {
+                    if is_file_disabled() { return "layer-btn combo-btn-right disabled"; }
                     let dim = if state.gain_mode.get() == GainMode::Off { " dim" } else { "" };
                     if gain_is_open.get() {
                         if dim.is_empty() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right dim open" }
@@ -630,11 +643,7 @@ pub fn BottomToolbar() -> impl IntoView {
                 </div>
             </Show>
 
-            // Separator before record — hide during recording-only mode
-            {move || {
-                let recording_no_files = state.mic_recording.get() && state.files.with(|f| f.len() <= 1);
-                (!recording_no_files).then(|| view! { <div class="bottom-toolbar-sep"></div> })
-            }}
+            <div class="bottom-toolbar-sep"></div>
 
             // ── Record combo button ──
             <ComboButton
@@ -1017,12 +1026,17 @@ pub fn BottomToolbar() -> impl IntoView {
 fn ToolButtonInline() -> impl IntoView {
     let state = expect_context::<AppState>();
     let is_open = move || state.layer_panel_open.get() == Some(LayerPanel::Tool);
+    let no_file = move || state.current_file_index.get().is_none() && state.active_timeline.get().is_none();
 
     view! {
         <div style="position: relative;">
             <button
-                class=move || if is_open() { "layer-btn open" } else { "layer-btn" }
-                on:click=move |_| toggle_panel(&state, LayerPanel::Tool)
+                class=move || {
+                    if no_file() { "layer-btn disabled" }
+                    else if is_open() { "layer-btn open" }
+                    else { "layer-btn" }
+                }
+                on:click=move |_| { if !no_file() { toggle_panel(&state, LayerPanel::Tool); } }
                 title="Tool"
             >
                 <span class="layer-btn-category">"Tool"</span>

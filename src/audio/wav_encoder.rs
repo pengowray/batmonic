@@ -96,31 +96,6 @@ pub fn download_wav(samples: &[f32], sample_rate: u32, filename: &str, is_tauri:
     web_sys::Url::revoke_object_url(&url).ok();
 }
 
-/// Move a WAV file from internal storage to shared storage (Recordings/Oversample)
-/// via the Kotlin MediaStore plugin. Deletes the internal copy after success.
-/// Only meaningful on Android.
-pub(crate) async fn move_to_shared_storage(internal_path: &str, filename: &str) {
-    use crate::tauri_bridge::tauri_invoke;
-
-    let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &JsValue::from_str("internalPath"), &JsValue::from_str(internal_path)).ok();
-    js_sys::Reflect::set(&args, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
-    js_sys::Reflect::set(&args, &JsValue::from_str("deleteInternal"), &JsValue::TRUE).ok();
-
-    match tauri_invoke("plugin:media-store|saveToSharedStorage", &args.into()).await {
-        Ok(result) => {
-            let path = js_sys::Reflect::get(&result, &JsValue::from_str("path"))
-                .ok()
-                .and_then(|v| v.as_string())
-                .unwrap_or_default();
-            log::info!("Moved to shared storage: {}", path);
-        }
-        Err(e) => {
-            log::warn!("Failed to move to shared storage: {}", e);
-        }
-    }
-}
-
 /// Save WAV bytes directly to shared storage (Recordings/Oversample)
 /// via the Kotlin MediaStore plugin. Skips internal storage entirely.
 /// Only meaningful on Android.

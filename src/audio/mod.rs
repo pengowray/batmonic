@@ -3,6 +3,7 @@ pub mod peak;
 pub mod guano;
 pub mod live_recording;
 pub mod loader;
+pub mod mic_backend;
 pub mod microphone;
 pub mod playback;
 pub mod source;

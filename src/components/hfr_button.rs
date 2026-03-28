@@ -276,14 +276,18 @@ pub fn HfrButton() -> impl IntoView {
     // ── ComboButton setup ──
     let is_open = Signal::derive(move || state.layer_panel_open.get() == Some(LayerPanel::HfrMode));
 
+    let no_file = move || state.current_file_index.get().is_none() && state.active_timeline.get().is_none();
     let left_class = Signal::derive(move || {
-        if state.hfr_enabled.get() {
+        if no_file() {
+            "layer-btn combo-btn-left no-annotation disabled"
+        } else if state.hfr_enabled.get() {
             "layer-btn combo-btn-left no-annotation active"
         } else {
             "layer-btn combo-btn-left no-annotation"
         }
     });
     let right_class = Signal::derive(move || {
+        if no_file() { return "layer-btn combo-btn-right disabled"; }
         let dim = if !state.hfr_enabled.get() { " dim" } else { "" };
         if is_open.get() {
             if dim.is_empty() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right dim open" }
@@ -307,6 +311,7 @@ pub fn HfrButton() -> impl IntoView {
     });
 
     let left_click = Callback::new(move |_: web_sys::MouseEvent| {
+        if state.current_file_index.get_untracked().is_none() && state.active_timeline.get_untracked().is_none() { return; }
         state.toggle_hfr();
     });
     let toggle_menu = Callback::new(move |()| {

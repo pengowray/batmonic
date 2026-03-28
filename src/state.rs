@@ -729,6 +729,69 @@ pub enum ListenMode {
     PhaseVocoder,
     ZeroCrossing,
     Normal,
+    ReadyMic,
+}
+
+/// Microphone acquisition strategy.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MicStrategy {
+    Ask,
+    Selected,
+    Browser,
+    None,
+}
+
+/// Which backend is handling mic audio.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MicBackend {
+    Browser,
+    Cpal,
+    RawUsb,
+}
+
+/// State of mic acquisition lifecycle.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum MicAcquisitionState {
+    #[default]
+    Idle,
+    AwaitingChoice,
+    Acquiring,
+    Ready,
+    Failed,
+}
+
+/// Pending mic action (what to do once mic is acquired).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MicPendingAction {
+    Listen,
+    Record,
+}
+
+/// Whether a recording is ready to begin.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum RecordReadyState {
+    #[default]
+    None,
+    AwaitingConfirmation,
+    Confirmed,
+}
+
+/// Mono or stereo channel mode for mic recording.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum ChannelMode {
+    #[default]
+    Mono,
+    Stereo,
+}
+
+/// Information about the selected mic device.
+#[derive(Clone, Debug)]
+pub struct MicDeviceInfo {
+    pub name: String,
+    pub connection_type: String,
+    pub supported_rates: Vec<u32>,
+    pub supported_bit_depths: Vec<u16>,
+    pub max_channels: u16,
 }
 
 // ── Loading progress ─────────────────────────────────────────────────────────
@@ -956,6 +1019,26 @@ pub struct AppState {
     pub mic_selected_device: RwSignal<Option<String>>,
     /// Whether the mic chooser modal dialog is visible.
     pub show_mic_chooser: RwSignal<bool>,
+    /// Peak audio level from mic (0.0..1.0).
+    pub mic_peak_level: RwSignal<f32>,
+    /// Mic acquisition strategy (Ask, Selected, Browser, None).
+    pub mic_strategy: RwSignal<MicStrategy>,
+    /// Which backend is handling mic audio.
+    pub mic_backend: RwSignal<Option<MicBackend>>,
+    /// State of mic acquisition lifecycle.
+    pub mic_acquisition_state: RwSignal<MicAcquisitionState>,
+    /// Pending mic action (Listen or Record).
+    pub mic_pending_action: RwSignal<Option<MicPendingAction>>,
+    /// Whether a recording is ready to begin.
+    pub record_ready_state: RwSignal<RecordReadyState>,
+    /// Whether the mic permission dialog has been shown.
+    pub mic_permission_dialog_shown: RwSignal<bool>,
+    /// Maximum bit depth for mic recording (0 = auto).
+    pub mic_max_bit_depth: RwSignal<u16>,
+    /// Mono or stereo channel mode for mic recording.
+    pub mic_channel_mode: RwSignal<ChannelMode>,
+    /// Information about the selected mic device.
+    pub mic_device_info: RwSignal<Option<MicDeviceInfo>>,
 
     // Listen mode settings (independent from HFR file playback)
     pub listen_mode: RwSignal<ListenMode>,
@@ -1341,6 +1424,16 @@ impl AppState {
             mic_needs_permission: RwSignal::new(false),
             mic_selected_device: RwSignal::new(None),
             show_mic_chooser: RwSignal::new(false),
+            mic_peak_level: RwSignal::new(0.0),
+            mic_strategy: RwSignal::new(if detect_tauri() { MicStrategy::Ask } else { MicStrategy::Browser }),
+            mic_backend: RwSignal::new(None),
+            mic_acquisition_state: RwSignal::new(MicAcquisitionState::Idle),
+            mic_pending_action: RwSignal::new(None),
+            record_ready_state: RwSignal::new(RecordReadyState::None),
+            mic_permission_dialog_shown: RwSignal::new(false),
+            mic_max_bit_depth: RwSignal::new(0),
+            mic_channel_mode: RwSignal::new(ChannelMode::Mono),
+            mic_device_info: RwSignal::new(None),
             listen_mode: RwSignal::new(ListenMode::default()),
             listen_het_frequency: RwSignal::new(45_000.0),
             listen_het_cutoff: RwSignal::new(15_000.0),

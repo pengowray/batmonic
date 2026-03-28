@@ -4,7 +4,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use crate::state::{AppState, FileSettings, LoadedFile};
 use crate::audio::source::InMemorySource;
-use crate::audio::microphone::with_live_samples;
+use crate::audio::mic_backend::with_live_samples;
 use crate::audio::wav_encoder::{encode_wav_with_guano, try_tauri_save};
 use crate::types::{AudioData, FileMetadata, SpectrogramData};
 use crate::dsp::fft::{compute_preview, compute_spectrogram_partial, compute_stft_columns};
@@ -288,11 +288,11 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
             // Only clear waterfall when fully done (not when switching from listen to record)
             live_waterfall::clear();
         }
-        // Note: do NOT clear mic_live_file_idx here — the finalization functions
-        // (finalize_recording_tauri / finalize_live_recording) are responsible for that.
-        // Clearing it here causes a race: this loop exits as soon as mic_recording is false,
-        // but the async stop command hasn't returned yet, so finalize_recording_tauri
-        // sees mic_live_file_idx=None and creates a duplicate file.
+        // Note: do NOT clear mic_live_file_idx here — finalize_recording() is
+        // responsible for that. Clearing it here causes a race: this loop exits
+        // as soon as mic_recording is false, but the async stop command hasn't
+        // returned yet, so finalize_recording sees mic_live_file_idx=None and
+        // creates a duplicate file.
         state.mic_live_data_cols.set(0);
         state.mic_recording_target_scroll.set(0.0);
     });
@@ -341,47 +341,49 @@ pub(crate) fn spawn_smooth_scroll_animation(state: AppState) {
     std::mem::forget(cb);
 }
 
-/// Finalize a live recording by updating the existing live file in-place.
-/// Clears the progressive tiles and re-runs full spectrogram computation for
-/// accurate normalization. Works for both web and Tauri modes.
-pub(crate) fn finalize_live_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
+/// Parameters for the unified recording finalization.
+pub(crate) struct FinalizeParams {
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
+    pub bits_per_sample: u16,
+    pub is_float: bool,
+    /// Path where native backend already saved the file (empty = needs WASM-side save).
+    pub saved_path: String,
+}
+
+/// Unified recording finalization. Handles both browser (WASM-side save) and
+/// native/Tauri (already-saved) recordings. Updates the live file in-place when
+/// one exists, otherwise creates a new LoadedFile as fallback.
+pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
     use crate::canvas::{spectral_store, tile_cache, live_waterfall};
+
+    let FinalizeParams { samples, sample_rate, bits_per_sample, is_float, saved_path } = params;
 
     let live_idx = state.mic_live_file_idx.get_untracked();
     state.mic_live_file_idx.set(None);
 
-    // If no live file exists, fall back to the old path
-    let file_index = match live_idx {
-        Some(idx) => idx,
-        None => {
-            finalize_recording(samples, sample_rate, state);
-            return;
-        }
-    };
-
     if samples.is_empty() {
-        log::warn!("Empty recording, removing live file");
-        state.files.update(|files| {
-            if file_index < files.len() {
-                files.remove(file_index);
-            }
-        });
+        log::warn!("Empty recording");
+        if let Some(idx) = live_idx {
+            state.files.update(|files| {
+                if idx < files.len() { files.remove(idx); }
+            });
+        }
         return;
     }
 
     let duration_secs = samples.len() as f64 / sample_rate as f64;
 
-    let name_check = state.files.with_untracked(|files| {
-        files.get(file_index).map(|f| f.name.clone()).unwrap_or_default()
-    });
-
+    // Build GUANO metadata
     let mic_name = state.mic_device_name.get_untracked();
     let conn_type = state.mic_connection_type.get_untracked();
     let guano = crate::audio::guano::build_recording_guano(
-        sample_rate, duration_secs, &name_check, state.is_tauri, state.is_mobile.get_untracked(), mic_name.as_deref(),
-        &crate::audio::guano::RecordingGuanoExtra {
-            connection_type: conn_type,
-        },
+        sample_rate, duration_secs,
+        // Use live file name if available, generate one otherwise
+        &live_idx.and_then(|idx| state.files.with_untracked(|f| f.get(idx).map(|f| f.name.clone())))
+            .unwrap_or_else(|| generate_recording_name()),
+        state.is_tauri, state.is_mobile.get_untracked(), mic_name.as_deref(),
+        &crate::audio::guano::RecordingGuanoExtra { connection_type: conn_type.clone() },
     );
 
     let samples: Arc<Vec<f32>> = samples.into();
@@ -400,8 +402,8 @@ pub(crate) fn finalize_live_recording(samples: Vec<f32>, sample_rate: u32, state
         metadata: FileMetadata {
             file_size: 0,
             format: "REC",
-            bits_per_sample: state.mic_bits_per_sample.get_untracked(),
-            is_float: false,
+            bits_per_sample,
+            is_float,
             guano: Some(guano),
             data_offset: None,
             data_size: None,
@@ -411,149 +413,44 @@ pub(crate) fn finalize_live_recording(samples: Vec<f32>, sample_rate: u32, state
     let preview = compute_preview(&audio, 256, 128);
     let audio_for_stft = audio.clone();
 
-    let is_tauri = state.is_tauri;
-    let name_for_save = name_check.clone();
+    // Either update existing live file or create a new one
+    let (file_index, name_check) = if let Some(idx) = live_idx {
+        let name = state.files.with_untracked(|files| {
+            files.get(idx).map(|f| f.name.clone()).unwrap_or_default()
+        });
 
-    // Update the existing file with final audio data and preview
-    state.files.update(|files| {
-        if let Some(f) = files.get_mut(file_index) {
-            f.audio = audio;
-            f.preview = Some(preview);
-        }
-    });
+        tile_cache::clear_file(idx);
+        spectral_store::clear_file(idx);
 
-    // Clear live waterfall, progressive tiles, and spectral store — will be re-rendered with final normalization
-    live_waterfall::clear();
-    tile_cache::clear_file(file_index);
-    spectral_store::clear_file(file_index);
+        state.files.update(|files| {
+            if let Some(f) = files.get_mut(idx) {
+                f.audio = audio;
+                f.preview = Some(preview);
+            }
+        });
 
-    // Set Layer 1 identity (estimated WAV size since file may not be on disk yet)
-    let bits_per_sample = state.mic_bits_per_sample.get_untracked();
-    let num_samples = (duration_secs * sample_rate as f64).ceil() as u64;
-    let estimated_size = 44 + num_samples * (bits_per_sample as u64 / 8);
-    crate::file_identity::start_identity_computation(
-        state, file_index, name_check.clone(), estimated_size, None,
-        None, None, None,
-    );
-
-    // Try Tauri auto-save in background
-    if is_tauri {
-        let mic_name = state.mic_device_name.get_untracked();
-        let conn_type_save = state.mic_connection_type.get_untracked();
-        let samples_ref = state.files.get_untracked();
-        if let Some(file) = samples_ref.get(file_index) {
-            let extra = crate::audio::guano::RecordingGuanoExtra {
-                connection_type: conn_type_save,
-            };
-            let is_mobile = state.is_mobile.get_untracked();
-            let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, is_mobile, mic_name.as_deref(), &extra);
-            let filename = name_for_save;
-            wasm_bindgen_futures::spawn_local(async move {
-                if is_mobile {
-                    // Android: save directly to shared storage (Recordings/Oversample)
-                    crate::audio::wav_encoder::save_wav_to_shared(&wav_data, &filename).await;
-                    state.files.update(|files| {
-                        if let Some(f) = files.get_mut(file_index) {
-                            f.is_recording = false;
-                        }
-                    });
-                } else if try_tauri_save(&wav_data, &filename).await.is_some() {
-                    // Desktop: save to internal app data
-                    state.files.update(|files| {
-                        if let Some(f) = files.get_mut(file_index) {
-                            f.is_recording = false;
-                        }
-                    });
-                }
-            });
-        }
-    }
-
-    // Zoom to fit the entire recording
-    let canvas_w = state.spectrogram_canvas_width.get_untracked();
-    let final_time_res = 512.0 / sample_rate as f64;
-    state.zoom_level.set(crate::viewport::fit_zoom(canvas_w, final_time_res, duration_secs));
-    state.scroll_offset.set(0.0);
-
-    // Re-compute full spectrogram with accurate final normalization
-    spawn_spectrogram_computation(audio_for_stft, name_check, file_index, state);
-}
-
-/// Convert recorded samples into a LoadedFile and add to state (web mode).
-/// Used as a fallback when no live file exists.
-fn finalize_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
-    let duration_secs = samples.len() as f64 / sample_rate as f64;
-    let now = js_sys::Date::new_0();
-    let name = format!(
-        "batcap_{:04}{:02}{:02}_{:02}{:02}{:02}.wav",
-        now.get_full_year(),
-        now.get_month() + 1,
-        now.get_date(),
-        now.get_hours(),
-        now.get_minutes(),
-        now.get_seconds(),
-    );
-
-    let mic_name = state.mic_device_name.get_untracked();
-    let conn_type = state.mic_connection_type.get_untracked();
-    let guano = crate::audio::guano::build_recording_guano(
-        sample_rate, duration_secs, &name, state.is_tauri, state.is_mobile.get_untracked(), mic_name.as_deref(),
-        &crate::audio::guano::RecordingGuanoExtra {
-            connection_type: conn_type,
-        },
-    );
-
-    let samples: Arc<Vec<f32>> = samples.into();
-    let source = Arc::new(InMemorySource {
-        samples: samples.clone(),
-        raw_samples: None,
-        sample_rate,
-        channels: 1,
-    });
-    let audio = AudioData {
-        samples,
-        source,
-        sample_rate,
-        channels: 1,
-        duration_secs,
-        metadata: FileMetadata {
-            file_size: 0,
-            format: "REC",
-            bits_per_sample: 16,
-            is_float: false,
-            guano: Some(guano),
-            data_offset: None,
-            data_size: None,
-        },
-    };
-
-    let preview = compute_preview(&audio, 256, 128);
-    let audio_for_stft = audio.clone();
-    let name_check = name.clone();
-    let name_for_save = name.clone();
-    let is_tauri = state.is_tauri;
-
-    let total_cols = if audio.samples.len() >= 2048 {
-        (audio.samples.len() - 2048) / 512 + 1
+        (idx, name)
     } else {
-        0
-    };
-    let placeholder_spec = SpectrogramData {
-        columns: Vec::new().into(),
-        total_columns: total_cols,
-        freq_resolution: sample_rate as f64 / 2048.0,
-        time_resolution: 512.0 / sample_rate as f64,
-        max_freq: sample_rate as f64 / 2.0,
-        sample_rate,
-    };
+        // Fallback: create a new LoadedFile
+        let name = generate_recording_name();
+        let total_cols = if audio_for_stft.samples.len() >= 2048 {
+            (audio_for_stft.samples.len() - 2048) / 512 + 1
+        } else { 0 };
+        let placeholder_spec = SpectrogramData {
+            columns: Vec::new().into(),
+            total_columns: total_cols,
+            freq_resolution: sample_rate as f64 / 2048.0,
+            time_resolution: 512.0 / sample_rate as f64,
+            max_freq: sample_rate as f64 / 2.0,
+            sample_rate,
+        };
 
-    let file_index;
-    {
         let mut idx = 0;
+        let name_clone = name.clone();
         state.files.update(|files| {
             idx = files.len();
             files.push(LoadedFile {
-                name,
+                name: name_clone,
                 audio,
                 spectrogram: placeholder_spec,
                 preview: Some(preview),
@@ -574,32 +471,46 @@ fn finalize_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
                 all_hashes_verified: false,
             });
         });
-        file_index = idx;
+        state.current_file_index.set(Some(idx));
+        (idx, name)
+    };
+
+    // Clear live waterfall
+    live_waterfall::clear();
+
+    // Set file handle if native backend already saved the file
+    if !saved_path.is_empty() {
+        state.files.update(|files| {
+            if let Some(f) = files.get_mut(file_index) {
+                f.file_handle = Some(crate::audio::streaming_source::FileHandle::TauriPath(saved_path));
+                f.is_recording = false;
+            }
+        });
     }
-    state.current_file_index.set(Some(file_index));
 
     // Set Layer 1 identity (estimated WAV size)
     let num_samples_est = (duration_secs * sample_rate as f64).ceil() as u64;
-    let estimated_size = 44 + num_samples_est * (16 / 8); // bits_per_sample=16 for this path
+    let estimated_size = 44 + num_samples_est * (bits_per_sample as u64 / 8);
     crate::file_identity::start_identity_computation(
         state, file_index, name_check.clone(), estimated_size, None,
         None, None, None,
     );
 
-    // Try Tauri auto-save in background (web mode path for old save_recording command)
-    if is_tauri {
-        let conn_type_save = state.mic_connection_type.get_untracked();
+    // Save WAV if not already saved by native backend
+    let is_tauri = state.is_tauri;
+    let name_for_save = name_check.clone();
+    if is_tauri && state.files.with_untracked(|f| f.get(file_index).map_or(true, |f| f.file_handle.is_none())) {
         let samples_ref = state.files.get_untracked();
         if let Some(file) = samples_ref.get(file_index) {
             let extra = crate::audio::guano::RecordingGuanoExtra {
-                connection_type: conn_type_save,
+                connection_type: conn_type,
             };
             let is_mobile = state.is_mobile.get_untracked();
             let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, is_mobile, mic_name.as_deref(), &extra);
             let filename = name_for_save;
             wasm_bindgen_futures::spawn_local(async move {
-                if is_mobile {
-                    // Android: save directly to shared storage (Recordings/Oversample)
+                // On mobile, save directly to shared storage (Recordings/Oversample)
+                if state.is_mobile.get_untracked() {
                     crate::audio::wav_encoder::save_wav_to_shared(&wav_data, &filename).await;
                     state.files.update(|files| {
                         if let Some(f) = files.get_mut(file_index) {
@@ -607,7 +518,6 @@ fn finalize_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
                         }
                     });
                 } else if try_tauri_save(&wav_data, &filename).await.is_some() {
-                    // Desktop: save to internal app data
                     state.files.update(|files| {
                         if let Some(f) = files.get_mut(file_index) {
                             f.is_recording = false;
@@ -624,7 +534,21 @@ fn finalize_recording(samples: Vec<f32>, sample_rate: u32, state: AppState) {
     state.zoom_level.set(crate::viewport::fit_zoom(canvas_w, final_time_res, duration_secs));
     state.scroll_offset.set(0.0);
 
+    // Re-compute full spectrogram with accurate final normalization
     spawn_spectrogram_computation(audio_for_stft, name_check, file_index, state);
+}
+
+fn generate_recording_name() -> String {
+    let now = js_sys::Date::new_0();
+    format!(
+        "batcap_{:04}{:02}{:02}_{:02}{:02}{:02}.wav",
+        now.get_full_year(),
+        now.get_month() + 1,
+        now.get_date(),
+        now.get_hours(),
+        now.get_minutes(),
+        now.get_seconds(),
+    )
 }
 
 /// Shared async spectrogram computation (used by both web and Tauri modes).
