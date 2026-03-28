@@ -36,6 +36,8 @@ pub struct SpectInteraction {
     pub last_tap_time: RwSignal<f64>,
     /// Double-tap detection: x-position of last tap
     pub last_tap_x: RwSignal<f64>,
+    /// Double-tap detection: y-position of last tap (needed for x-axis zone check)
+    pub last_tap_y: RwSignal<f64>,
     /// Time-axis tooltip: (x_px, tooltip_text) — None when not hovering the axis
     pub time_axis_tooltip: RwSignal<Option<(f64, String)>>,
     /// True when dragging along the bottom time axis to select a time segment
@@ -79,6 +81,7 @@ impl SpectInteraction {
             label_hover_target: RwSignal::new(0.0f64),
             last_tap_time: RwSignal::new(0.0f64),
             last_tap_x: RwSignal::new(0.0f64),
+            last_tap_y: RwSignal::new(0.0f64),
             time_axis_tooltip: RwSignal::new(None),
             time_axis_dragging: RwSignal::new(false),
             time_axis_drag_raw_start: RwSignal::new(0.0f64),
@@ -228,6 +231,35 @@ pub fn select_all_frequencies(state: AppState) {
     // Clear display zoom so full range is visible
     state.min_display_freq.set(None);
     state.max_display_freq.set(None);
+}
+
+/// Select all time: create a full-duration selection on the x-axis.
+/// If HFR is active, the selection includes frequency bounds (region);
+/// otherwise it's time-only (segment).
+/// Used by double-click / double-tap on the x-axis.
+pub fn select_all_time(state: AppState) {
+    let duration = if let Some(ref tl) = state.active_timeline.get_untracked() {
+        tl.total_duration_secs
+    } else {
+        let files = state.files.get_untracked();
+        let idx = state.current_file_index.get_untracked();
+        idx.and_then(|i| files.get(i))
+            .map(|f| f.audio.duration_secs)
+            .unwrap_or(0.0)
+    };
+    if duration <= 0.0 { return; }
+
+    let ff = state.focus_stack.get_untracked().effective_range();
+    let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
+
+    state.selection.set(Some(Selection {
+        time_start: 0.0,
+        time_end: duration,
+        freq_low: fl,
+        freq_high: fh,
+    }));
+    // Mutual exclusion: clear annotation selection
+    state.selected_annotation_ids.set(Vec::new());
 }
 
 /// Finalize axis drag — auto-enable HFR if a meaningful range was selected,
@@ -1042,11 +1074,21 @@ pub fn on_dblclick(
     state: AppState,
 ) {
     // Double-click on y-axis: select all (0 to Nyquist, enable HFR)
-    if let Some((px_x, _, _, _)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
         if px_x < LABEL_AREA_WIDTH && !state.display_transform.get_untracked() {
             select_all_frequencies(state);
             ev.prevent_default();
             return;
+        }
+        // Double-click on x-axis: select all time
+        if let Some(canvas_el) = canvas_ref.get() {
+            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+            let ch = canvas.get_bounding_client_rect().height();
+            if px_y > ch - 16.0 && px_x > LABEL_AREA_WIDTH {
+                select_all_time(state);
+                ev.prevent_default();
+                return;
+            }
         }
     }
 
@@ -1266,6 +1308,17 @@ pub fn on_touchstart(
             let canvas: &HtmlCanvasElement = canvas_el.as_ref();
             let ch = canvas.get_bounding_client_rect().height();
             if px_y > ch - 16.0 && px_x > LABEL_AREA_WIDTH {
+                // Double-tap on x-axis: select all time
+                let now = js_sys::Date::now();
+                let last_time = ix.last_tap_time.get_untracked();
+                let last_x = ix.last_tap_x.get_untracked();
+                let last_y = ix.last_tap_y.get_untracked();
+                if now - last_time < 400.0 && last_x > LABEL_AREA_WIDTH && last_y > ch - 16.0 {
+                    select_all_time(state);
+                    ix.last_tap_time.set(0.0);
+                    ev.prevent_default();
+                    return;
+                }
                 ix.time_axis_pending.set(Some((touch.client_x() as f64, t, false, t)));
                 state.is_dragging.set(true);
                 ev.prevent_default();
@@ -1509,6 +1562,14 @@ pub fn on_touchend(
         // Finalize axis drag
         if state.axis_drag_start_freq.get_untracked().is_some() {
             finalize_axis_drag(state);
+            // Track tap for double-tap detection (y-axis taps return early here)
+            if let Some(touch) = ev.changed_touches().get(0) {
+                if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+                    ix.last_tap_time.set(js_sys::Date::now());
+                    ix.last_tap_x.set(px_x);
+                    ix.last_tap_y.set(px_y);
+                }
+            }
             return;
         }
         // End pending time-axis tap (finger didn't move enough — treat as tap-to-clear)
@@ -1517,6 +1578,14 @@ pub fn on_touchend(
             state.is_dragging.set(false);
             if state.selection.get_untracked().is_some() {
                 state.selection.set(None);
+            }
+            // Track tap for double-tap detection (x-axis taps return early here)
+            if let Some(touch) = ev.changed_touches().get(0) {
+                if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+                    ix.last_tap_time.set(js_sys::Date::now());
+                    ix.last_tap_x.set(px_x);
+                    ix.last_tap_y.set(px_y);
+                }
             }
             return;
         }
@@ -1596,11 +1665,12 @@ pub fn on_touchend(
             }
         }
 
-        // Track last tap time/position (used for double-tap detection on y-axis)
+        // Track last tap time/position (used for double-tap detection on axes)
         if let Some(touch) = ev.changed_touches().get(0) {
-            if let Some((px_x, _, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+            if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
                 ix.last_tap_time.set(js_sys::Date::now());
                 ix.last_tap_x.set(px_x);
+                ix.last_tap_y.set(px_y);
             }
         }
     }
