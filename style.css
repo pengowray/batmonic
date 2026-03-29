@@ -2336,7 +2336,7 @@ body.sidebar-resizing {
 }
 
 .combo-btn-row.open {
-    z-index: 10;
+    z-index: 60;
 }
 
 .combo-btn-left {
