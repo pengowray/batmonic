@@ -1102,8 +1102,8 @@ pub fn BottomToolbar() -> impl IntoView {
                 }
             }
 
-            // ── Tool button (Hand / Selection, only when file is open) ──
-            {move || has_file().then(|| view! {
+            // ── Tool button (Hand / Selection, only when file is open; hidden on mobile) ──
+            {move || (!is_mobile && has_file()).then(|| view! {
                 <div class="bottom-toolbar-sep"></div>
                 <ToolButtonInline />
             })}
