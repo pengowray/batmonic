@@ -3329,11 +3329,11 @@ body.sidebar-resizing {
     position: relative;
 }
 
-.toolbar-overflow-btn {
-    background: #1a1a1a;
-    border: 1px solid #333;
+.toolbar button.toolbar-overflow-btn {
+    background: transparent;
+    border: 1px solid #2a2a2a;
     border-radius: 4px;
-    color: #666;
+    color: #888;
     font-size: 14px;
     padding: 3px 8px;
     cursor: pointer;
@@ -3343,10 +3343,11 @@ body.sidebar-resizing {
     margin-right: 6px;
 }
 
-.toolbar-overflow-btn:hover,
-.toolbar-overflow-btn:active {
-    color: #999;
-    border-color: #555;
+.toolbar button.toolbar-overflow-btn:hover,
+.toolbar button.toolbar-overflow-btn:active {
+    background: rgba(255, 255, 255, 0.05);
+    color: #bbb;
+    border-color: #444;
 }
 
 .toolbar-overflow-backdrop {
