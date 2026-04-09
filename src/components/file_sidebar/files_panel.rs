@@ -517,7 +517,10 @@ pub(super) fn FilesPanel() -> impl IntoView {
                         <div class="file-list">
                             {if is_mobile {
                                 Some(view! {
-                                    <div style="padding: 8px 12px 4px; user-select: none; -webkit-user-select: none; pointer-events: none;">
+                                    <div
+                                        style="padding: 12px 12px 8px; cursor: pointer; user-select: none; -webkit-user-select: none;"
+                                        on:click=move |_| state.show_about.set(true)
+                                    >
                                         <span style="font-weight: bold; font-size: 14px; color: #ddd;">"Oversample"</span>
                                         " "
                                         <span style="font-style: italic; font-size: 14px; opacity: 0.45; font-weight: 300; color: #ddd;">"beta"</span>

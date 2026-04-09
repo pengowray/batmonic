@@ -8,7 +8,7 @@ use crate::components::file_sidebar::file_badges::{FileBadgeData, FileBadgeRow, 
 #[component]
 pub fn Toolbar() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let show_about = RwSignal::new(false);
+    let show_about = state.show_about;
     let seq_dropdown_open = RwSignal::new(false);
     let track_dropdown_open = RwSignal::new(false);
 
