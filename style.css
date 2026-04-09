@@ -3330,19 +3330,23 @@ body.sidebar-resizing {
 }
 
 .toolbar-overflow-btn {
-    background: none;
-    border: none;
-    color: #ccc;
-    font-size: 20px;
-    padding: 2px 8px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #666;
+    font-size: 14px;
+    padding: 3px 8px;
     cursor: pointer;
     line-height: 1;
     flex-shrink: 0;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
+    margin-right: 6px;
 }
 
-.toolbar-overflow-btn:hover {
-    color: #fff;
+.toolbar-overflow-btn:hover,
+.toolbar-overflow-btn:active {
+    color: #999;
+    border-color: #555;
 }
 
 .toolbar-overflow-backdrop {
