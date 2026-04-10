@@ -20,6 +20,24 @@ async fn get_wifi_ssid() -> Option<String> {
     js_sys::Reflect::get(&result, &JsValue::from_str("ssid")).ok().and_then(|v| v.as_string())
 }
 
+/// Fetch the Android device model (e.g. "samsung SM-A556E") from the native plugin.
+/// Result is cached in state after first call.
+async fn fetch_device_model(state: &AppState) -> Option<String> {
+    if let Some(cached) = state.cached_device_model.get_untracked() {
+        return Some(cached);
+    }
+    let result = tauri_invoke("plugin:geolocation|getDeviceModel", &JsValue::from(js_sys::Object::new())).await.ok()?;
+    let mfr = js_sys::Reflect::get(&result, &JsValue::from_str("manufacturer")).ok().and_then(|v| v.as_string()).unwrap_or_default();
+    let model = js_sys::Reflect::get(&result, &JsValue::from_str("model")).ok().and_then(|v| v.as_string()).unwrap_or_default();
+    let device = format!("{} {}", mfr, model).trim().to_string();
+    if !device.is_empty() {
+        state.cached_device_model.set(Some(device.clone()));
+        Some(device)
+    } else {
+        None
+    }
+}
+
 /// Request a one-shot GPS fix from the native geolocation plugin.
 /// Returns None if the plugin is unavailable, permission denied, or location times out.
 async fn acquire_gps_location() -> Option<GpsLocation> {
@@ -347,6 +365,11 @@ pub async fn acquire_mic(state: &AppState, action: MicPendingAction) -> Option<M
 async fn do_start_recording(state: &AppState, backend: ActiveBackend) {
     let was_listening = state.mic_listening.get_untracked();
     let has_listen_file = was_listening && state.mic_live_file_idx.get_untracked().is_some();
+
+    // Fetch device model on first recording (cached for future use)
+    if state.is_tauri && state.is_mobile.get_untracked() && state.device_model_enabled.get_untracked() {
+        let _ = fetch_device_model(state).await;
+    }
 
     // Acquire GPS location if enabled (one-shot, non-blocking).
     // Skip if connected to a home WiFi network (geofencing).

@@ -40,6 +40,14 @@ class GeolocationPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
+    fun getDeviceModel(invoke: Invoke) {
+        val result = JSObject()
+        result.put("manufacturer", Build.MANUFACTURER)
+        result.put("model", Build.MODEL)
+        invoke.resolve(result)
+    }
+
+    @Command
     fun getCurrentLocation(invoke: Invoke) {
         if (!hasLocationPermission()) {
             pendingPermissionInvoke = invoke

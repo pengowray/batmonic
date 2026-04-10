@@ -117,6 +117,7 @@ fn mic_stop_recording(
     loc_longitude: Option<f64>,
     loc_elevation: Option<f64>,
     loc_accuracy: Option<f64>,
+    device_model: Option<String>,
 ) -> Result<RecordingResult, String> {
     let mic = state.lock().map_err(|e| e.to_string())?;
     let m = mic.as_ref().ok_or("Microphone not open")?;
@@ -161,7 +162,7 @@ fn mic_stop_recording(
     // Append GUANO metadata
     let guano_text = recording::build_recording_guano(
         sample_rate, num_samples, &m.device_name, &filename, &now,
-        bits_per_sample, is_float, Some("Cpal"), location.as_ref(),
+        Some("Cpal"), location.as_ref(), device_model.as_deref(),
     );
     recording::append_guano_chunk(&mut wav_data, &guano_text);
 
@@ -522,6 +523,7 @@ fn usb_stop_recording(
     loc_longitude: Option<f64>,
     loc_elevation: Option<f64>,
     loc_accuracy: Option<f64>,
+    device_model: Option<String>,
 ) -> Result<RecordingResult, String> {
     let usb = state.lock().map_err(|e| e.to_string())?;
     let s = usb.as_ref().ok_or("USB stream not open")?;
@@ -561,7 +563,7 @@ fn usb_stop_recording(
     // Append GUANO metadata
     let guano_text = recording::build_recording_guano(
         sample_rate, num_samples, &s.device_name, &filename, &now,
-        16, false, Some("USB (Raw)"), location.as_ref(),
+        Some("USB (Raw)"), location.as_ref(), device_model.as_deref(),
     );
     recording::append_guano_chunk(&mut wav_data, &guano_text);
 

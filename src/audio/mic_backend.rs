@@ -18,7 +18,7 @@ use crate::tauri_bridge::{get_tauri_internals, tauri_invoke, tauri_invoke_no_arg
 use std::cell::RefCell;
 
 /// Build IPC args for mic_stop_recording / usb_stop_recording,
-/// including optional GPS location fields from state.
+/// including optional GPS location and device model fields from state.
 fn build_stop_recording_args(state: &AppState) -> JsValue {
     let args = js_sys::Object::new();
     if let Some(loc) = state.recording_location.get_untracked() {
@@ -29,6 +29,11 @@ fn build_stop_recording_args(state: &AppState) -> JsValue {
         }
         if let Some(a) = loc.accuracy {
             let _ = js_sys::Reflect::set(&args, &JsValue::from_str("locAccuracy"), &JsValue::from_f64(a));
+        }
+    }
+    if state.device_model_enabled.get_untracked() {
+        if let Some(dev) = state.cached_device_model.get_untracked() {
+            let _ = js_sys::Reflect::set(&args, &JsValue::from_str("deviceModel"), &JsValue::from_str(&dev));
         }
     }
     args.into()

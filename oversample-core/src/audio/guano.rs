@@ -109,6 +109,8 @@ pub struct RecordingGuanoExtra {
     pub loc_elevation: Option<f64>,
     /// Horizontal accuracy in meters.
     pub loc_accuracy: Option<f64>,
+    /// Android device model string (e.g. "samsung SM-A556E"). Privacy-controlled.
+    pub device_model: Option<String>,
 }
 
 /// Build GUANO metadata for a recording.
@@ -128,7 +130,7 @@ pub fn build_recording_guano(
     timestamp: &str,
 ) -> GuanoMetadata {
     let version = env!("CARGO_PKG_VERSION");
-    let model = if is_tauri && is_mobile {
+    let platform_model = if is_tauri && is_mobile {
         "Android"
     } else if is_tauri {
         "Desktop"
@@ -136,14 +138,27 @@ pub fn build_recording_guano(
         "Web"
     };
 
+    // Determine Make/Model: use USB mic device info when connection is USB,
+    // otherwise use "Oversample" / platform.
+    let is_usb = extra.connection_type.as_deref()
+        .map(|c| c.contains("USB"))
+        .unwrap_or(false);
+    let (make, model) = if is_usb {
+        // For USB mics, Make/Model reflect the recording hardware (like BatGizmo does)
+        let mic = mic_device_name.unwrap_or("");
+        ("Oversample".to_string(), if mic.is_empty() { platform_model.to_string() } else { mic.to_string() })
+    } else {
+        ("Oversample".to_string(), platform_model.to_string())
+    };
+
     let mut g = GuanoMetadata::new();
     g.add("GUANO|Version", "1.0");
-    g.add("Timestamp", &timestamp);
+    g.add("Timestamp", timestamp);
     g.add("Length", &format!("{:.6}", duration_secs));
     g.add("Samplerate", &sample_rate.to_string());
-    g.add("Make", "Oversample");
-    g.add("Model", model);
-    g.add("Firmware Version", version);
+    g.add("Make", &make);
+    g.add("Model", &model);
+    g.add("Oversample|App|Version", version);
     g.add("Original Filename", filename);
     if let Some(mic) = mic_device_name {
         if !mic.is_empty() {
@@ -153,6 +168,11 @@ pub fn build_recording_guano(
     if let Some(ref conn) = extra.connection_type {
         if !conn.is_empty() {
             g.add("Oversample|Connection", conn);
+        }
+    }
+    if let Some(ref dev) = extra.device_model {
+        if !dev.is_empty() {
+            g.add("Oversample|Device", dev);
         }
     }
     if let Some((lat, lon)) = extra.loc_position {

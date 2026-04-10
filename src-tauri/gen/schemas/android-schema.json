@@ -2145,6 +2145,30 @@
           "markdownDescription": "Denies the unminimize command without any pre-configured scope."
         },
         {
+          "description": "Enables the getCurrentLocation command without any pre-configured scope.",
+          "type": "string",
+          "const": "geolocation:allow-getCurrentLocation",
+          "markdownDescription": "Enables the getCurrentLocation command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the getWifiSsid command without any pre-configured scope.",
+          "type": "string",
+          "const": "geolocation:allow-getWifiSsid",
+          "markdownDescription": "Enables the getWifiSsid command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the getCurrentLocation command without any pre-configured scope.",
+          "type": "string",
+          "const": "geolocation:deny-getCurrentLocation",
+          "markdownDescription": "Denies the getCurrentLocation command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the getWifiSsid command without any pre-configured scope.",
+          "type": "string",
+          "const": "geolocation:deny-getWifiSsid",
+          "markdownDescription": "Denies the getWifiSsid command without any pre-configured scope."
+        },
+        {
           "description": "Enables the cancelRecordingEntry command without any pre-configured scope.",
           "type": "string",
           "const": "media-store:allow-cancelRecordingEntry",

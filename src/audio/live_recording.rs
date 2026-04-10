@@ -553,11 +553,17 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
     let mic_name = state.mic_device_name.get_untracked();
     let conn_type = state.mic_connection_type.get_untracked();
     let loc = state.recording_location.get_untracked();
+    let dev_model = if state.device_model_enabled.get_untracked() {
+        state.cached_device_model.get_untracked()
+    } else {
+        None
+    };
     let guano_extra = crate::audio::guano::RecordingGuanoExtra {
         connection_type: conn_type.clone(),
         loc_position: loc.as_ref().map(|l| (l.latitude, l.longitude)),
         loc_elevation: loc.as_ref().and_then(|l| l.elevation),
         loc_accuracy: loc.as_ref().and_then(|l| l.accuracy),
+        device_model: dev_model.clone(),
     };
     let guano = crate::audio::guano::build_recording_guano(
         sample_rate, duration_secs,
@@ -723,6 +729,7 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
                 loc_position: loc.as_ref().map(|l| (l.latitude, l.longitude)),
                 loc_elevation: loc.as_ref().and_then(|l| l.elevation),
                 loc_accuracy: loc.as_ref().and_then(|l| l.accuracy),
+                device_model: dev_model,
             };
             let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, is_mobile, mic_name.as_deref(), &extra);
             let filename = name_for_save;

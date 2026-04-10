@@ -261,14 +261,12 @@ fn build_export_guano(
     g.add("Length", &format!("{:.6}", duration_secs));
     g.add("Samplerate", &output_rate.to_string());
     g.add("Make", "Oversample");
-    g.add("Firmware Version", version);
+    g.add("Oversample|App|Version", version);
 
-    // TE factor
-    let te = match params.mode {
-        PlaybackMode::TimeExpansion => params.te_factor,
-        _ => 1.0,
-    };
-    g.add("TE", &format!("{}", te));
+    // TE factor — only write when time-expanded (TE != 1)
+    if let PlaybackMode::TimeExpansion = params.mode {
+        g.add("TE", &format!("{}", params.te_factor));
+    }
 
     g.add("Original Filename", source_filename);
 

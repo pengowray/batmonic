@@ -30,6 +30,7 @@ fn main() {
                 tauri_build::InlinedPlugin::new().commands(&[
                     "getCurrentLocation",
                     "getWifiSsid",
+                    "getDeviceModel",
                 ]),
             ),
     )

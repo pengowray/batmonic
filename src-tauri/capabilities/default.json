@@ -17,6 +17,7 @@
     "media-store:allow-cancelRecordingEntry",
     "media-store:allow-exportFile",
     "geolocation:allow-getCurrentLocation",
-    "geolocation:allow-getWifiSsid"
+    "geolocation:allow-getWifiSsid",
+    "geolocation:allow-getDeviceModel"
   ]
 }

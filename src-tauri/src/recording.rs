@@ -627,39 +627,42 @@ pub fn build_recording_guano(
     device_name: &str,
     filename: &str,
     timestamp: &chrono::DateTime<chrono::Local>,
-    bits_per_sample: u16,
-    is_float: bool,
     connection_type: Option<&str>,
     location: Option<&RecordingLocation>,
+    device_model: Option<&str>,
 ) -> String {
     let duration_secs = num_samples as f64 / sample_rate as f64;
     let version = env!("CARGO_PKG_VERSION");
     // Compute approximate recording start time from stop time
     let start_time = *timestamp - chrono::Duration::milliseconds((duration_secs * 1000.0) as i64);
 
-    let sample_format = if is_float {
-        format!("{}-bit float", bits_per_sample)
+    // For USB mics, Model reflects the device name (like BatGizmo does)
+    let is_usb = connection_type.map(|c| c.contains("USB")).unwrap_or(false);
+    let model = if is_usb && !device_name.is_empty() {
+        device_name.to_string()
     } else {
-        format!("{}-bit int", bits_per_sample)
+        "Desktop".to_string()
     };
 
     let mut fields: Vec<(&str, String)> = vec![
         ("GUANO|Version", "1.0".to_string()),
-        ("Timestamp", start_time.format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string()),
+        ("Timestamp", start_time.format("%Y-%m-%d %H:%M:%S%:z").to_string()),
         ("Length", format!("{:.6}", duration_secs)),
         ("Samplerate", sample_rate.to_string()),
         ("Make", "Oversample".to_string()),
-        ("Model", "Desktop".to_string()),
-        ("Firmware Version", version.to_string()),
-        ("TE", "1".to_string()),
+        ("Model", model),
+        ("Oversample|App|Version", version.to_string()),
         ("Original Filename", filename.to_string()),
         ("Microphone", device_name.to_string()),
-        ("Oversample|Bits Per Sample", bits_per_sample.to_string()),
-        ("Oversample|Sample Format", sample_format),
     ];
     if let Some(conn) = connection_type {
         if !conn.is_empty() {
             fields.push(("Oversample|Connection", conn.to_string()));
+        }
+    }
+    if let Some(dev) = device_model {
+        if !dev.is_empty() {
+            fields.push(("Oversample|Device", dev.to_string()));
         }
     }
     if let Some(loc) = location {

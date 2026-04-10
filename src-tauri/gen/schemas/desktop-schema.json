@@ -2151,6 +2151,12 @@
           "markdownDescription": "Enables the getCurrentLocation command without any pre-configured scope."
         },
         {
+          "description": "Enables the getDeviceModel command without any pre-configured scope.",
+          "type": "string",
+          "const": "geolocation:allow-getDeviceModel",
+          "markdownDescription": "Enables the getDeviceModel command without any pre-configured scope."
+        },
+        {
           "description": "Enables the getWifiSsid command without any pre-configured scope.",
           "type": "string",
           "const": "geolocation:allow-getWifiSsid",
@@ -2161,6 +2167,12 @@
           "type": "string",
           "const": "geolocation:deny-getCurrentLocation",
           "markdownDescription": "Denies the getCurrentLocation command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the getDeviceModel command without any pre-configured scope.",
+          "type": "string",
+          "const": "geolocation:deny-getDeviceModel",
+          "markdownDescription": "Denies the getDeviceModel command without any pre-configured scope."
         },
         {
           "description": "Denies the getWifiSsid command without any pre-configured scope.",
