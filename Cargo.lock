@@ -3225,6 +3225,7 @@ dependencies = [
  "hound",
  "lewton",
  "libc",
+ "oversample-core",
  "reqwest 0.12.28",
  "rfd",
  "serde",

@@ -87,7 +87,9 @@ pub fn usb_stop_recording(
     loc_longitude: Option<f64>,
     loc_elevation: Option<f64>,
     loc_accuracy: Option<f64>,
+    device_make: Option<String>,
     device_model: Option<String>,
+    app_version: Option<String>,
 ) -> Result<RecordingResult, String> {
     let usb = state.lock().map_err(|e| e.to_string())?;
     let s = usb.as_ref().ok_or("USB stream not open")?;
@@ -124,22 +126,35 @@ pub fn usb_stop_recording(
         _ => None,
     };
 
-    // Append GUANO metadata — use device-specific interface label
+    // USB interface label based on UAC version / device type
     let device_lower = s.device_name.to_lowercase();
     let interface_label = if device_lower.contains("echo meter") || device_lower.contains("emt2") {
-        "USB (EMT2)"
+        "USB (EMT2)".to_string()
     } else {
         match s.uac_version {
-            2 => "USB (UAC2)",
-            1 => "USB (UAC1)",
-            _ => "USB (UAC)",
+            2 => "USB (UAC2)".to_string(),
+            1 => "USB (UAC1)".to_string(),
+            _ => "USB (UAC)".to_string(),
         }
     };
-    let guano_text = recording::build_recording_guano(
-        sample_rate, num_samples, &s.device_name, &filename, &now,
-        Some(interface_label), location.as_ref(), device_model.as_deref(),
+
+    let is_mobile = cfg!(target_os = "android");
+
+    // Append GUANO metadata using shared builder
+    let guano_params = recording::TauriGuanoParams {
+        connection_type: Some(interface_label),
+        location,
+        device_make,
+        device_model,
+        mic_name: Some(s.device_name.clone()),
+        mic_make: None, // USB manufacturer not available in UsbStreamState currently
+        app_version: app_version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
+        is_mobile,
+    };
+    let guano = recording::build_tauri_guano(
+        sample_rate, num_samples, &filename, &now, &guano_params,
     );
-    recording::append_guano_chunk(&mut wav_data, &guano_text);
+    oversample_core::audio::guano::append_guano_chunk(&mut wav_data, &guano.to_text());
 
     // Write to shared storage fd if available, otherwise to internal storage
     let saved_path = if let Some(fd) = shared_fd {

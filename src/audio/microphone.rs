@@ -20,21 +20,22 @@ async fn get_wifi_ssid() -> Option<String> {
     js_sys::Reflect::get(&result, &JsValue::from_str("ssid")).ok().and_then(|v| v.as_string())
 }
 
-/// Fetch the Android device model (e.g. "samsung SM-A556E") from the native plugin.
-/// Result is cached in state after first call.
-async fn fetch_device_model(state: &AppState) -> Option<String> {
-    if let Some(cached) = state.cached_device_model.get_untracked() {
-        return Some(cached);
+/// Fetch the Android device make/model from the native plugin.
+/// Results are cached in state after first call (cached_device_make / cached_device_model).
+async fn fetch_device_model(state: &AppState) {
+    if state.cached_device_model.get_untracked().is_some() {
+        return;
     }
-    let result = tauri_invoke("plugin:geolocation|getDeviceModel", &JsValue::from(js_sys::Object::new())).await.ok()?;
+    let Ok(result) = tauri_invoke("plugin:geolocation|getDeviceModel", &JsValue::from(js_sys::Object::new())).await else {
+        return;
+    };
     let mfr = js_sys::Reflect::get(&result, &JsValue::from_str("manufacturer")).ok().and_then(|v| v.as_string()).unwrap_or_default();
     let model = js_sys::Reflect::get(&result, &JsValue::from_str("model")).ok().and_then(|v| v.as_string()).unwrap_or_default();
-    let device = format!("{} {}", mfr, model).trim().to_string();
-    if !device.is_empty() {
-        state.cached_device_model.set(Some(device.clone()));
-        Some(device)
-    } else {
-        None
+    if !mfr.is_empty() {
+        state.cached_device_make.set(Some(mfr));
+    }
+    if !model.is_empty() {
+        state.cached_device_model.set(Some(model));
     }
 }
 

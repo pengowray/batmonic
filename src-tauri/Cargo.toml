@@ -19,6 +19,7 @@ lewton = "0.10"
 symphonia = { version = "0.5", default-features = false, features = ["mp3"] }
 chrono = "0.4"
 xc-lib = { path = "../xc-lib" }
+oversample-core = { path = "../oversample-core" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["fs"] }
 [target.'cfg(not(target_os = "android"))'.dependencies]

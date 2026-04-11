@@ -233,6 +233,9 @@ pub(crate) fn export_one_region(
 }
 
 /// Build GUANO metadata for an exported WAV file.
+///
+/// Field ordering: GUANO|Version first, then standard fields, then Oversample-specific.
+/// For TE exports, Length is the "actual length" (WAV length / TE factor) per GUANO spec.
 fn build_export_guano(
     output_rate: u32,
     samples: &[f32],
@@ -243,10 +246,14 @@ fn build_export_guano(
 ) -> crate::audio::guano::GuanoMetadata {
     use crate::audio::guano::GuanoMetadata;
     let version = env!("CARGO_PKG_VERSION");
-    let duration_secs = samples.len() as f64 / output_rate as f64;
+    let wav_duration_secs = samples.len() as f64 / output_rate as f64;
 
     let mut g = GuanoMetadata::new();
+
+    // ── GUANO namespace (must come first per spec) ──────────────────────
     g.add("GUANO|Version", "1.0");
+
+    // ── Standard GUANO fields ───────────────────────────────────────────
 
     // Preserve source timestamp if available
     if let Some(src) = source_guano {
@@ -258,14 +265,28 @@ fn build_export_guano(
         }
     }
 
-    g.add("Length", &format!("{:.6}", duration_secs));
-    g.add("Samplerate", &output_rate.to_string());
-    g.add("Make", "Oversample");
-    g.add("Oversample|App|Version", version);
-
-    // TE factor — only write when time-expanded (TE != 1)
+    // TE factor and Length: per GUANO spec, Length is the "actual length"
+    // which equals WAV length for direct recordings, but WAV length / TE
+    // for time-expanded recordings.
     if let PlaybackMode::TimeExpansion = params.mode {
-        g.add("TE", &format!("{}", params.te_factor));
+        let te = params.te_factor;
+        let actual_length = wav_duration_secs / te;
+        g.add("Length", &format!("{:.6}", actual_length));
+        g.add("TE", &format!("{}", te));
+    } else {
+        g.add("Length", &format!("{:.6}", wav_duration_secs));
+    }
+
+    g.add("Samplerate", &output_rate.to_string());
+
+    // Preserve Make/Model from source if present (recording hardware info)
+    if let Some(src) = source_guano {
+        for (k, v) in &src.fields {
+            match k.as_str() {
+                "Make" | "Model" => { g.add(k, v); }
+                _ => {}
+            }
+        }
     }
 
     g.add("Original Filename", source_filename);
@@ -274,10 +295,22 @@ fn build_export_guano(
     if let Some(src) = source_guano {
         for (k, v) in &src.fields {
             match k.as_str() {
-                "Loc Position" | "Loc Elevation" | "Loc Accuracy" | "Microphone" => {
+                "Loc Position" | "Loc Elevation" | "Loc Accuracy" => {
                     g.add(k, v);
                 }
                 _ => {}
+            }
+        }
+    }
+
+    // ── Oversample-specific fields (after standard ones) ────────────────
+    g.add("Oversample|App|Version", version);
+
+    // Preserve Oversample mic/device fields from source
+    if let Some(src) = source_guano {
+        for (k, v) in &src.fields {
+            if k.starts_with("Oversample|") && k != "Oversample|App|Version" {
+                g.add(k, v);
             }
         }
     }
@@ -293,19 +326,6 @@ fn build_export_guano(
             g.add("Filter LP", &format!("{:.1}", lp_khz));
         }
     }
-
-    // Build mode description for note
-    let mode_str = match params.mode {
-        PlaybackMode::Normal => "Normal",
-        PlaybackMode::Heterodyne => "Heterodyne",
-        PlaybackMode::TimeExpansion => "Time Expansion",
-        PlaybackMode::PitchShift => "Pitch Shift",
-        PlaybackMode::ZeroCrossing => "Zero Crossing",
-        PlaybackMode::PhaseVocoder => "Phase Vocoder",
-    };
-    g.add("Note", &format!(
-        "Exported from {} with Oversample v{} ({})", source_filename, version, mode_str
-    ));
 
     g
 }

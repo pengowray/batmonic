@@ -102,35 +102,43 @@ pub fn parse_guano_chunk(chunk_body: &[u8]) -> Option<GuanoMetadata> {
 /// Extra recording metadata for GUANO beyond the core fields.
 #[derive(Default)]
 pub struct RecordingGuanoExtra {
-    pub connection_type: Option<String>,
+    /// Mic interface type: "Oboe", "WASAPI", "USB (UAC2)", etc.
+    pub mic_interface: Option<String>,
+    /// Mic name/description: USB device name, "Internal", or web API device label.
+    pub mic_name: Option<String>,
+    /// USB mic manufacturer (for GUANO Make field).
+    pub mic_make: Option<String>,
     /// GPS location: (latitude, longitude) in WGS84 decimal degrees.
     pub loc_position: Option<(f64, f64)>,
     /// Elevation in meters above mean sea level.
     pub loc_elevation: Option<f64>,
     /// Horizontal accuracy in meters.
     pub loc_accuracy: Option<f64>,
-    /// Android device model string (e.g. "samsung SM-A556E"). Privacy-controlled.
+    /// Android device manufacturer (e.g. "samsung"). Privacy-controlled.
+    pub device_make: Option<String>,
+    /// Android device model (e.g. "SM-A556E"). Privacy-controlled.
     pub device_model: Option<String>,
 }
 
 /// Build GUANO metadata for a recording.
-/// Consolidates the duplicated inline GUANO construction from wav_encoder,
-/// live_recording, etc. into a single shared function.
 ///
-/// `timestamp` should be an ISO 8601 string with UTC offset (e.g. "2024-03-15T10:30:00+10:00").
-/// The caller is responsible for computing this from the current time and recording duration.
+/// Field ordering follows the GUANO spec: GUANO namespace first, then standard
+/// fields, then app-specific (Oversample|*) fields.
+///
+/// `timestamp` should be an ISO 8601 string with T separator and UTC offset
+/// (e.g. "2024-03-15T10:30:00+10:00").
+/// `version` should be the main Oversample app version (from the root crate).
 pub fn build_recording_guano(
     sample_rate: u32,
     duration_secs: f64,
     filename: &str,
     is_tauri: bool,
     is_mobile: bool,
-    mic_device_name: Option<&str>,
     extra: &RecordingGuanoExtra,
     timestamp: &str,
+    version: &str,
 ) -> GuanoMetadata {
-    let version = env!("CARGO_PKG_VERSION");
-    let platform_model = if is_tauri && is_mobile {
+    let platform = if is_tauri && is_mobile {
         "Android"
     } else if is_tauri {
         "Desktop"
@@ -138,43 +146,39 @@ pub fn build_recording_guano(
         "Web"
     };
 
-    // Determine Make/Model: use USB mic device info when connection is USB,
-    // otherwise use "Oversample" / platform.
-    let is_usb = extra.connection_type.as_deref()
-        .map(|c| c.contains("USB"))
+    // Make/Model: only for external mics (USB). Never use for internal/phone mic.
+    let is_external_mic = extra.mic_interface.as_deref()
+        .map(|i| i.contains("USB"))
         .unwrap_or(false);
-    let (make, model) = if is_usb {
-        // For USB mics, Make/Model reflect the recording hardware (like BatGizmo does)
-        let mic = mic_device_name.unwrap_or("");
-        ("Oversample".to_string(), if mic.is_empty() { platform_model.to_string() } else { mic.to_string() })
-    } else {
-        ("Oversample".to_string(), platform_model.to_string())
-    };
 
     let mut g = GuanoMetadata::new();
+
+    // ── GUANO namespace (must come first per spec) ──────────────────────
     g.add("GUANO|Version", "1.0");
+
+    // ── Standard GUANO fields ───────────────────────────────────────────
     g.add("Timestamp", timestamp);
     g.add("Length", &format!("{:.6}", duration_secs));
     g.add("Samplerate", &sample_rate.to_string());
-    g.add("Make", &make);
-    g.add("Model", &model);
-    g.add("Oversample|App|Version", version);
+
+    // Make/Model reflect the recording hardware (mic), not the app/phone.
+    // Only populated for external (USB) mics.
+    if is_external_mic {
+        if let Some(ref make) = extra.mic_make {
+            if !make.is_empty() {
+                g.add("Make", make);
+            }
+        }
+        if let Some(ref name) = extra.mic_name {
+            if !name.is_empty() {
+                g.add("Model", name);
+            }
+        }
+    }
+
     g.add("Original Filename", filename);
-    if let Some(mic) = mic_device_name {
-        if !mic.is_empty() {
-            g.add("Microphone", mic);
-        }
-    }
-    if let Some(ref conn) = extra.connection_type {
-        if !conn.is_empty() {
-            g.add("Oversample|Connection", conn);
-        }
-    }
-    if let Some(ref dev) = extra.device_model {
-        if !dev.is_empty() {
-            g.add("Oversample|Device", dev);
-        }
-    }
+
+    // Location fields
     if let Some((lat, lon)) = extra.loc_position {
         g.add("Loc Position", &format!("{} {}", lat, lon));
     }
@@ -184,14 +188,35 @@ pub fn build_recording_guano(
     if let Some(acc) = extra.loc_accuracy {
         g.add("Loc Accuracy", &format!("{:.1}", acc));
     }
-    let platform = if is_tauri && is_mobile {
-        "Android"
-    } else if is_tauri {
-        "desktop"
-    } else {
-        "browser"
-    };
-    g.add("Note", &format!("Recorded with Oversample v{} ({})", version, platform));
+
+    // ── Oversample-specific fields (after standard ones) ────────────────
+    g.add("Oversample|App|Version", version);
+    g.add("Oversample|App|Platform", platform);
+
+    // Device info (Android only, privacy-controlled)
+    if let Some(ref make) = extra.device_make {
+        if !make.is_empty() {
+            g.add("Oversample|Device|Make", make);
+        }
+    }
+    if let Some(ref model) = extra.device_model {
+        if !model.is_empty() {
+            g.add("Oversample|Device|Model", model);
+        }
+    }
+
+    // Mic info
+    if let Some(ref interface) = extra.mic_interface {
+        if !interface.is_empty() {
+            g.add("Oversample|Mic|Interface", interface);
+        }
+    }
+    if let Some(ref name) = extra.mic_name {
+        if !name.is_empty() {
+            g.add("Oversample|Mic|Name", name);
+        }
+    }
+
     g
 }
 

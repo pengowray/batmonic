@@ -104,6 +104,8 @@ pub struct MicInfo {
     pub is_float: bool,
     pub format: String,
     pub supported_sample_rates: Vec<u32>,
+    /// Audio host backend name: "Oboe", "WASAPI", "ASIO", "CoreAudio", "ALSA", "JACK", etc.
+    pub host_name: String,
 }
 
 #[derive(Serialize)]
@@ -620,89 +622,63 @@ pub struct RecordingLocation {
     pub accuracy: Option<f64>,
 }
 
-/// Build GUANO metadata fields for a recording.
-pub fn build_recording_guano(
-    sample_rate: u32,
-    num_samples: usize,
-    device_name: &str,
-    filename: &str,
-    timestamp: &chrono::DateTime<chrono::Local>,
-    connection_type: Option<&str>,
-    location: Option<&RecordingLocation>,
-    device_model: Option<&str>,
-) -> String {
-    let duration_secs = num_samples as f64 / sample_rate as f64;
-    let version = env!("CARGO_PKG_VERSION");
-    // Compute approximate recording start time from stop time
-    let start_time = *timestamp - chrono::Duration::milliseconds((duration_secs * 1000.0) as i64);
-
-    // For USB mics, Model reflects the device name (like BatGizmo does)
-    let is_usb = connection_type.map(|c| c.contains("USB")).unwrap_or(false);
-    let model = if is_usb && !device_name.is_empty() {
-        device_name.to_string()
-    } else {
-        "Desktop".to_string()
-    };
-
-    let mut fields: Vec<(&str, String)> = vec![
-        ("GUANO|Version", "1.0".to_string()),
-        ("Timestamp", start_time.format("%Y-%m-%d %H:%M:%S%:z").to_string()),
-        ("Length", format!("{:.6}", duration_secs)),
-        ("Samplerate", sample_rate.to_string()),
-        ("Make", "Oversample".to_string()),
-        ("Model", model),
-        ("Oversample|App|Version", version.to_string()),
-        ("Original Filename", filename.to_string()),
-        ("Microphone", device_name.to_string()),
-    ];
-    if let Some(conn) = connection_type {
-        if !conn.is_empty() {
-            fields.push(("Oversample|Connection", conn.to_string()));
-        }
-    }
-    if let Some(dev) = device_model {
-        if !dev.is_empty() {
-            fields.push(("Oversample|Device", dev.to_string()));
-        }
-    }
-    if let Some(loc) = location {
-        fields.push(("Loc Position", format!("{} {}", loc.latitude, loc.longitude)));
-        if let Some(elev) = loc.elevation {
-            fields.push(("Loc Elevation", format!("{:.1}", elev)));
-        }
-        if let Some(acc) = loc.accuracy {
-            fields.push(("Loc Accuracy", format!("{:.1}", acc)));
-        }
-    }
-    fields.push(("Note", format!("Recorded with Oversample v{} ({})", version, device_name)));
-
-    let mut text = String::new();
-    for (key, value) in &fields {
-        text.push_str(key);
-        text.push_str(": ");
-        text.push_str(value);
-        text.push('\n');
-    }
-    text
+/// Parameters for building GUANO metadata in the Tauri backend.
+/// Consolidates location, device model, mic info, and app version.
+pub struct TauriGuanoParams {
+    pub connection_type: Option<String>,
+    pub location: Option<RecordingLocation>,
+    pub device_make: Option<String>,
+    pub device_model: Option<String>,
+    pub mic_name: Option<String>,
+    pub mic_make: Option<String>,
+    pub app_version: String,
+    pub is_mobile: bool,
 }
 
-/// Append a GUANO "guan" RIFF subchunk to WAV bytes in-place.
-pub fn append_guano_chunk(wav_bytes: &mut Vec<u8>, guano_text: &str) {
-    let text_bytes = guano_text.as_bytes();
-    let chunk_size = text_bytes.len() as u32;
+/// Build GUANO metadata for a Tauri-side recording using the shared builder.
+/// `timestamp` is chrono::DateTime<chrono::Local> from the stop time;
+/// the actual recording start is computed by subtracting duration.
+pub fn build_tauri_guano(
+    sample_rate: u32,
+    num_samples: usize,
+    filename: &str,
+    timestamp: &chrono::DateTime<chrono::Local>,
+    params: &TauriGuanoParams,
+) -> oversample_core::audio::guano::GuanoMetadata {
+    use oversample_core::audio::guano::{self, RecordingGuanoExtra};
 
-    wav_bytes.extend_from_slice(b"guan");
-    wav_bytes.extend_from_slice(&chunk_size.to_le_bytes());
-    wav_bytes.extend_from_slice(text_bytes);
+    let duration_secs = num_samples as f64 / sample_rate as f64;
+    let start_time = *timestamp - chrono::Duration::milliseconds((duration_secs * 1000.0) as i64);
+    let ts = start_time.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
 
-    // RIFF word-alignment: pad with zero byte if chunk data size is odd
-    if text_bytes.len() % 2 != 0 {
-        wav_bytes.push(0);
-    }
+    let is_usb = params.connection_type.as_deref()
+        .map(|c| c.contains("USB"))
+        .unwrap_or(false);
 
-    // Update RIFF header file size at bytes[4..8]
-    let riff_size = (wav_bytes.len() - 8) as u32;
-    wav_bytes[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    // For non-USB (internal) mics, mic_name = "Internal"
+    let mic_name = if is_usb {
+        params.mic_name.clone()
+    } else {
+        Some("Internal".to_string())
+    };
+
+    let extra = RecordingGuanoExtra {
+        mic_interface: params.connection_type.clone(),
+        mic_name,
+        mic_make: if is_usb { params.mic_make.clone() } else { None },
+        loc_position: params.location.as_ref().map(|l| (l.latitude, l.longitude)),
+        loc_elevation: params.location.as_ref().and_then(|l| l.elevation),
+        loc_accuracy: params.location.as_ref().and_then(|l| l.accuracy),
+        device_make: if params.is_mobile { params.device_make.clone() } else { None },
+        device_model: if params.is_mobile { params.device_model.clone() } else { None },
+    };
+
+    guano::build_recording_guano(
+        sample_rate, duration_secs, filename,
+        true, // is_tauri
+        params.is_mobile,
+        &extra, &ts, &params.app_version,
+    )
 }
 
 /// Get f32 version of all recorded samples (for frontend spectrogram/display).

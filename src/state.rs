@@ -1020,8 +1020,12 @@ pub struct AppState {
     pub home_wifi_ssids: RwSignal<Vec<String>>,
     /// Whether to include phone model in recording metadata (privacy toggle, persisted, default true).
     pub device_model_enabled: RwSignal<bool>,
-    /// Cached device model string (e.g. "samsung SM-A556E"), fetched once on first recording.
+    /// Cached device manufacturer (e.g. "samsung"), fetched once on first recording. Android only.
+    pub cached_device_make: RwSignal<Option<String>>,
+    /// Cached device model (e.g. "SM-A556E"), fetched once on first recording. Android only.
     pub cached_device_model: RwSignal<Option<String>>,
+    /// USB mic manufacturer name (from USB descriptors), if available.
+    pub mic_manufacturer: RwSignal<Option<String>>,
     /// Whether a USB audio device is currently connected.
     pub mic_usb_connected: RwSignal<bool>,
     /// What Auto mode resolved to (Cpal or RawUsb). Ignored when mode is not Auto.
@@ -1469,7 +1473,9 @@ impl AppState {
                     .map(|v| v != "false")
                     .unwrap_or(true) // default on
             }),
+            cached_device_make: RwSignal::new(None),
             cached_device_model: RwSignal::new(None),
+            mic_manufacturer: RwSignal::new(None),
             mic_usb_connected: RwSignal::new(false),
             mic_effective_mode: RwSignal::new(if detect_tauri() { MicMode::Cpal } else { MicMode::Browser }),
             mic_recording_target_scroll: RwSignal::new(0.0),

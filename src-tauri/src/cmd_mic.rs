@@ -3,6 +3,21 @@ use crate::MicMutex;
 use std::sync::atomic::Ordering;
 use tauri::Manager;
 
+/// Get the human-readable cpal audio host name for the current platform.
+/// Returns names like "Oboe", "WASAPI", "ASIO", "CoreAudio", "ALSA", "JACK".
+fn cpal_host_name() -> String {
+    use cpal::traits::HostTrait;
+    let raw = format!("{:?}", cpal::default_host().id());
+    // Normalize common host names to match GUANO conventions
+    match raw.as_str() {
+        "Wasapi" => "WASAPI".to_string(),
+        "Asio" => "ASIO".to_string(),
+        "Alsa" => "ALSA".to_string(),
+        "Jack" => "JACK".to_string(),
+        other => other.to_string(), // "Oboe", "CoreAudio", etc. already good
+    }
+}
+
 #[tauri::command]
 pub fn save_recording(
     app: tauri::AppHandle,
@@ -40,6 +55,7 @@ pub fn mic_open(
             is_float: m.format.is_float(),
             format: format!("{:?}", m.format),
             supported_sample_rates: m.supported_sample_rates.clone(),
+            host_name: cpal_host_name(),
         });
     }
 
@@ -57,6 +73,7 @@ pub fn mic_open(
         is_float: m.format.is_float(),
         format: format!("{:?}", m.format),
         supported_sample_rates: m.supported_sample_rates.clone(),
+        host_name: cpal_host_name(),
     };
 
     // Start the emitter thread for streaming audio chunks to the frontend
@@ -104,7 +121,9 @@ pub fn mic_stop_recording(
     loc_longitude: Option<f64>,
     loc_elevation: Option<f64>,
     loc_accuracy: Option<f64>,
+    device_make: Option<String>,
     device_model: Option<String>,
+    app_version: Option<String>,
 ) -> Result<RecordingResult, String> {
     let mic = state.lock().map_err(|e| e.to_string())?;
     let m = mic.as_ref().ok_or("Microphone not open")?;
@@ -146,12 +165,24 @@ pub fn mic_stop_recording(
         _ => None,
     };
 
-    // Append GUANO metadata
-    let guano_text = recording::build_recording_guano(
-        sample_rate, num_samples, &m.device_name, &filename, &now,
-        Some("Cpal"), location.as_ref(), device_model.as_deref(),
+    let is_mobile = cfg!(target_os = "android");
+    let host_name = cpal_host_name();
+
+    // Append GUANO metadata using shared builder
+    let guano_params = recording::TauriGuanoParams {
+        connection_type: Some(host_name),
+        location,
+        device_make,
+        device_model,
+        mic_name: Some("Internal".to_string()),
+        mic_make: None,
+        app_version: app_version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
+        is_mobile,
+    };
+    let guano = recording::build_tauri_guano(
+        sample_rate, num_samples, &filename, &now, &guano_params,
     );
-    recording::append_guano_chunk(&mut wav_data, &guano_text);
+    oversample_core::audio::guano::append_guano_chunk(&mut wav_data, &guano.to_text());
 
     // Write to shared storage fd if available, otherwise to internal storage
     let saved_path = if let Some(fd) = shared_fd {

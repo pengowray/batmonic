@@ -551,18 +551,38 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
 
     // Build GUANO metadata
     let mic_name = state.mic_device_name.get_untracked();
+    let mic_manufacturer = state.mic_manufacturer.get_untracked();
     let conn_type = state.mic_connection_type.get_untracked();
     let loc = state.recording_location.get_untracked();
-    let dev_model = if state.device_model_enabled.get_untracked() {
-        state.cached_device_model.get_untracked()
+    let is_mobile = state.is_mobile.get_untracked();
+    let (dev_make, dev_model) = if state.device_model_enabled.get_untracked() && is_mobile {
+        (state.cached_device_make.get_untracked(), state.cached_device_model.get_untracked())
     } else {
-        None
+        (None, None)
     };
+
+    // Determine mic_name for GUANO: USB gets the device name, internal gets "Internal"
+    let is_usb = conn_type.as_deref().map(|c| c.contains("USB")).unwrap_or(false);
+    let guano_mic_name = if is_usb {
+        mic_name.clone()
+    } else if conn_type.is_some() {
+        // Non-USB native mic (cpal) — "Internal" unless it has a meaningful device name
+        Some("Internal".to_string())
+    } else {
+        // Web/browser — use the device label from Web Audio API if available
+        mic_name.clone()
+    };
+
+    // Clone values needed again for the WAV save path below
+    let dev_make_save = dev_make.clone();
     let guano_extra = crate::audio::guano::RecordingGuanoExtra {
-        connection_type: conn_type.clone(),
+        mic_interface: conn_type.clone(),
+        mic_name: guano_mic_name.clone(),
+        mic_make: mic_manufacturer.clone(),
         loc_position: loc.as_ref().map(|l| (l.latitude, l.longitude)),
         loc_elevation: loc.as_ref().and_then(|l| l.elevation),
         loc_accuracy: loc.as_ref().and_then(|l| l.accuracy),
+        device_make: dev_make,
         device_model: dev_model.clone(),
     };
     let guano = crate::audio::guano::build_recording_guano(
@@ -570,9 +590,10 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
         // Use live file name if available, generate one otherwise
         &live_idx.and_then(|idx| state.files.with_untracked(|f| f.get(idx).map(|f| f.name.clone())))
             .unwrap_or_else(|| generate_recording_name()),
-        state.is_tauri, state.is_mobile.get_untracked(), mic_name.as_deref(),
+        state.is_tauri, is_mobile,
         &guano_extra,
         &crate::format_time::recording_timestamp(duration_secs),
+        env!("CARGO_PKG_VERSION"),
     );
 
     let samples: Arc<Vec<f32>> = samples.into();
@@ -725,13 +746,16 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
         let samples_ref = state.files.get_untracked();
         if let Some(file) = samples_ref.get(file_index) {
             let extra = crate::audio::guano::RecordingGuanoExtra {
-                connection_type: conn_type,
+                mic_interface: conn_type,
+                mic_name: guano_mic_name.clone(),
+                mic_make: mic_manufacturer,
                 loc_position: loc.as_ref().map(|l| (l.latitude, l.longitude)),
                 loc_elevation: loc.as_ref().and_then(|l| l.elevation),
                 loc_accuracy: loc.as_ref().and_then(|l| l.accuracy),
+                device_make: dev_make_save,
                 device_model: dev_model,
             };
-            let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, is_mobile, mic_name.as_deref(), &extra);
+            let wav_data = encode_wav_with_guano(&file.audio.samples, file.audio.sample_rate, &name_for_save, true, is_mobile, &extra);
             let filename = name_for_save;
             wasm_bindgen_futures::spawn_local(async move {
                 if is_mobile {

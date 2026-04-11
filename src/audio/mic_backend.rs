@@ -32,10 +32,15 @@ fn build_stop_recording_args(state: &AppState) -> JsValue {
         }
     }
     if state.device_model_enabled.get_untracked() {
-        if let Some(dev) = state.cached_device_model.get_untracked() {
-            let _ = js_sys::Reflect::set(&args, &JsValue::from_str("deviceModel"), &JsValue::from_str(&dev));
+        if let Some(make) = state.cached_device_make.get_untracked() {
+            let _ = js_sys::Reflect::set(&args, &JsValue::from_str("deviceMake"), &JsValue::from_str(&make));
+        }
+        if let Some(model) = state.cached_device_model.get_untracked() {
+            let _ = js_sys::Reflect::set(&args, &JsValue::from_str("deviceModel"), &JsValue::from_str(&model));
         }
     }
+    // Pass the app version so the Tauri backend can embed the correct version in GUANO
+    let _ = js_sys::Reflect::set(&args, &JsValue::from_str("appVersion"), &JsValue::from_str(env!("CARGO_PKG_VERSION")));
     args.into()
 }
 
@@ -796,6 +801,7 @@ async fn open_web(state: &AppState) -> bool {
         .map(|info| info.name.clone())
         .unwrap_or_else(|| "Browser microphone".into());
     state.mic_device_name.set(Some(dev_name));
+    state.mic_manufacturer.set(None);
     state.mic_connection_type.set(None);
     let source = match ctx.create_media_stream_source(&stream) {
         Ok(s) => s,
@@ -978,6 +984,9 @@ async fn open_cpal(state: &AppState) -> bool {
     let device_name = js_sys::Reflect::get(&result, &JsValue::from_str("device_name"))
         .ok().and_then(|v| v.as_string())
         .unwrap_or_else(|| "Unknown".into());
+    let host_label: Option<String> = js_sys::Reflect::get(&result, &JsValue::from_str("host_name"))
+        .ok().and_then(|v| v.as_string())
+        .filter(|s| !s.is_empty());
 
     // Parse supported_sample_rates from MicInfo response
     let supported_rates: Vec<u32> = js_sys::Reflect::get(&result, &JsValue::from_str("supported_sample_rates"))
@@ -1000,12 +1009,16 @@ async fn open_cpal(state: &AppState) -> bool {
     state.mic_sample_rate.set(sample_rate);
     state.mic_bits_per_sample.set(bits_per_sample);
     state.mic_device_name.set(Some(device_name.clone()));
+    state.mic_manufacturer.set(None);
+    // Determine mic interface from the cpal host backend.
+    // The host_label comes from the Tauri backend via mic_info.
     let conn_type = if device_name.to_lowercase().contains("usb") {
         "USB"
     } else if device_name.to_lowercase().contains("bluetooth") || device_name.to_lowercase().contains("bt ") {
         "Bluetooth"
     } else {
-        "Internal"
+        // Use the audio host name for native audio interfaces
+        host_label.as_deref().unwrap_or("Internal")
     };
     state.mic_connection_type.set(Some(conn_type.to_string()));
 
@@ -1130,6 +1143,9 @@ async fn open_usb(state: &AppState) -> bool {
         .ok().and_then(|v| v.as_f64()).unwrap_or(1.0) as u32;
     let product_name = js_sys::Reflect::get(&device_info, &JsValue::from_str("productName"))
         .ok().and_then(|v| v.as_string()).unwrap_or_else(|| "USB Audio".into());
+    let manufacturer_name = js_sys::Reflect::get(&device_info, &JsValue::from_str("manufacturerName"))
+        .ok().and_then(|v| v.as_string())
+        .filter(|s| !s.is_empty() && s != "Unknown");
     let interface_number = js_sys::Reflect::get(&device_info, &JsValue::from_str("interfaceNumber"))
         .ok().and_then(|v| v.as_f64()).unwrap_or(0.0) as u32;
     let alternate_setting = js_sys::Reflect::get(&device_info, &JsValue::from_str("alternateSetting"))
@@ -1240,6 +1256,7 @@ async fn open_usb(state: &AppState) -> bool {
 
     NATIVE_MIC_OPEN.with(|o| *o.borrow_mut() = Some(NativeMode::Usb));
     state.mic_device_name.set(Some(product_name.clone()));
+    state.mic_manufacturer.set(manufacturer_name);
     state.mic_connection_type.set(Some("USB (Raw)".to_string()));
     log::info!("USB mic opened: {} at {} Hz", product_name, sample_rate);
     true

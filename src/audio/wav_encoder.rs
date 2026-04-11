@@ -42,7 +42,6 @@ pub(crate) fn encode_wav_with_guano(
     filename: &str,
     is_tauri: bool,
     is_mobile: bool,
-    mic_device_name: Option<&str>,
     extra: &crate::audio::guano::RecordingGuanoExtra,
 ) -> Vec<u8> {
     use crate::audio::guano;
@@ -50,16 +49,17 @@ pub(crate) fn encode_wav_with_guano(
     let duration_secs = samples.len() as f64 / sample_rate as f64;
 
     let guano_meta = guano::build_recording_guano(
-        sample_rate, duration_secs, filename, is_tauri, is_mobile, mic_device_name, extra,
+        sample_rate, duration_secs, filename, is_tauri, is_mobile, extra,
         &crate::format_time::recording_timestamp(duration_secs),
+        env!("CARGO_PKG_VERSION"),
     );
     guano::append_guano_chunk(&mut wav_data, &guano_meta.to_text());
     wav_data
 }
 
 /// Trigger a browser download of WAV data.
-pub fn download_wav(samples: &[f32], sample_rate: u32, filename: &str, is_tauri: bool, is_mobile: bool, mic_device_name: Option<&str>) {
-    let wav_data = encode_wav_with_guano(samples, sample_rate, filename, is_tauri, is_mobile, mic_device_name,
+pub fn download_wav(samples: &[f32], sample_rate: u32, filename: &str, is_tauri: bool, is_mobile: bool) {
+    let wav_data = encode_wav_with_guano(samples, sample_rate, filename, is_tauri, is_mobile,
         &Default::default());
 
     let array = js_sys::Uint8Array::new_with_length(wav_data.len() as u32);

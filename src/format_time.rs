@@ -152,7 +152,7 @@ pub fn recording_timestamp(duration_secs: f64) -> String {
     let offset_h = offset_abs / 60;
     let offset_m = offset_abs % 60;
     format!(
-        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}{}{:02}:{:02}",
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{}{:02}:{:02}",
         start.get_full_year(),
         start.get_month() + 1,
         start.get_date(),
