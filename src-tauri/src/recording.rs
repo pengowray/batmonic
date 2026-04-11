@@ -133,6 +133,7 @@ pub struct RecordingResult {
     pub duration_secs: f64,
     pub num_samples: usize,
     pub samples_f32: Vec<f32>,
+    pub file_size_bytes: usize,
 }
 
 #[derive(Serialize)]

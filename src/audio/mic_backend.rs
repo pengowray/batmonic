@@ -133,6 +133,7 @@ pub struct TauriRecordingResult {
     pub is_float: bool,
     pub duration_secs: f64,
     pub samples: Vec<f32>,
+    pub file_size_bytes: Option<usize>,
 }
 
 impl TauriRecordingResult {
@@ -157,6 +158,10 @@ impl TauriRecordingResult {
             .ok().and_then(|v| v.as_string())
             .unwrap_or_default();
 
+        let file_size_bytes = js_sys::Reflect::get(result, &JsValue::from_str("file_size_bytes"))
+            .ok().and_then(|v| v.as_f64())
+            .map(|v| v as usize);
+
         let samples_js = js_sys::Reflect::get(result, &JsValue::from_str("samples_f32"))
             .unwrap_or(JsValue::NULL);
         let samples_array = js_sys::Array::from(&samples_js);
@@ -176,6 +181,7 @@ impl TauriRecordingResult {
             is_float,
             duration_secs,
             samples,
+            file_size_bytes,
         })
     }
 }
@@ -1237,6 +1243,7 @@ async fn open_usb(state: &AppState) -> bool {
                         bits_per_sample: state_err.mic_bits_per_sample.get_untracked(),
                         is_float: false,
                         saved_path: String::new(),
+                        file_size: None,
                     }, state_err,
                 );
             }

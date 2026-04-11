@@ -447,7 +447,7 @@ async fn do_stop_recording(state: &AppState, backend: ActiveBackend) {
         StopResult::Samples { samples, sample_rate } => {
             finalize_recording(FinalizeParams {
                 samples, sample_rate, bits_per_sample, is_float: false,
-                saved_path: String::new(),
+                saved_path: String::new(), file_size: None,
             }, *state);
         }
         StopResult::TauriResult(rec) => {
@@ -457,6 +457,7 @@ async fn do_stop_recording(state: &AppState, backend: ActiveBackend) {
                 bits_per_sample: rec.bits_per_sample,
                 is_float: rec.is_float,
                 saved_path: rec.saved_path,
+                file_size: rec.file_size_bytes,
             }, *state);
         }
         StopResult::Empty => {
@@ -619,7 +620,7 @@ pub fn stop_all(state: &AppState) {
                         StopResult::Samples { samples, sample_rate } => {
                             finalize_recording(FinalizeParams {
                                 samples, sample_rate, bits_per_sample, is_float: false,
-                                saved_path: String::new(),
+                                saved_path: String::new(), file_size: None,
                             }, state_copy);
                         }
                         StopResult::TauriResult(rec) => {
@@ -629,6 +630,7 @@ pub fn stop_all(state: &AppState) {
                                 bits_per_sample: rec.bits_per_sample,
                                 is_float: rec.is_float,
                                 saved_path: rec.saved_path,
+                                file_size: rec.file_size_bytes,
                             }, state_copy);
                         }
                         StopResult::Error(e) => {

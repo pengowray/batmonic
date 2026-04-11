@@ -193,6 +193,7 @@ pub fn mic_stop_recording(
         sample_rate, num_samples, &filename, &now, &guano_params,
     );
     oversample_core::audio::guano::append_guano_chunk(&mut wav_data, &guano.to_text());
+    let file_size_bytes = wav_data.len();
 
     // Write to shared storage fd if available, otherwise to internal storage
     let saved_path = if let Some(fd) = shared_fd {
@@ -219,6 +220,7 @@ pub fn mic_stop_recording(
         duration_secs,
         num_samples,
         samples_f32,
+        file_size_bytes,
     })
 }
 

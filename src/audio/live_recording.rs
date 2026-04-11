@@ -524,6 +524,8 @@ pub(crate) struct FinalizeParams {
     pub is_float: bool,
     /// Path where native backend already saved the file (empty = needs WASM-side save).
     pub saved_path: String,
+    /// Actual file size from native backend (overrides WASM-side estimate).
+    pub file_size: Option<usize>,
 }
 
 /// Unified recording finalization. Handles both browser (WASM-side save) and
@@ -532,7 +534,7 @@ pub(crate) struct FinalizeParams {
 pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
     use crate::canvas::{spectral_store, tile_cache, live_waterfall};
 
-    let FinalizeParams { samples, sample_rate, bits_per_sample, is_float, saved_path } = params;
+    let FinalizeParams { samples, sample_rate, bits_per_sample, is_float, saved_path, file_size } = params;
 
     let live_idx = state.mic_live_file_idx.get_untracked();
     state.mic_live_file_idx.set(None);
@@ -610,7 +612,7 @@ pub(crate) fn finalize_recording(params: FinalizeParams, state: AppState) {
     let guano_text_len = guano_text.len() as u64;
     // GUANO chunk: 4 ("guan") + 4 (size u32) + text + optional pad byte
     let guano_chunk_size = 8 + guano_text_len + (guano_text_len % 2);
-    let exact_file_size = (44 + audio_data_size + guano_chunk_size) as usize;
+    let exact_file_size = file_size.unwrap_or((44 + audio_data_size + guano_chunk_size) as usize);
 
     let audio = AudioData {
         samples,
