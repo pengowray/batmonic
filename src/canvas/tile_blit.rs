@@ -100,9 +100,11 @@ pub fn compute_tile_blit_coords(
 
     let tile_ratio = tile_cache::lod_ratio(tile_lod);
 
-    // Tile's LOD1 column range
+    // Tile's LOD1 column range — use the actual tile pixel width rather than
+    // TILE_COLS so that the final partial tile (which has fewer columns) is not
+    // stretched to fill a full 256-column slot.
     let tile_lod1_start = tile_idx as f64 * TILE_COLS as f64 / tile_ratio;
-    let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / tile_ratio;
+    let tile_lod1_end = tile_lod1_start + tile_width / tile_ratio;
 
     // Clip to requested range
     let c_start = clip_lod1_start.max(tile_lod1_start);
@@ -110,7 +112,9 @@ pub fn compute_tile_blit_coords(
     if c_end <= c_start { return None; }
 
     // Source coordinates in tile pixel space
-    let pixel_scale = tile_width * tile_ratio / TILE_COLS as f64;
+    // Each pixel in the tile image corresponds to one column at the tile's LOD,
+    // so pixel_scale = tile_ratio (pixels per LOD1 column).
+    let pixel_scale = tile_ratio;
     let src_x = ((c_start - tile_lod1_start) * pixel_scale).max(0.0);
     let src_x_end = ((c_end - tile_lod1_start) * pixel_scale).min(tile_width);
     let src_w = (src_x_end - src_x).max(0.0);
