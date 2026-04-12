@@ -2177,9 +2177,9 @@ pub const LONCHOPHYLLA_ROBUSTA: BatSpecies = BatSpecies {
     scientific_name: "Lonchophylla robusta",
     family: "Phyllostomidae",
     call_type: "FM",
-    freq_lo_hz: 50_000.0,
-    freq_hi_hz: 80_000.0,
-    description: "Largest Lonchophylla species. Distinctive orange fur. Nectarivore of premontane and montane forests. Nicaragua to NW Ecuador.",
+    freq_lo_hz: 55_000.0,
+    freq_hi_hz: 120_000.0,
+    description: "Largest Lonchophylla species. Distinctive orange fur. Broadband multi-harmonic FM calls. Nectarivore of premontane and montane forests. Nicaragua to NW Ecuador.",
     echolocates: true,
 };
 
