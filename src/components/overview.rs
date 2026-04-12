@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use wasm_bindgen::{Clamped, JsCast};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, MouseEvent};
 use crate::canvas::waveform_renderer;
-use crate::state::{AppState, LayerPanel, OverviewFreqMode, OverviewView};
+use crate::state::{AppState, OverviewView};
 use crate::types::PreviewImage;
 
 thread_local! {
@@ -235,22 +235,24 @@ fn draw_overview_waveform(
     }
 }
 
-// ── Layers button ─────────────────────────────────────────────────────────────
-
-fn toggle_panel(state: &AppState, panel: LayerPanel) {
-    state.layer_panel_open.update(|p| {
-        *p = if *p == Some(panel) { None } else { Some(panel) };
-    });
-}
-
-fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
-}
+// ── Overview toggle button ────────────────────────────────────────────────────
 
 #[component]
-fn OverviewLayersButton() -> impl IntoView {
+fn OverviewToggleButton() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let is_open = move || state.layer_panel_open.get() == Some(LayerPanel::OverviewLayers);
+
+    let label = move || match state.overview_view.get() {
+        OverviewView::Spectrogram => "Spectrum",
+        OverviewView::Waveform => "Waveform",
+    };
+
+    let toggle = move |_: MouseEvent| {
+        let next = match state.overview_view.get_untracked() {
+            OverviewView::Spectrogram => OverviewView::Waveform,
+            OverviewView::Waveform => OverviewView::Spectrogram,
+        };
+        state.overview_view.set(next);
+    };
 
     view! {
         <div
@@ -260,33 +262,11 @@ fn OverviewLayersButton() -> impl IntoView {
         >
             <div style="position: relative; pointer-events: auto;">
                 <button
-                    class=move || if is_open() { "layer-btn open" } else { "layer-btn" }
+                    class="layer-btn"
                     style="font-size: 10px; padding: 3px 7px;"
-                    on:click=move |_| toggle_panel(&state, LayerPanel::OverviewLayers)
-                    title="Overview options"
-                >"Overview"</button>
-                <Show when=move || is_open()>
-                    <div class="layer-panel" style="bottom: 28px; left: 0;">
-                        <div class="layer-panel-title">"Overview"</div>
-                        <button class=move || layer_opt_class(state.overview_view.get() == OverviewView::Spectrogram)
-                            on:click=move |_| state.overview_view.set(OverviewView::Spectrogram)
-                        >"Spectrogram"</button>
-                        <button class=move || layer_opt_class(state.overview_view.get() == OverviewView::Waveform)
-                            on:click=move |_| state.overview_view.set(OverviewView::Waveform)
-                        >"Waveform"</button>
-                        <hr />
-                        <div class="layer-panel-title">"Frequency"</div>
-                        <button class=move || layer_opt_class(state.overview_freq_mode.get() == OverviewFreqMode::All)
-                            on:click=move |_| state.overview_freq_mode.set(OverviewFreqMode::All)
-                        >"All"</button>
-                        <button class=move || layer_opt_class(state.overview_freq_mode.get() == OverviewFreqMode::Human)
-                            on:click=move |_| state.overview_freq_mode.set(OverviewFreqMode::Human)
-                        >"Human (20–20k)"</button>
-                        <button class=move || layer_opt_class(state.overview_freq_mode.get() == OverviewFreqMode::MatchMain)
-                            on:click=move |_| state.overview_freq_mode.set(OverviewFreqMode::MatchMain)
-                        >"Match main view"</button>
-                    </div>
-                </Show>
+                    on:click=toggle
+                    title="Toggle overview display"
+                >{label}</button>
             </div>
         </div>
     }
@@ -312,7 +292,6 @@ pub fn OverviewPanel() -> impl IntoView {
         let scroll = state.scroll_offset.get();
         let zoom = state.zoom_level.get();
         let overview_view = state.overview_view.get();
-        let freq_mode = state.overview_freq_mode.get();
         let min_display_freq = state.min_display_freq.get();
         let max_display_freq = state.max_display_freq.get();
         let ff_lo_hz = state.ff_freq_lo.get();
@@ -519,13 +498,8 @@ pub fn OverviewPanel() -> impl IntoView {
                     // fall back to the fast 256×128 preview during loading.
                     let overview_src = file.overview_image.as_ref().or(file.preview.as_ref());
                     if let Some(preview) = overview_src {
-                        // Overview freq crop
-                        let display_max = match freq_mode {
-                            OverviewFreqMode::All => max_freq,
-                            OverviewFreqMode::Human => 20_000.0f64.min(max_freq),
-                            OverviewFreqMode::MatchMain => max_display_freq.unwrap_or(max_freq),
-                        };
-                        let overview_freq_crop = (display_max / max_freq).clamp(0.001, 1.0);
+                        // Overview always shows full frequency range
+                        let overview_freq_crop = 1.0;
 
                         draw_overview_spectrogram(
                             &ctx, canvas, preview,
@@ -887,7 +861,7 @@ pub fn OverviewPanel() -> impl IntoView {
 
             // Layers button (bottom-left, after nav buttons)
             <Show when=move || !state.clean_view.get()>
-                <OverviewLayersButton />
+                <OverviewToggleButton />
             </Show>
         </div>
     }

@@ -433,15 +433,6 @@ impl MainView {
     ];
 }
 
-/// Which frequency range the overview displays.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub enum OverviewFreqMode {
-    #[default]
-    All,
-    Human,      // 20 Hz – 20 kHz
-    MatchMain,  // tracks max_display_freq
-}
-
 // ── FFT mode ─────────────────────────────────────────────────────────────────
 
 /// FFT window mode for spectrogram computation.
@@ -574,7 +565,6 @@ impl PeakSource {
 /// Which floating layer panel is currently open (only one at a time).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LayerPanel {
-    OverviewLayers,
     HfrMode,
     Tool,
     FreqRange,
@@ -916,7 +906,6 @@ pub struct AppState {
 
     // Overview
     pub overview_view: RwSignal<OverviewView>,
-    pub overview_freq_mode: RwSignal<OverviewFreqMode>,
 
     // Navigation history (for back/forward buttons in overview)
     pub nav_history: RwSignal<Vec<NavEntry>>,
@@ -1402,7 +1391,6 @@ impl AppState {
             bandpass_mode: RwSignal::new(BandpassMode::Auto),
             bandpass_range: RwSignal::new(BandpassRange::FollowFocus),
             overview_view: RwSignal::new(OverviewView::Spectrogram),
-            overview_freq_mode: RwSignal::new(OverviewFreqMode::All),
             nav_history: RwSignal::new(Vec::new()),
             nav_index: RwSignal::new(0),
             bookmarks: RwSignal::new(Vec::new()),
