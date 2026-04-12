@@ -397,12 +397,13 @@ async fn do_start_recording(state: &AppState, backend: ActiveBackend) {
         backend.clear_buffer();
         crate::canvas::tile_cache::clear_all_caches();
         state.mic_preroll_samples.set(0);
+        state.mic_listening.set(false);
     } else {
-        // Listen→record: stop listen mode but keep buffer (pre-roll).
-        // Clear tile caches but don't clear buffer — the listened audio becomes pre-roll.
+        // Listen→record: keep mic_listening=true during the await so the
+        // processing loop doesn't exit (it checks `!recording && !listening`).
+        // We'll clear it after mic_recording is set to true.
         crate::canvas::tile_cache::clear_all_caches();
     }
-    state.mic_listening.set(false);
 
     match backend.start_recording(state).await {
         Ok(()) => {
@@ -411,6 +412,8 @@ async fn do_start_recording(state: &AppState, backend: ActiveBackend) {
             state.max_display_freq.set(None);
             state.mic_samples_recorded.set(0);
             state.mic_recording.set(true);
+            // Now safe to clear listening — recording is active, loop won't exit.
+            state.mic_listening.set(false);
             state.mic_recording_start_time.set(Some(js_sys::Date::now()));
             let sr = state.mic_sample_rate.get_untracked();
 
@@ -436,6 +439,7 @@ async fn do_start_recording(state: &AppState, backend: ActiveBackend) {
             state.status_message.set(Some(format!("Failed to start recording: {}", e)));
             // If we were listening, clean up the orphaned listen file
             if has_listen_file {
+                state.mic_listening.set(false);
                 cleanup_listen_file(state);
             }
         }

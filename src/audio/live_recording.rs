@@ -10,6 +10,11 @@ use crate::types::{AudioData, FileMetadata, SpectrogramData};
 use crate::dsp::fft::{compute_preview, compute_spectrogram_partial, compute_stft_columns};
 use std::sync::Arc;
 
+/// FFT and hop sizes for live waterfall rendering.
+/// FFT=1024 gives 513 frequency bins for good resolution; hop=256 for smooth scrolling.
+const LIVE_FFT: usize = 1024;
+const LIVE_HOP: usize = 256;
+
 /// Clean up the live recording file when finalization fails (empty samples,
 /// command error, etc.).  If the file has no audio data and no preview,
 /// removes it entirely and fixes `current_file_index`.  Otherwise marks it
@@ -90,13 +95,11 @@ pub(crate) fn start_live_recording(state: &AppState, sample_rate: u32) -> usize 
         },
     };
 
-    // FFT=256/hop=256 for live waterfall rendering
-    let (live_fft, live_hop) = (256.0, 256.0);
     let placeholder_spec = SpectrogramData {
         columns: Arc::new(Vec::new()),
         total_columns: 0,
-        freq_resolution: sample_rate as f64 / live_fft,
-        time_resolution: live_hop / sample_rate as f64,
+        freq_resolution: sample_rate as f64 / LIVE_FFT as f64,
+        time_resolution: LIVE_HOP as f64 / sample_rate as f64,
         max_freq: sample_rate as f64 / 2.0,
         sample_rate,
     };
@@ -132,9 +135,10 @@ pub(crate) fn start_live_recording(state: &AppState, sample_rate: u32) -> usize 
     state.current_file_index.set(Some(file_index));
     state.mic_live_file_idx.set(Some(file_index));
 
-    // Set zoom for comfortable live recording scroll speed
+    // Set zoom for comfortable live recording scroll speed.
+    // Use hop=256 to match the actual hop size in spawn_live_processing_loop.
     let canvas_w = state.spectrogram_canvas_width.get_untracked();
-    let live_time_res = 128.0 / sample_rate as f64;
+    let live_time_res = LIVE_HOP as f64 / sample_rate as f64;
     state.zoom_level.set(crate::viewport::recording_zoom(canvas_w, live_time_res));
     state.scroll_offset.set(0.0);
 
@@ -169,12 +173,11 @@ pub(crate) fn start_live_listening(state: &AppState, sample_rate: u32) -> usize 
         },
     };
 
-    let (live_fft, live_hop) = (256.0, 256.0);
     let placeholder_spec = SpectrogramData {
         columns: Arc::new(Vec::new()),
         total_columns: 0,
-        freq_resolution: sample_rate as f64 / live_fft,
-        time_resolution: live_hop / sample_rate as f64,
+        freq_resolution: sample_rate as f64 / LIVE_FFT as f64,
+        time_resolution: LIVE_HOP as f64 / sample_rate as f64,
         max_freq: sample_rate as f64 / 2.0,
         sample_rate,
     };
@@ -210,9 +213,10 @@ pub(crate) fn start_live_listening(state: &AppState, sample_rate: u32) -> usize 
     state.current_file_index.set(Some(file_index));
     state.mic_live_file_idx.set(Some(file_index));
 
-    // Set zoom for comfortable waterfall viewing
+    // Set zoom for comfortable waterfall viewing.
+    // Use LIVE_HOP to match the actual hop size in spawn_live_processing_loop.
     let canvas_w = state.spectrogram_canvas_width.get_untracked();
-    let live_time_res = 128.0 / sample_rate as f64;
+    let live_time_res = LIVE_HOP as f64 / sample_rate as f64;
     state.zoom_level.set(crate::viewport::recording_zoom(canvas_w, live_time_res));
     state.scroll_offset.set(0.0);
 
@@ -289,11 +293,9 @@ pub(crate) fn convert_listen_to_recording(state: &AppState, sample_rate: u32) ->
 
     state.current_file_index.set(Some(file_index));
 
-    // Set zoom for recording
-    let canvas_w = state.spectrogram_canvas_width.get_untracked();
-    let live_time_res = 128.0 / sample_rate as f64;
-    state.zoom_level.set(crate::viewport::recording_zoom(canvas_w, live_time_res));
-    state.scroll_offset.set(0.0);
+    // Don't reset scroll_offset — the smooth scroll animation is already
+    // running from the listen phase and will keep the view at the right edge.
+    // Resetting to 0 causes a visible jump to the beginning.
 
     file_index
 }
@@ -304,8 +306,7 @@ pub(crate) fn convert_listen_to_recording(state: &AppState, sample_rate: u32) ->
 pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sample_rate: u32) {
     use crate::canvas::live_waterfall;
 
-    // FFT=512 for better frequency resolution, hop=256 for smooth scrolling.
-    let (fft_size, hop_size): (usize, usize) = (512, 256);
+    let (fft_size, hop_size) = (LIVE_FFT, LIVE_HOP);
     const PROCESS_INTERVAL_MS: i32 = 50;
 
     // Bump the generation counter so any previous processing loop will exit.

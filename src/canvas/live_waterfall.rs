@@ -12,7 +12,7 @@ use crate::types::SpectrogramColumn;
 
 /// Maximum columns to keep in the circular buffer.
 /// 30k columns ≈ 160s at 48kHz/hop256, or ≈ 20s at 384kHz/hop256.
-/// Memory: 30000 × 257 × 4 bytes ≈ 31 MB (with FFT=512).
+/// Memory: 30000 × 513 × 4 bytes ≈ 62 MB (with FFT=1024).
 const DEFAULT_CAPACITY: usize = 30_000;
 
 pub struct LiveWaterfall {
