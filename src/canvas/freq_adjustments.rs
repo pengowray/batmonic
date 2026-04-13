@@ -1,11 +1,80 @@
+use std::cell::RefCell;
 use leptos::prelude::*;
 use crate::dsp::filters::harmonics_band_bounds;
 use crate::state::{AppState, DisplayFilterMode};
 
+thread_local! {
+    /// Cache for freq_adjustments: (fingerprint, result).
+    /// Avoids recomputing on every scroll when only the viewport changed.
+    static FREQ_ADJ_CACHE: RefCell<Option<(u64, Option<Vec<f32>>)>> = const { RefCell::new(None) };
+}
+
+/// Build a fingerprint of all inputs that affect freq_adjustments.
+fn freq_adj_fingerprint(state: &AppState, file_max_freq: f64, tile_height: usize) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    file_max_freq.to_bits().hash(&mut h);
+    tile_height.hash(&mut h);
+    state.display_eq.get_untracked().hash(&mut h);
+    state.display_noise_filter.get_untracked().hash(&mut h);
+    state.filter_enabled.get_untracked().hash(&mut h);
+    state.filter_freq_low.get_untracked().to_bits().hash(&mut h);
+    state.filter_freq_high.get_untracked().to_bits().hash(&mut h);
+    (state.filter_db_below.get_untracked() as i32).hash(&mut h);
+    (state.filter_db_selected.get_untracked() as i32).hash(&mut h);
+    (state.filter_db_harmonics.get_untracked() as i32).hash(&mut h);
+    (state.filter_db_above.get_untracked() as i32).hash(&mut h);
+    state.filter_band_mode.get_untracked().hash(&mut h);
+    state.notch_enabled.get_untracked().hash(&mut h);
+    let bands = state.notch_bands.get_untracked();
+    bands.len().hash(&mut h);
+    for b in &bands {
+        b.center_hz.to_bits().hash(&mut h);
+        b.bandwidth_hz.to_bits().hash(&mut h);
+        b.enabled.hash(&mut h);
+        (b.strength_db as i32).hash(&mut h);
+    }
+    state.notch_harmonic_suppression.get_untracked().to_bits().hash(&mut h);
+    state.display_filter_enabled.get_untracked().hash(&mut h);
+    (state.display_filter_nr.get_untracked() as u8).hash(&mut h);
+    (state.display_filter_notch.get_untracked() as u8).hash(&mut h);
+    state.noise_reduce_enabled.get_untracked().hash(&mut h);
+    state.noise_reduce_strength.get_untracked().to_bits().hash(&mut h);
+    // Include noise floor identity (use ptr + len as proxy for content)
+    let nf = state.noise_reduce_floor.get_untracked();
+    nf.as_ref().map(|f| f.bin_magnitudes.len()).unwrap_or(0).hash(&mut h);
+    let dnf = state.display_auto_noise_floor.get_untracked();
+    dnf.as_ref().map(|f| f.bin_magnitudes.len()).unwrap_or(0).hash(&mut h);
+    state.display_nr_strength.get_untracked().to_bits().hash(&mut h);
+    h.finish()
+}
+
 /// Compute per-row dB adjustments for display EQ and noise filtering.
 /// Returns None if no adjustments are needed (both checkboxes off).
 /// Row 0 = highest frequency, row (tile_height-1) = 0 Hz.
+/// Results are cached and only recomputed when filter settings change.
 pub fn compute_freq_adjustments(state: &AppState, file_max_freq: f64, tile_height: usize) -> Option<Vec<f32>> {
+    let fp = freq_adj_fingerprint(state, file_max_freq, tile_height);
+    let cached = FREQ_ADJ_CACHE.with(|c| {
+        let cache = c.borrow();
+        if let Some((cached_fp, ref result)) = *cache {
+            if cached_fp == fp {
+                return Some(result.clone());
+            }
+        }
+        None
+    });
+    if let Some(result) = cached {
+        return result;
+    }
+    let result = compute_freq_adjustments_inner(state, file_max_freq, tile_height);
+    FREQ_ADJ_CACHE.with(|c| {
+        *c.borrow_mut() = Some((fp, result.clone()));
+    });
+    result
+}
+
+fn compute_freq_adjustments_inner(state: &AppState, file_max_freq: f64, tile_height: usize) -> Option<Vec<f32>> {
     let show_eq = state.display_eq.get_untracked();
     let show_noise = state.display_noise_filter.get_untracked();
     if !show_eq && !show_noise {

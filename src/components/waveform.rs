@@ -84,7 +84,10 @@ pub fn Waveform() -> impl IntoView {
         let scroll = state.scroll_offset.get();
         let zoom = state.zoom_level.get();
         let selection = state.selection.get();
-        let files = state.files.get();
+        // Subscribe to file changes for reactivity, then get data without
+        // re-subscribing (avoids redundant signal subscription in compute_auto_gain).
+        state.files.track();
+        let files = state.files.get_untracked();
         let _timeline_trigger = state.active_timeline.get(); // trigger redraw on timeline change
         let idx = state.current_file_index.get();
         let mode = state.playback_mode.get();
@@ -95,7 +98,7 @@ pub fn Waveform() -> impl IntoView {
         let _tile_ready = state.tile_ready_signal.get();
         let wave_auto = state.wave_view_auto_gain.get();
         let gain_db = if wave_auto {
-            state.compute_auto_gain()
+            state.compute_auto_gain_untracked()
         } else {
             state.wave_view_gain_db.get()
         };

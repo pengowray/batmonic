@@ -96,6 +96,8 @@ fn draw_waveform_layer(
         }
         ctx.stroke();
     } else {
+        // Batch all vertical lines into a single path to minimize WASM→JS bridge calls.
+        ctx.begin_path();
         for px in px_start..px_end {
             let x = px as f64;
             let t0 = vp.start_time + ((x - vp.data_x) / vp.px_per_sec);
@@ -122,11 +124,10 @@ fn draw_waveform_layer(
             let y_min = vp.mid_y - (max_val as f64 * gain_linear * vp.mid_y * 0.9);
             let y_max = vp.mid_y - (min_val as f64 * gain_linear * vp.mid_y * 0.9);
 
-            ctx.begin_path();
             ctx.move_to(x, y_min);
             ctx.line_to(x, y_max);
-            ctx.stroke();
         }
+        ctx.stroke();
     }
 }
 

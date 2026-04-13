@@ -1887,6 +1887,19 @@ impl AppState {
     pub fn compute_auto_gain(&self) -> f64 {
         let files = self.files.get();
         let idx = self.current_file_index.get();
+        self.compute_auto_gain_inner(&files, idx)
+    }
+
+    /// Untracked version for use inside render Effects that already subscribe
+    /// to `files` and `current_file_index`. Avoids redundant Vec clone + subscription.
+    pub fn compute_auto_gain_untracked(&self) -> f64 {
+        self.files.with_untracked(|files| {
+            let idx = self.current_file_index.get_untracked();
+            self.compute_auto_gain_inner(files, idx)
+        })
+    }
+
+    fn compute_auto_gain_inner(&self, files: &[LoadedFile], idx: Option<usize>) -> f64 {
         let Some(file_index) = idx else { return 0.0 };
         let Some(file) = files.get(file_index) else { return 0.0 };
 

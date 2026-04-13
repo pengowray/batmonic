@@ -405,16 +405,72 @@ use crate::canvas::tile_cache::{self, TILE_COLS};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+/// Entry in the tile canvas cache with LRU stamp for proper eviction.
+struct TileCanvasEntry {
+    canvas: HtmlCanvasElement,
+    fingerprint: u64,
+    stamp: u64,
+}
+
+/// LRU tile canvas cache. Evicts least-recently-used entries instead of
+/// arbitrary HashMap-order entries, preventing visible tiles from being
+/// evicted while panning on large files.
+struct TileCanvasLru {
+    entries: HashMap<(usize, u8, usize), TileCanvasEntry>,
+    next_stamp: u64,
+}
+
+impl TileCanvasLru {
+    fn new() -> Self {
+        Self { entries: HashMap::new(), next_stamp: 0 }
+    }
+
+    fn get(&mut self, key: &(usize, u8, usize), fingerprint: u64) -> Option<HtmlCanvasElement> {
+        let entry = self.entries.get_mut(key)?;
+        if entry.fingerprint != fingerprint {
+            return None;
+        }
+        self.next_stamp += 1;
+        entry.stamp = self.next_stamp;
+        Some(entry.canvas.clone())
+    }
+
+    fn insert(&mut self, key: (usize, u8, usize), canvas: HtmlCanvasElement, fingerprint: u64) {
+        self.next_stamp += 1;
+        let stamp = self.next_stamp;
+        self.entries.insert(key, TileCanvasEntry { canvas, fingerprint, stamp });
+        if self.entries.len() > 256 {
+            // Evict oldest entries by LRU stamp
+            let mut stamps: Vec<((usize, u8, usize), u64)> = self.entries.iter()
+                .map(|(&k, e)| (k, e.stamp))
+                .collect();
+            stamps.sort_unstable_by_key(|&(_, s)| s);
+            let to_remove = self.entries.len() - 128;
+            for (k, _) in stamps.into_iter().take(to_remove) {
+                self.entries.remove(&k);
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    fn retain(&mut self, f: impl Fn(&(usize, u8, usize)) -> bool) {
+        self.entries.retain(|k, _| f(k));
+    }
+}
+
 thread_local! {
     /// Reusable off-screen canvas for blitting tile ImageData.
     /// Avoids creating a new canvas element every frame for each tile.
     static TMP_CANVAS: RefCell<Option<(HtmlCanvasElement, CanvasRenderingContext2d)>> =
         const { RefCell::new(None) };
-    /// Per-tile offscreen canvas cache: (file_idx, lod, tile_idx) → (canvas, settings_fingerprint).
+    /// Per-tile offscreen canvas cache with LRU eviction.
     /// Avoids re-running db_tile_to_rgba + ImageData + put_image_data on every frame
     /// when only scroll position changes (panning).
-    static TILE_CANVAS_CACHE: RefCell<HashMap<(usize, u8, usize), (HtmlCanvasElement, u64)>> =
-        RefCell::new(HashMap::new());
+    static TILE_CANVAS_CACHE: RefCell<TileCanvasLru> =
+        RefCell::new(TileCanvasLru::new());
 }
 
 /// Compute a fingerprint of the rendering parameters that affect tile RGBA output.
@@ -483,7 +539,7 @@ pub fn clear_tile_canvas_cache() {
 /// Evict tile canvas cache entries for a specific file.
 pub fn evict_tile_canvas_cache_for_file(file_idx: usize) {
     TILE_CANVAS_CACHE.with(|c| {
-        c.borrow_mut().retain(|&(fi, _, _), _| fi != file_idx);
+        c.borrow_mut().retain(|&(fi, _, _)| fi != file_idx);
     });
 }
 
@@ -737,16 +793,7 @@ pub fn blit_tiles_viewport(
 
         // Check if we have a cached canvas for this tile with matching settings.
         let cached = TILE_CANVAS_CACHE.with(|c| {
-            let cache = c.borrow();
-            if let Some((canvas, fp)) = cache.get(&cache_key) {
-                if *fp == fingerprint
-                    && canvas.width() == tile.rendered.width
-                    && canvas.height() == tile.rendered.height
-                {
-                    return Some(canvas.clone());
-                }
-            }
-            None
+            c.borrow_mut().get(&cache_key, fingerprint)
         });
 
         let tile_canvas = if let Some(c) = cached {
@@ -812,14 +859,7 @@ pub fn blit_tiles_viewport(
             }
 
             TILE_CANVAS_CACHE.with(|c| {
-                let mut cache = c.borrow_mut();
-                if cache.len() > 256 {
-                    let keys: Vec<_> = cache.keys().copied().collect();
-                    for k in keys.into_iter().take(cache.len() - 128) {
-                        cache.remove(&k);
-                    }
-                }
-                cache.insert(cache_key, (tc.clone(), fingerprint));
+                c.borrow_mut().insert(cache_key, tc.clone(), fingerprint);
             });
 
             tc

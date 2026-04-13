@@ -302,7 +302,8 @@ pub fn OverviewPanel() -> impl IntoView {
 
     // Redraw effect — runs when anything that affects the overview display changes
     Effect::new(move || {
-        let files = state.files.get();
+        state.files.track();
+        let files = state.files.get_untracked();
         let _timeline_trigger = state.active_timeline.get(); // trigger redraw on timeline change
         let idx = state.current_file_index.get();
         let scroll = state.scroll_offset.get();
@@ -319,7 +320,7 @@ pub fn OverviewPanel() -> impl IntoView {
         let _mic_recording = state.mic_recording.get();
         let _mic_listening = state.mic_listening.get();
         let auto_gain = state.auto_gain.get();
-        let gain_db = if auto_gain { state.compute_auto_gain() } else { state.gain_db.get() };
+        let gain_db = if auto_gain { state.compute_auto_gain_untracked() } else { state.gain_db.get() };
         // Re-read canvas dimensions when sidebar layout changes
         let _sidebar = state.sidebar_collapsed.get();
         let _sidebar_width = state.sidebar_width.get();

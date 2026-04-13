@@ -564,7 +564,9 @@ pub fn evict_far_multi(file_idx: usize, lod: u8, centers: &[(usize, usize)]) {
 /// when the user scrolls fast past them.
 pub fn cancel_far_in_flight(file_idx: usize, lod: u8, center_tile: usize, keep_radius: usize) {
     IN_FLIGHT.with(|s| {
-        s.borrow_mut().retain(|&(fi, l, ti), _| {
+        let mut map = s.borrow_mut();
+        if map.is_empty() { return; }
+        map.retain(|&(fi, l, ti), _| {
             fi != file_idx || l != lod || ti.abs_diff(center_tile) <= keep_radius
         });
     });
@@ -573,7 +575,9 @@ pub fn cancel_far_in_flight(file_idx: usize, lod: u8, center_tile: usize, keep_r
 /// Cancel in-flight entries far from ALL given centers.
 pub fn cancel_far_in_flight_multi(file_idx: usize, lod: u8, centers: &[(usize, usize)]) {
     IN_FLIGHT.with(|s| {
-        s.borrow_mut().retain(|&(fi, l, ti), _| {
+        let mut map = s.borrow_mut();
+        if map.is_empty() { return; }
+        map.retain(|&(fi, l, ti), _| {
             fi != file_idx || l != lod
                 || centers.iter().any(|&(center, radius)| ti.abs_diff(center) <= radius)
         });

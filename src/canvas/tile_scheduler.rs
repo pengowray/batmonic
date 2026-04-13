@@ -88,17 +88,20 @@ pub fn schedule_normal_tiles(
     let use_reassign = reassign_on && ideal_lod > 0;
 
     let tile_order = visible_tile_order(first_tile, last_tile, viewport_center_tile);
+    let mut any_missing = false;
 
     for &t in &tile_order {
         // Schedule reassignment tiles when enabled (skip LOD0)
         if use_reassign
             && tile_cache::get_reassign_tile(file_idx, ideal_lod, t).is_none() {
                 tile_cache::schedule_reassign_tile(state, file_idx, ideal_lod, t);
+                any_missing = true;
             }
 
         // Always schedule normal tiles (for fallback and non-reassign mode)
         if tile_cache::get_tile(file_idx, ideal_lod, t).is_none() {
             tile_cache::schedule_tile_lod(state, file_idx, ideal_lod, t);
+            any_missing = true;
         }
     }
 
@@ -117,6 +120,7 @@ pub fn schedule_normal_tiles(
                     } else {
                         tile_cache::schedule_tile_on_demand(state, file_idx, fb_tile);
                     }
+                    any_missing = true;
                 }
         }
     }
@@ -137,11 +141,15 @@ pub fn schedule_normal_tiles(
                 } else {
                     tile_cache::schedule_tile_on_demand(state, file_idx, t);
                 }
+                any_missing = true;
             }
         }
     }
 
-    // Recovery: if visible tiles are missing, force a retry after 500ms
+    // Recovery: if visible tiles are missing, force a retry after 250ms.
+    // Skip the expensive count_missing_visible() call when the scheduling
+    // loops above found no missing tiles (common case during panning).
+    if !any_missing { return; }
     let missing = tile_cache::count_missing_visible(file_idx, ideal_lod, first_tile, last_tile);
     if missing > 0 {
         let state_recovery = state;
