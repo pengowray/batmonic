@@ -14,6 +14,10 @@ thread_local! {
     /// Stores (Arc data pointer, width, height) to detect when we need to re-render.
     static OVERVIEW_CACHED_PREVIEW: RefCell<(usize, u32, u32)> =
         const { RefCell::new((0, 0, 0)) };
+    /// Cached overview waveform: (samples_ptr, samples_len, canvas_w, canvas_h, gain_bits, canvas).
+    /// Avoids re-iterating all samples (~57M for a 20MB MP3) on every scroll.
+    static OVERVIEW_WAVEFORM_CACHE: RefCell<Option<(usize, usize, u32, u32, u64, HtmlCanvasElement)>> =
+        const { RefCell::new(None) };
 }
 
 fn get_overview_tmp_canvas(w: u32, h: u32) -> Option<(HtmlCanvasElement, CanvasRenderingContext2d)> {
@@ -206,43 +210,88 @@ fn draw_overview_waveform(
     gain_db: f64,
     clean_view: bool,
 ) {
-    let cw = canvas.width() as f64;
-    let ch = canvas.height() as f64;
-    if samples.is_empty() { return; }
+    let cw = canvas.width() as u32;
+    let ch = canvas.height() as u32;
+    if samples.is_empty() || cw == 0 || ch == 0 { return; }
 
-    // Draw full file at zoom = 1 column per pixel
     let total_duration = samples.len() as f64 / sample_rate as f64;
-    let total_cols = total_duration / time_resolution;
-    let wv_zoom = cw / total_cols;
-    waveform_renderer::draw_waveform(
-        ctx, samples, sample_rate,
-        0.0,
-        wv_zoom,
-        time_resolution,
-        cw, ch,
-        None,
-        gain_db,
-        total_duration,
-        0,
-    );
+
+    // Cache key: sample buffer identity + canvas dimensions + gain.
+    // The waveform image only changes when these change — NOT on every scroll.
+    let samples_ptr = samples.as_ptr() as usize;
+    let samples_len = samples.len();
+    let gain_bits = gain_db.to_bits();
+
+    let cache_hit = OVERVIEW_WAVEFORM_CACHE.with(|cell| {
+        let cache = cell.borrow();
+        if let Some((ptr, len, w, h, gb, ref cached_canvas)) = *cache {
+            if ptr == samples_ptr && len == samples_len && w == cw && h == ch && gb == gain_bits {
+                // Blit cached waveform image
+                let _ = ctx.draw_image_with_html_canvas_element(cached_canvas, 0.0, 0.0);
+                return true;
+            }
+        }
+        false
+    });
+
+    if !cache_hit {
+        // Render waveform to an offscreen canvas and cache it
+        let total_cols = total_duration / time_resolution;
+        let wv_zoom = cw as f64 / total_cols;
+
+        let doc = web_sys::window().and_then(|w| w.document());
+        let offscreen = doc.and_then(|d| {
+            d.create_element("canvas").ok()
+                .and_then(|el| el.dyn_into::<HtmlCanvasElement>().ok())
+        });
+
+        if let Some(off) = offscreen {
+            off.set_width(cw);
+            off.set_height(ch);
+            if let Some(off_ctx) = off.get_context("2d").ok().flatten()
+                .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
+            {
+                waveform_renderer::draw_waveform(
+                    &off_ctx, samples, sample_rate,
+                    0.0, wv_zoom, time_resolution,
+                    cw as f64, ch as f64,
+                    None, gain_db, total_duration, 0,
+                );
+                let _ = ctx.draw_image_with_html_canvas_element(&off, 0.0, 0.0);
+                OVERVIEW_WAVEFORM_CACHE.with(|cell| {
+                    *cell.borrow_mut() = Some((samples_ptr, samples_len, cw, ch, gain_bits, off));
+                });
+            }
+        } else {
+            // Fallback: draw directly (no caching)
+            let total_cols = total_duration / time_resolution;
+            let wv_zoom = cw as f64 / total_cols;
+            waveform_renderer::draw_waveform(
+                ctx, samples, sample_rate,
+                0.0, wv_zoom, time_resolution,
+                cw as f64, ch as f64,
+                None, gain_db, total_duration, 0,
+            );
+        }
+    }
 
     if !clean_view {
-        let px_per_sec = cw / total_duration;
+        let px_per_sec = cw as f64 / total_duration;
         let visible_cols = main_canvas_width / zoom.max(0.001);
         let visible_time = visible_cols * time_resolution;
         let vp_x = (scroll_offset * px_per_sec).max(0.0);
         let vp_w = (visible_time * px_per_sec).max(2.0);
         ctx.set_fill_style_str("rgba(80, 180, 130, 0.12)");
-        ctx.fill_rect(vp_x, 0.0, vp_w, ch);
+        ctx.fill_rect(vp_x, 0.0, vp_w, ch as f64);
         ctx.set_stroke_style_str("rgba(80, 180, 130, 0.55)");
         ctx.set_line_width(1.0);
-        ctx.stroke_rect(vp_x, 0.0, vp_w, ch);
+        ctx.stroke_rect(vp_x, 0.0, vp_w, ch as f64);
 
         // Bookmark dots
         ctx.set_fill_style_str("rgba(255, 200, 50, 0.9)");
         for &(t,) in bookmarks {
             let x = t * px_per_sec;
-            if x >= 0.0 && x <= cw {
+            if x >= 0.0 && x <= cw as f64 {
                 ctx.begin_path();
                 let _ = ctx.arc(x, 5.0, 3.0, 0.0, std::f64::consts::TAU);
                 ctx.fill();
