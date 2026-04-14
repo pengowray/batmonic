@@ -15,11 +15,13 @@ pub fn ChromagramView() -> impl IntoView {
     let hand_drag_start = RwSignal::new((0.0f64, 0.0f64));
     let pinch_state: RwSignal<Option<crate::components::pinch::PinchState>> = RwSignal::new(None);
 
-    // Clear chromagram cache when file or range changes
+    // Clear chromagram cache when file, range, or gain changes
+    // (gain is baked into tiles at pre-render time for full dynamic range)
     Effect::new(move || {
         let _files = state.files.get();
         let _idx = state.current_file_index.get();
         let _range = state.chroma_range.get();
+        let _gain = state.chroma_gain.get();
         tile_cache::clear_chroma_cache();
     });
 
@@ -29,7 +31,7 @@ pub fn ChromagramView() -> impl IntoView {
         let scroll = state.scroll_offset.get();
         let zoom = state.zoom_level.get();
         let chroma_colormap = state.chroma_colormap.get();
-        let chroma_gain = state.chroma_gain.get();
+        let _chroma_gain = state.chroma_gain.get(); // triggers re-render after cache clear
         let chroma_gamma = state.chroma_gamma.get();
         let chroma_range = state.chroma_range.get();
         let (_min_octave, num_octaves) = chroma_range.octave_params();
@@ -79,8 +81,7 @@ pub fn ChromagramView() -> impl IntoView {
         spectrogram_renderer::blit_chromagram_tiles_viewport(
             &ctx, canvas, file_idx, total_cols,
             scroll_col, zoom, chroma_colormap,
-            chroma_gain, chroma_gamma,
-            num_octaves,
+            chroma_gamma, num_octaves,
         );
 
         // Schedule missing chromagram tiles

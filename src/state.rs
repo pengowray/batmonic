@@ -1234,7 +1234,7 @@ pub struct AppState {
     pub colormap_preference: RwSignal<Colormap>,
     // Chromagram colormap mode
     pub chroma_colormap: RwSignal<ChromaColormap>,
-    // Chromagram display: brightness multiplier (1.0 = default)
+    // Chromagram display: gain boost in dB (0 = no boost, positive = amplify)
     pub chroma_gain: RwSignal<f32>,
     // Chromagram display: gamma curve (1.0 = linear)
     pub chroma_gamma: RwSignal<f32>,
@@ -1663,7 +1663,7 @@ impl AppState {
             left_sidebar_tab: RwSignal::new(LeftSidebarTab::default()),
             colormap_preference: RwSignal::new(Colormap::Viridis),
             chroma_colormap: RwSignal::new(ChromaColormap::PitchClass),
-            chroma_gain: RwSignal::new(1.0),
+            chroma_gain: RwSignal::new(0.0),
             chroma_gamma: RwSignal::new(1.0),
             chroma_range: RwSignal::new(ChromaRange::Musical),
             hfr_colormap_preference: RwSignal::new(Colormap::Inferno),

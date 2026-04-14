@@ -231,17 +231,17 @@ pub(crate) fn SpectrogramSettingsPanel() -> impl IntoView {
                             <div class="setting-group-title">"Chromagram"</div>
                             <div class="setting-row">
                                 <span class="setting-label">{move || {
-                                    let g = state.chroma_gain.get();
-                                    if g == 1.0 { "Gain: default".to_string() }
-                                    else { format!("Gain: {:.2}x", g) }
+                                    let db = state.chroma_gain.get();
+                                    if db == 0.0 { "Gain: 0 dB".to_string() }
+                                    else { format!("Gain: {:+.0} dB", db) }
                                 }}</span>
                                 <input
                                     type="range"
                                     class="setting-range"
-                                    min="0.25"
-                                    max="4.0"
-                                    step="0.05"
-                                    prop:value=move || state.chroma_gain.get().to_string()
+                                    min="-20"
+                                    max="60"
+                                    step="1"
+                                    prop:value=move || state.chroma_gain.get().round().to_string()
                                     on:input=move |ev: web_sys::Event| {
                                         let target = ev.target().unwrap();
                                         let input: web_sys::HtmlInputElement = target.unchecked_into();
@@ -277,7 +277,7 @@ pub(crate) fn SpectrogramSettingsPanel() -> impl IntoView {
                                 <button
                                     class="setting-button"
                                     on:click=move |_| {
-                                        state.chroma_gain.set(1.0);
+                                        state.chroma_gain.set(0.0);
                                         state.chroma_gamma.set(1.0);
                                     }
                                 >"Reset"</button>

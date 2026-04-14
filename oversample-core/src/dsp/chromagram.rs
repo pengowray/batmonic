@@ -133,6 +133,9 @@ pub fn compute_chroma_max(
 ///
 /// The 2D colormap is applied during blit (not baked in), so the chromagram
 /// view can adjust color mapping without re-rendering tiles.
+/// `gain_db`: boost in decibels applied before u8 quantization (0 = no boost).
+///   Positive values amplify quiet signals; applied by lowering the effective
+///   normalisation max so that `10^(gain_db/20)` more amplitude is visible.
 pub fn pre_render_chromagram_columns(
     stft_columns: &[crate::types::SpectrogramColumn],
     freq_resolution: f64,
@@ -140,6 +143,7 @@ pub fn pre_render_chromagram_columns(
     max_note: f32,
     min_octave: usize,
     num_octaves: usize,
+    gain_db: f32,
 ) -> crate::types::PreRendered {
     use crate::types::PreRendered;
 
@@ -160,17 +164,28 @@ pub fn pre_render_chromagram_columns(
         return PreRendered { width: width as u32, height: height as u32, pixels, db_data: Vec::new(), flow_shifts: Vec::new() };
     }
 
+    // Apply gain by lowering the effective normalisation max.
+    // gain_db is in decibels; since we normalise energy (amplitude²) values,
+    // each dB of amplitude gain halves the energy divisor by 10^(dB/10).
+    let gain_factor = if gain_db.abs() > 0.01 {
+        10.0f32.powf(gain_db / 10.0) // energy-domain gain
+    } else {
+        1.0
+    };
+    let eff_max_class = max_class / gain_factor;
+    let eff_max_note = max_note / gain_factor;
+
     let max_octave = min_octave + num_octaves;
 
     // Render pixels with flow data in B channel
     for (col_idx, chroma) in chromas.iter().enumerate() {
         for pc in 0..NUM_PITCH_CLASSES {
-            let class_norm = (chroma.pitch_classes[pc] / max_class).sqrt().min(1.0);
+            let class_norm = (chroma.pitch_classes[pc] / eff_max_class).sqrt().min(1.0);
             let class_byte = (class_norm * 255.0) as u8;
 
             for oct_abs in min_octave..max_octave.min(MAX_OCTAVES) {
                 let oct_rel = oct_abs - min_octave; // relative index for row layout
-                let note_norm = (chroma.octave_detail[pc][oct_abs] / max_note).sqrt().min(1.0);
+                let note_norm = (chroma.octave_detail[pc][oct_abs] / eff_max_note).sqrt().min(1.0);
                 let note_byte = (note_norm * 255.0) as u8;
 
                 // B channel: energy flow between consecutive columns

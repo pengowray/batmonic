@@ -2074,8 +2074,8 @@ fn MainViewButton() -> impl IntoView {
                             <input
                                 type="range"
                                 class="setting-range"
-                                min="0.25" max="4.0" step="0.05"
-                                prop:value=move || state.chroma_gain.get().to_string()
+                                min="-20" max="60" step="1"
+                                prop:value=move || state.chroma_gain.get().round().to_string()
                                 on:input=move |ev: web_sys::Event| {
                                     let target = ev.target().unwrap();
                                     let input: web_sys::HtmlInputElement = target.unchecked_into();
@@ -2083,9 +2083,12 @@ fn MainViewButton() -> impl IntoView {
                                         state.chroma_gain.set(v);
                                     }
                                 }
-                                on:dblclick=move |_| state.chroma_gain.set(1.0)
+                                on:dblclick=move |_| state.chroma_gain.set(0.0)
                             />
-                            <span class="dsp-custom-value">{move || format!("{:.2}x", state.chroma_gain.get())}</span>
+                            <span class="dsp-custom-value">{move || {
+                                let db = state.chroma_gain.get();
+                                if db == 0.0 { "0 dB".to_string() } else { format!("{:+.0} dB", db) }
+                            }}</span>
                         </div>
                         <div class="dsp-custom-slider-row">
                             <span class="dsp-slider-label">"Contrast"</span>
