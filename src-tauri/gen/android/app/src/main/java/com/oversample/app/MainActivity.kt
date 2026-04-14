@@ -11,6 +11,14 @@ class MainActivity : TauriActivity() {
   private var mediaStorePlugin: MediaStorePlugin? = null
   private var geolocationPlugin: GeolocationPlugin? = null
 
+  override fun onWebViewCreate(webView: android.webkit.WebView) {
+    // Enable native pinch-to-zoom so users can zoom in to read text
+    // and always have a way to zoom back out
+    webView.settings.setSupportZoom(true)
+    webView.settings.builtInZoomControls = true
+    webView.settings.displayZoomControls = false // hide +/- buttons
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     // Register plugins before super.onCreate (which initializes the WebView)
