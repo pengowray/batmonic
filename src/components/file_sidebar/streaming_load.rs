@@ -176,7 +176,7 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
 
     // Build placeholder spectrogram metadata (tiles computed on demand)
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(1);
+    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1
@@ -470,7 +470,7 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
 
     // Build placeholder spectrogram metadata
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(1);
+    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1
@@ -852,7 +852,7 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
 
     // Build placeholder spectrogram metadata
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(1);
+    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1
@@ -1241,7 +1241,7 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
 
     // Build placeholder spectrogram metadata
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(1);
+    let fft_size: usize = state.spect_fft_mode.get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1

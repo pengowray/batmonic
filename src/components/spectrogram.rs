@@ -439,7 +439,7 @@ pub fn Spectrogram() -> impl IntoView {
                 let seg_zoom = seg_px_per_sec * seg_time_res;
 
                 let ideal_lod_for_source = crate::canvas::tile_cache::select_lod(seg_zoom);
-                let tile_source = if reassign_on && ideal_lod_for_source > 0 {
+                let tile_source = if reassign_on && ideal_lod_for_source > 1 {
                     spectrogram_renderer::TileSource::Reassigned
                 } else {
                     spectrogram_renderer::TileSource::Normal
@@ -542,7 +542,7 @@ pub fn Spectrogram() -> impl IntoView {
         } else if !flow_on && total_cols > 0 {
             // Normal or reassignment tile-based rendering
             let ideal_lod_for_source = crate::canvas::tile_cache::select_lod(zoom);
-            let tile_source = if reassign_on && ideal_lod_for_source > 0 {
+            let tile_source = if reassign_on && ideal_lod_for_source > 1 {
                 spectrogram_renderer::TileSource::Reassigned
             } else {
                 spectrogram_renderer::TileSource::Normal

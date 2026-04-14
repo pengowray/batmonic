@@ -830,7 +830,11 @@ pub fn blit_tiles_viewport(
             let doc = match web_sys::window().and_then(|w| w.document()) {
                 Some(d) => d,
                 None => {
-                    ctx.set_image_smoothing_enabled(tile_lod != vg.ideal_lod);
+                    // Enable smoothing for fallback tiles and for coarse overview LODs
+                    // (which downscale significantly and would otherwise look glittery)
+                    ctx.set_image_smoothing_enabled(
+                        tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE
+                    );
                     let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
                         &tmp,
                         coords.src_x, coords.src_y, coords.src_w, coords.src_h,
@@ -842,7 +846,9 @@ pub fn blit_tiles_viewport(
             let tc = doc.create_element("canvas").ok()
                 .and_then(|el| el.dyn_into::<HtmlCanvasElement>().ok());
             let Some(tc) = tc else {
-                ctx.set_image_smoothing_enabled(tile_lod != vg.ideal_lod);
+                ctx.set_image_smoothing_enabled(
+                    tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE
+                );
                 let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
                     &tmp,
                     coords.src_x, coords.src_y, coords.src_w, coords.src_h,
@@ -865,7 +871,11 @@ pub fn blit_tiles_viewport(
             tc
         };
 
-        ctx.set_image_smoothing_enabled(tile_lod != vg.ideal_lod);
+        // Enable smoothing for fallback tiles and for coarse overview LODs
+        // (which downscale significantly and would otherwise look glittery)
+        ctx.set_image_smoothing_enabled(
+            tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE
+        );
         let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
             &tile_canvas,
             coords.src_x, coords.src_y, coords.src_w, coords.src_h,

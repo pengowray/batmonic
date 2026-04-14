@@ -1102,8 +1102,8 @@ pub fn draw_notch_bands(
 /// Draw tile debug overlay: colored borders and LOD labels for each visible tile.
 ///
 /// Shows the ideal LOD tile grid with colors indicating which LOD is actually
-/// rendered (ideal vs fallback). Colors: LOD3 = cyan, LOD2 = green, LOD1 = blue,
-/// LOD0 = yellow, missing = red.
+/// rendered (ideal vs fallback). Colors: LOD5 = magenta, LOD4 = cyan,
+/// LOD3 = green, LOD2 = blue, LOD1 = yellow, LOD0 = orange, missing = red.
 pub fn draw_tile_debug_overlay(
     ctx: &CanvasRenderingContext2d,
     viewport_width: f64,
@@ -1155,11 +1155,13 @@ pub fn draw_tile_debug_overlay(
         let (displayed_lod, displayed_tile, lod_label, color) = if has_tile(file_idx, ideal_lod, tile_idx) {
             let label = format!("L{ideal_lod}");
             let c = match ideal_lod {
-                4 => "#f6f",
-                3 => "#0ff",
-                2 => "#0f0",
-                0 => "#ff0",
-                _ => "#48f",
+                5 => "#f6f",
+                4 => "#0ff",
+                3 => "#0f0",
+                2 => "#48f",
+                1 => "#ff0",
+                0 => "#fa0",
+                _ => "#fff",
             };
             (ideal_lod, tile_idx, label, c)
         } else if if flow_on {
@@ -1182,10 +1184,11 @@ pub fn draw_tile_debug_overlay(
                 Some((l, ft)) => {
                     let label = format!("L{l}fb");
                     let c = match l {
-                        0 => "#ff0",
-                        1 => "#48f",
-                        2 => "#0f0",
-                        3 => "#0ff",
+                        0 => "#fa0",
+                        1 => "#ff0",
+                        2 => "#48f",
+                        3 => "#0f0",
+                        4 => "#0ff",
                         _ => "#f6f",
                     };
                     (l, ft, label, c)

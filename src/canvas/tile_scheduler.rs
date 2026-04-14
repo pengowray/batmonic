@@ -85,13 +85,13 @@ pub fn schedule_normal_tiles(
     }
 
     let is_loading = state.loading_files.with_untracked(|v| !v.is_empty());
-    let use_reassign = reassign_on && ideal_lod > 0;
+    let use_reassign = reassign_on && ideal_lod > 1;
 
     let tile_order = visible_tile_order(first_tile, last_tile, viewport_center_tile);
     let mut any_missing = false;
 
     for &t in &tile_order {
-        // Schedule reassignment tiles when enabled (skip LOD0)
+        // Schedule reassignment tiles when enabled (skip coarse overview LODs 0-1)
         if use_reassign
             && tile_cache::get_reassign_tile(file_idx, ideal_lod, t).is_none() {
                 tile_cache::schedule_reassign_tile(state, file_idx, ideal_lod, t);
@@ -106,10 +106,10 @@ pub fn schedule_normal_tiles(
     }
 
     for &t in &tile_order {
-        // Also ensure a LOD1 fallback tile exists (for smooth transitions)
-        if ideal_lod != 1 {
-            let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, t, 1);
-            if tile_cache::get_tile(file_idx, 1, fb_tile).is_none()
+        // Also ensure a baseline-LOD fallback tile exists (for smooth transitions)
+        if ideal_lod != tile_cache::LOD_BASELINE {
+            let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
+            if tile_cache::get_tile(file_idx, tile_cache::LOD_BASELINE, fb_tile).is_none()
                 && !is_loading {
                     let tile_start = fb_tile * TILE_COLS;
                     let tile_end = (tile_start + TILE_COLS).min(total_cols);
@@ -125,13 +125,13 @@ pub fn schedule_normal_tiles(
         }
     }
 
-    // When ideal LOD is 1, also schedule LOD1 from store/on-demand
-    if ideal_lod == 1 && !is_loading {
-        let lod1_first = (vis_start / TILE_COLS as f64).floor() as usize;
-        let lod1_last = ((vis_end - 0.001).max(0.0) / TILE_COLS as f64).floor() as usize;
-        let lod1_center = ((vis_start + vis_end) / 2.0 / TILE_COLS as f64) as usize;
-        for t in visible_tile_order(lod1_first, lod1_last, lod1_center) {
-            if tile_cache::get_tile(file_idx, 1, t).is_none() {
+    // When ideal LOD is the baseline, also schedule from store/on-demand
+    if ideal_lod == tile_cache::LOD_BASELINE && !is_loading {
+        let bl_first = (vis_start / TILE_COLS as f64).floor() as usize;
+        let bl_last = ((vis_end - 0.001).max(0.0) / TILE_COLS as f64).floor() as usize;
+        let bl_center = ((vis_start + vis_end) / 2.0 / TILE_COLS as f64) as usize;
+        for t in visible_tile_order(bl_first, bl_last, bl_center) {
+            if tile_cache::get_tile(file_idx, tile_cache::LOD_BASELINE, t).is_none() {
                 let tile_start = t * TILE_COLS;
                 let tile_end = (tile_start + TILE_COLS).min(total_cols);
                 if spectral_store::has_store(file_idx)
@@ -195,11 +195,11 @@ pub fn schedule_flow_tiles(
             tile_cache::schedule_flow_tile(state, file_idx, ideal_lod, t, algo);
         }
 
-        // Also ensure a LOD1 fallback exists for smooth transitions
-        if ideal_lod != 1 {
-            let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, t, 1);
-            if tile_cache::get_flow_tile(file_idx, 1, fb_tile).is_none() {
-                tile_cache::schedule_flow_tile(state, file_idx, 1, fb_tile, algo);
+        // Also ensure a baseline-LOD fallback exists for smooth transitions
+        if ideal_lod != tile_cache::LOD_BASELINE {
+            let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
+            if tile_cache::get_flow_tile(file_idx, tile_cache::LOD_BASELINE, fb_tile).is_none() {
+                tile_cache::schedule_flow_tile(state, file_idx, tile_cache::LOD_BASELINE, fb_tile, algo);
             }
         }
     }

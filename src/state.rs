@@ -458,23 +458,23 @@ impl MainView {
 pub enum FftMode {
     /// Fixed FFT size at all LOD levels (128–8192).
     Single(usize),
-    /// Adaptive S: [1024, 512, 512, 256, 128]
+    /// Adaptive S: [1024, 1024, 512, 512, 256, 128]
     AdaptiveS,
-    /// Adaptive M: [1024, 1024, 512, 512, 256]
+    /// Adaptive M: [1024, 1024, 1024, 512, 512, 256]
     AdaptiveM,
-    /// Adaptive L: [2048, 2048, 1024, 512, 512]
+    /// Adaptive L: [2048, 2048, 2048, 1024, 512, 512]
     AdaptiveL,
 }
 
 impl FftMode {
-    /// Per-LOD FFT sizes for each adaptive mode. Index = LOD level (0–4).
-    const ADAPTIVE_S: [usize; 5] = [1024, 512, 512, 256, 128];
-    const ADAPTIVE_M: [usize; 5] = [1024, 1024, 512, 512, 256];
-    const ADAPTIVE_L: [usize; 5] = [2048, 2048, 1024, 512, 512];
+    /// Per-LOD FFT sizes for each adaptive mode. Index = LOD level (0–5).
+    const ADAPTIVE_S: [usize; 6] = [1024, 1024, 512, 512, 256, 128];
+    const ADAPTIVE_M: [usize; 6] = [1024, 1024, 1024, 512, 512, 256];
+    const ADAPTIVE_L: [usize; 6] = [2048, 2048, 2048, 1024, 512, 512];
 
-    /// The actual FFT size to use for a given LOD level (0–4).
+    /// The actual FFT size to use for a given LOD level (0–5).
     pub fn fft_for_lod(&self, lod: u8) -> usize {
-        let idx = (lod as usize).min(4);
+        let idx = (lod as usize).min(5);
         match self {
             FftMode::Single(sz) => *sz,
             FftMode::AdaptiveS => Self::ADAPTIVE_S[idx],

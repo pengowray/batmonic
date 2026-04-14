@@ -5,11 +5,12 @@
 //! All tiles have the same number of columns (`TILE_COLS = 256`), but different
 //! LODs cover different time ranges: (note: these change in different modes)
 //!
-//! - LOD 0: hop=2048, covers ~524K samples/tile (wide overview)
-//! - LOD 1: hop=512, covers ~131K samples/tile (normal)
-//! - LOD 2: hop=128, covers ~33K samples/tile (zoomed in)
-//! - LOD 3: hop=32, covers ~8K samples/tile (deep zoom)
-//! - LOD 4: hop=8, covers ~2K samples/tile (extreme zoom)
+//! - LOD 0: hop=8192, covers ~2M samples/tile (ultra-wide, quality downscaled)
+//! - LOD 1: hop=2048, covers ~524K samples/tile (wide overview, quality downscaled)
+//! - LOD 2: hop=512, covers ~131K samples/tile (normal — baseline)
+//! - LOD 3: hop=128, covers ~33K samples/tile (zoomed in)
+//! - LOD 4: hop=32, covers ~8K samples/tile (deep zoom)
+//! - LOD 5: hop=8, covers ~2K samples/tile (extreme zoom)
 //!
 //! Each level is 4x finer than the previous. The renderer picks the ideal LOD
 //! for the current zoom and falls back to coarser LODs when tiles aren't cached.
@@ -18,7 +19,7 @@
 //! Four independent caches with separate LRU eviction budgets:
 //! - Magnitude (512 MB) — standard STFT spectrogram tiles
 //! - Flow (120 MB) — optical-flow tiles
-//! - Reassignment (120 MB) — reassigned spectrogram tiles (LOD 1+ only)
+//! - Reassignment (120 MB) — reassigned spectrogram tiles (LOD 2+ only)
 //! - Chromagram (64 MB) — chromagram tiles
 //!
 //! Tiles are computed asynchronously via `spawn_local` with `setTimeout(0)`
@@ -166,30 +167,39 @@ pub struct LodConfig {
     pub hop_size: usize,
 }
 
-pub const NUM_LODS: usize = 5;
+pub const NUM_LODS: usize = 6;
+
+/// The LOD level used as the spatial coordinate baseline (hop=512).
+/// All scroll positions, total_cols, etc. are expressed in this LOD's column space.
+pub const LOD_BASELINE: u8 = 2;
+
+/// Hop size of the baseline LOD — used for coordinate-space calculations.
+pub const BASELINE_HOP: usize = 512;
 
 pub const LOD_CONFIGS: [LodConfig; NUM_LODS] = [
-    LodConfig { fft_size: 256, hop_size: 2048 }, // LOD 0 — wide overview
-    LodConfig { fft_size: 256, hop_size: 512 },  // LOD 1 — normal resolution
-    LodConfig { fft_size: 256, hop_size: 128 },  // LOD 2 — zoomed in
-    LodConfig { fft_size: 256, hop_size: 32 },   // LOD 3 — deep zoom
-    LodConfig { fft_size: 256, hop_size: 8 },    // LOD 4 — extreme zoom
+    LodConfig { fft_size: 256, hop_size: 8192 }, // LOD 0 — ultra-wide overview (quality downscaled)
+    LodConfig { fft_size: 256, hop_size: 2048 }, // LOD 1 — wide overview (quality downscaled)
+    LodConfig { fft_size: 256, hop_size: 512 },  // LOD 2 — normal resolution (baseline)
+    LodConfig { fft_size: 256, hop_size: 128 },  // LOD 3 — zoomed in
+    LodConfig { fft_size: 256, hop_size: 32 },   // LOD 4 — deep zoom
+    LodConfig { fft_size: 256, hop_size: 8 },    // LOD 5 — extreme zoom
 ];
 
 /// Select the ideal LOD level for the current zoom.
-/// `zoom` is pixels per LOD1 column.
+/// `zoom` is pixels per baseline (LOD2) column.
 pub fn select_lod(zoom: f64) -> u8 {
-    if zoom >= 32.0 { 4 }
-    else if zoom >= 8.0 { 3 }
-    else if zoom >= 2.0 { 2 }
-    else if zoom >= 0.5 { 1 }
+    if zoom >= 32.0 { 5 }
+    else if zoom >= 8.0 { 4 }
+    else if zoom >= 2.0 { 3 }
+    else if zoom >= 0.5 { 2 }
+    else if zoom >= 0.125 { 1 }
     else { 0 }
 }
 
-/// Ratio of LOD1 columns to LOD_L columns (how many LOD_L cols per LOD1 col).
-/// LOD0: 0.25, LOD1: 1.0, LOD2: 4.0, LOD3: 16.0, LOD4: 64.0
+/// Ratio of baseline (LOD2) columns to LOD_L columns (how many LOD_L cols per baseline col).
+/// LOD0: 0.0625, LOD1: 0.25, LOD2: 1.0, LOD3: 4.0, LOD4: 16.0, LOD5: 64.0
 pub fn lod_ratio(lod: u8) -> f64 {
-    LOD_CONFIGS[1].hop_size as f64 / LOD_CONFIGS[lod as usize].hop_size as f64
+    BASELINE_HOP as f64 / LOD_CONFIGS[lod as usize].hop_size as f64
 }
 
 /// Tile count at a given LOD for a file with `total_samples` audio samples.
@@ -221,6 +231,39 @@ pub fn fallback_tile_info(target_lod: u8, target_tile: usize, fallback_lod: u8) 
     let fb_src_end = fb_col_end - (fb_tile * TILE_COLS) as f64;
 
     (fb_tile, fb_src_start, fb_src_end)
+}
+
+/// Aggregate dense STFT columns into fewer columns by taking the max magnitude
+/// per frequency bin across each group of `factor` columns. This preserves
+/// transient peaks (like bat calls) that sparse hop sizes would miss.
+fn aggregate_columns_max(
+    cols: &[crate::types::SpectrogramColumn],
+    factor: usize,
+) -> Vec<crate::types::SpectrogramColumn> {
+    if factor <= 1 || cols.is_empty() {
+        return cols.to_vec();
+    }
+    let n_output = cols.len() / factor;
+    (0..n_output)
+        .map(|i| {
+            let group_start = i * factor;
+            let group_end = (group_start + factor).min(cols.len());
+            let group = &cols[group_start..group_end];
+            let n_bins = group[0].magnitudes.len();
+            let mut max_mags = vec![0.0f32; n_bins];
+            for col in group {
+                for (bin, &mag) in col.magnitudes.iter().enumerate().take(n_bins) {
+                    if mag > max_mags[bin] {
+                        max_mags[bin] = mag;
+                    }
+                }
+            }
+            crate::types::SpectrogramColumn {
+                magnitudes: max_mags,
+                time_offset: group[0].time_offset,
+            }
+        })
+        .collect()
 }
 
 // ── Cache data structures ────────────────────────────────────────────────────
@@ -456,7 +499,7 @@ thread_local! {
         RefCell::new(HashMap::new());
     static REASSIGN_CACHE_GENERATION: RefCell<u64> = const { RefCell::new(0) };
 
-    /// Chromagram tile cache (LOD1-only).
+    /// Chromagram tile cache (baseline-LOD only).
     static CHROMA_CACHE: RefCell<ChromaTileCache> = RefCell::new(ChromaTileCache::new(CHROMA_MAX_BYTES));
     static CHROMA_IN_FLIGHT: RefCell<HashMap<ChromaKey, f64>> =
         RefCell::new(HashMap::new());
@@ -716,8 +759,8 @@ fn reassign_request_still_active(key: &CacheKey) -> bool {
     REASSIGN_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), key))
 }
 
-fn active_lod1_fft(state: AppState) -> usize {
-    state.spect_fft_mode.get_untracked().fft_for_lod(1)
+fn active_baseline_fft(state: AppState) -> usize {
+    state.spect_fft_mode.get_untracked().fft_for_lod(LOD_BASELINE)
 }
 
 fn spectrogram_fft_size(data: &crate::types::SpectrogramData) -> Option<usize> {
@@ -730,11 +773,11 @@ fn spectrogram_fft_size(data: &crate::types::SpectrogramData) -> Option<usize> {
     None
 }
 
-/// Returns the number of complete LOD1 tiles for a file currently in the cache.
+/// Returns the number of complete baseline-LOD tiles for a file currently in the cache.
 pub fn tiles_ready(file_idx: usize, n_tiles: usize) -> usize {
     CACHE.with(|c| {
         let cache = c.borrow();
-        (0..n_tiles).filter(|&i| cache.tiles.contains_key(&(file_idx, 1, i))).count()
+        (0..n_tiles).filter(|&i| cache.tiles.contains_key(&(file_idx, LOD_BASELINE, i))).count()
     })
 }
 
@@ -776,8 +819,8 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
             return;
         }
 
-        // Extra yields for expensive LODs (LOD2, LOD3) and non-current files
-        if lod >= 2 {
+        // Extra yields for expensive LODs (LOD3+) and non-current files
+        if lod >= 3 {
             yield_to_browser().await;
             if !magnitude_request_still_active(&key) {
                 return;
@@ -864,7 +907,18 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
             (samples, audio.sample_rate)
         };
 
-        let cols = compute_stft_columns(&samples, effective_rate, actual_fft, config_hop, 0, TILE_COLS);
+        // For coarse LODs (hop > baseline), use quality downscaling:
+        // compute STFT at baseline resolution and aggregate via per-bin max.
+        let cols = if config_hop > BASELINE_HOP {
+            let oversample = config_hop / BASELINE_HOP;
+            let compute_fft = fft_mode.fft_for_lod(LOD_BASELINE);
+            let dense_cols = compute_stft_columns(
+                &samples, effective_rate, compute_fft, BASELINE_HOP, 0, TILE_COLS * oversample,
+            );
+            aggregate_columns_max(&dense_cols, oversample)
+        } else {
+            compute_stft_columns(&samples, effective_rate, actual_fft, config_hop, 0, TILE_COLS)
+        };
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
 
         // Discard result if the cache was cleared while we were computing
@@ -888,18 +942,18 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
     });
 }
 
-// ── LOD 1-specific scheduling (from in-memory columns / spectral store) ─────
+// ── Baseline-LOD scheduling (from in-memory columns / spectral store) ───────
 
-/// Schedule generation of a LOD1 tile from in-memory spectrogram columns.
+/// Schedule generation of a baseline-LOD tile from in-memory spectrogram columns.
 /// Used during initial file loading when LoadedFile.spectrogram.columns is available.
 pub fn schedule_tile(state: AppState, file: LoadedFile, file_idx: usize, tile_idx: usize) {
-    let expected_fft = active_lod1_fft(state);
+    let expected_fft = active_baseline_fft(state);
     if spectrogram_fft_size(&file.spectrogram) != Some(expected_fft) {
         schedule_tile_on_demand(state, file_idx, tile_idx);
         return;
     }
 
-    let key: CacheKey = (file_idx, 1, tile_idx);
+    let key: CacheKey = (file_idx, LOD_BASELINE, tile_idx);
     if CACHE.with(|c| c.borrow().tiles.contains_key(&key)) { return; }
     if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
@@ -949,13 +1003,13 @@ pub fn schedule_tile(state: AppState, file: LoadedFile, file_idx: usize, tile_id
             return;
         }
 
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
+        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
         state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
     });
 }
 
-/// Schedule generation of all LOD1 tiles for a file (called after file load).
+/// Schedule generation of all baseline-LOD tiles for a file (called after file load).
 pub fn schedule_all_tiles(state: AppState, file: LoadedFile, file_idx: usize) {
     let total_cols = if file.spectrogram.total_columns > 0 {
         file.spectrogram.total_columns
@@ -974,11 +1028,11 @@ pub fn schedule_all_tiles(state: AppState, file: LoadedFile, file_idx: usize) {
     }
 }
 
-/// Render a LOD1 tile synchronously from the spectral column store.
+/// Render a baseline-LOD tile synchronously from the spectral column store.
 pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize, expected_fft: usize) -> bool {
     use crate::canvas::spectral_store;
 
-    let key: CacheKey = (file_idx, 1, tile_idx);
+    let key: CacheKey = (file_idx, LOD_BASELINE, tile_idx);
     if CACHE.with(|c| c.borrow().tiles.contains_key(&key)) { return true; }
     if !spectral_store::fft_matches(file_idx, expected_fft) { return false; }
 
@@ -990,14 +1044,14 @@ pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize, expected_ff
     });
 
     if let Some(rendered) = rendered {
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
+        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
         true
     } else {
         false
     }
 }
 
-/// Render a partial (live) LOD1 tile from the spectral store.
+/// Render a partial (live) baseline-LOD tile from the spectral store.
 pub fn render_live_tile_sync(file_idx: usize, tile_idx: usize, col_start: usize, available_cols: usize, expected_fft: usize) -> bool {
     use crate::canvas::spectral_store;
 
@@ -1062,24 +1116,24 @@ pub fn render_live_tile_sync(file_idx: usize, tile_idx: usize, col_start: usize,
     });
 
     if let Some(rendered) = rendered {
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
+        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
         true
     } else {
         false
     }
 }
 
-/// Schedule LOD1 tile generation from the spectral column store.
+/// Schedule baseline-LOD tile generation from the spectral column store.
 pub fn schedule_tile_from_store(state: AppState, file_idx: usize, tile_idx: usize) {
     use crate::canvas::spectral_store;
 
-    let expected_fft = active_lod1_fft(state);
+    let expected_fft = active_baseline_fft(state);
     if !spectral_store::fft_matches(file_idx, expected_fft) {
         schedule_tile_on_demand(state, file_idx, tile_idx);
         return;
     }
 
-    let key: CacheKey = (file_idx, 1, tile_idx);
+    let key: CacheKey = (file_idx, LOD_BASELINE, tile_idx);
     if CACHE.with(|c| c.borrow().tiles.contains_key(&key)) { return; }
     if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
     if at_spawn_limit() { return; }
@@ -1135,14 +1189,14 @@ pub fn schedule_tile_from_store(state: AppState, file_idx: usize, tile_idx: usiz
         }
 
         if let Some(rendered) = rendered {
-            CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
+            CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
         }
         // Always bump signal so render effect retries even if store had no data
         state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
     });
 }
 
-/// Schedule visible LOD1 tiles from the spectral store.
+/// Schedule visible baseline-LOD tiles from the spectral store.
 pub fn schedule_visible_tiles_from_store(state: AppState, file_idx: usize, total_cols: usize) {
     if total_cols == 0 { return; }
     let n_tiles = total_cols.div_ceil(TILE_COLS);
@@ -1236,13 +1290,13 @@ pub fn schedule_prefetch_tiles(
             schedule_flow_tile(state, file_idx, lod, t, algo);
         }
 
-        if reassign && lod > 0 {
+        if reassign && lod > 1 {
             schedule_reassign_tile(state, file_idx, lod, t);
         }
     }
 }
 
-/// Schedule LOD1 on-demand tile computation from audio samples.
+/// Schedule baseline-LOD on-demand tile computation from audio samples.
 pub fn schedule_tile_on_demand(
     state: AppState,
     file_idx: usize,
@@ -1251,7 +1305,7 @@ pub fn schedule_tile_on_demand(
     use crate::canvas::spectral_store;
     use crate::dsp::fft::compute_stft_columns;
 
-    let key: CacheKey = (file_idx, 1, tile_idx);
+    let key: CacheKey = (file_idx, LOD_BASELINE, tile_idx);
     if CACHE.with(|c| c.borrow().tiles.contains_key(&key)) { return; }
     if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
     if at_spawn_limit() { return; }
@@ -1260,7 +1314,7 @@ pub fn schedule_tile_on_demand(
     let total_samples = state.files.with_untracked(|files| {
         files.get(file_idx).map(|f| f.audio.source.total_samples() as usize).unwrap_or(0)
     });
-    let max_tiles = tile_count_for_samples(total_samples, 1);
+    let max_tiles = tile_count_for_samples(total_samples, LOD_BASELINE);
     if tile_idx >= max_tiles { return; }
 
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
@@ -1300,8 +1354,8 @@ pub fn schedule_tile_on_demand(
 
         let cv = state.channel_view.get_untracked();
         let col_start = tile_idx * TILE_COLS;
-        let hop_size = 512usize;
-        let fft_size = state.spect_fft_mode.get_untracked().fft_for_lod(1);
+        let hop_size = BASELINE_HOP;
+        let fft_size = state.spect_fft_mode.get_untracked().fft_for_lod(LOD_BASELINE);
 
         // Read only the sample region needed for this tile
         let sample_start = col_start * hop_size;
@@ -1341,13 +1395,13 @@ pub fn schedule_tile_on_demand(
             return;
         }
 
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, 1, tile_idx, rendered));
+        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
         state.tile_ready_signal.update(|n| *n = n.wrapping_add(1));
     });
 }
 
-// ── Flow tile cache (LOD1-only) ──────────────────────────────────────────────
+// ── Flow tile cache ─────────────────────────────────────────────────────────
 
 pub fn get_flow_tile(file_idx: usize, lod: u8, tile_idx: usize) -> Option<()> {
     FLOW_CACHE.with(|c| c.borrow().get(file_idx, lod, tile_idx).map(|_| ()))
@@ -1420,8 +1474,8 @@ pub fn schedule_flow_tile(
             return;
         }
 
-        // Extra yields for expensive LODs and non-current files
-        if lod >= 2 {
+        // Extra yields for expensive LODs (LOD3+) and non-current files
+        if lod >= 3 {
             yield_to_browser().await;
             if !flow_request_still_active(&key) {
                 return;
@@ -1618,8 +1672,8 @@ pub fn schedule_reassign_tile(
             return;
         }
 
-        // Extra yields: 3x FFT cost + expensive LODs
-        if lod >= 2 {
+        // Extra yields: 3x FFT cost + expensive LODs (LOD3+)
+        if lod >= 3 {
             yield_to_browser().await;
             if !reassign_request_still_active(&key) {
                 return;
@@ -1693,7 +1747,7 @@ pub fn schedule_reassign_tile(
     });
 }
 
-// ── Chromagram tile cache (LOD1-only) ────────────────────────────────────────
+// ── Chromagram tile cache (baseline-LOD only) ───────────────────────────────
 
 pub fn get_chroma_tile(file_idx: usize, tile_idx: usize) -> Option<()> {
     CHROMA_CACHE.with(|c| c.borrow().get(file_idx, tile_idx).map(|_| ()))
@@ -1726,7 +1780,7 @@ pub fn clear_chroma_cache() {
     CHROMA_GLOBAL_MAX.with(|m| m.borrow_mut().clear());
 }
 
-/// Schedule a chromagram tile for background generation (LOD1).
+/// Schedule a chromagram tile for background generation (baseline LOD).
 pub fn schedule_chroma_tile(
     state: AppState,
     file_idx: usize,
@@ -1797,8 +1851,8 @@ pub fn schedule_chroma_tile(
             };
 
             let cv = state.channel_view.get_untracked();
-            let hop_size = 512usize;
-            let fft_size = active_lod1_fft(state);
+            let hop_size = BASELINE_HOP;
+            let fft_size = active_baseline_fft(state);
             let sample_start = col_start * hop_size;
             let sample_len = TILE_COLS * hop_size + fft_size;
 
