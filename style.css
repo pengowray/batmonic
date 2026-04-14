@@ -64,8 +64,8 @@ html, body {
     z-index: 100;
     width: 28px;
     height: 32px;
-    background: #222;
-    border: 1px solid #333;
+    background: #282828;
+    border: 1px solid #444;
     border-radius: 4px;
 }
 
@@ -3361,9 +3361,9 @@ body.sidebar-resizing {
     width: 28px;
     height: 32px;
     background: #1a1a1a;
-    border: 1px solid #333;
+    border: 1px solid #2a2a2a;
     border-radius: 4px;
-    color: #777;
+    color: #555;
     font-size: 14px;
     cursor: pointer;
     display: flex;
@@ -3374,8 +3374,9 @@ body.sidebar-resizing {
 }
 
 .toolbar-overflow-btn:hover {
-    color: #ddd;
-    background: #282828;
+    color: #bbb;
+    background: #252525;
+    border-color: #444;
 }
 
 .toolbar-overflow-backdrop {
@@ -3861,8 +3862,8 @@ body.sidebar-resizing {
     z-index: 100;
     width: 28px;
     height: 32px;
-    background: #222;
-    border: 1px solid #333;
+    background: #282828;
+    border: 1px solid #444;
     border-radius: 4px;
 }
 
