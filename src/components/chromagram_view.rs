@@ -381,13 +381,16 @@ pub fn ChromagramView() -> impl IntoView {
 
     view! {
         <div class="spectrogram-container"
-            style=move || match state.canvas_tool.get() {
-                CanvasTool::Hand => if state.is_dragging.get() {
-                    "cursor: grabbing; touch-action: none;"
-                } else {
-                    "cursor: grab; touch-action: none;"
-                },
-                CanvasTool::Selection => "cursor: crosshair; touch-action: none;",
+            style=move || {
+                let ta = if state.viewport_zoomed.get() { "pinch-zoom" } else { "none" };
+                match state.canvas_tool.get() {
+                    CanvasTool::Hand => if state.is_dragging.get() {
+                        format!("cursor: grabbing; touch-action: {ta};")
+                    } else {
+                        format!("cursor: grab; touch-action: {ta};")
+                    },
+                    CanvasTool::Selection => format!("cursor: crosshair; touch-action: {ta};"),
+                }
             }
         >
             <canvas

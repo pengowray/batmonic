@@ -1230,12 +1230,14 @@ pub fn Spectrogram() -> impl IntoView {
     view! {
         <div class="spectrogram-container"
             style=move || {
+                // When viewport is pinch-zoomed, allow native pinch so user can zoom back out
+                let ta = if state.viewport_zoomed.get() { "pinch-zoom" } else { "none" };
                 if state.axis_drag_start_freq.get().is_some() || state.mouse_in_label_area.get()
                     || state.mouse_in_time_axis.get() {
-                    return "cursor: cell; touch-action: none;".to_string();
+                    return format!("cursor: cell; touch-action: {ta};");
                 }
                 if state.spec_drag_handle.get().is_some() {
-                    return "cursor: ns-resize; touch-action: none;".to_string();
+                    return format!("cursor: ns-resize; touch-action: {ta};");
                 }
                 if let Some(handle) = state.spec_hover_handle.get() {
                     let is_ff = matches!(handle, SpectrogramHandle::FfUpper | SpectrogramHandle::FfLower | SpectrogramHandle::FfMiddle);
@@ -1243,7 +1245,7 @@ pub fn Spectrogram() -> impl IntoView {
                         state.mouse_canvas_x.get(),
                         state.spectrogram_canvas_width.get(),
                     ) {
-                        return "cursor: ns-resize; touch-action: none;".to_string();
+                        return format!("cursor: ns-resize; touch-action: {ta};");
                     }
                 }
                 // Annotation resize handle cursor
@@ -1255,19 +1257,19 @@ pub fn Spectrogram() -> impl IntoView {
                         Top | Bottom => "ns-resize",
                         Left | Right => "ew-resize",
                     };
-                    return format!("cursor: {}; touch-action: none;", cursor);
+                    return format!("cursor: {cursor}; touch-action: {ta};");
                 }
                 // Annotation drag in progress
                 if state.annotation_drag_handle.get().is_some() {
-                    return "cursor: move; touch-action: none;".to_string();
+                    return format!("cursor: move; touch-action: {ta};");
                 }
                 match state.canvas_tool.get() {
                     CanvasTool::Hand => if state.is_dragging.get() {
-                        "cursor: grabbing; touch-action: none;".to_string()
+                        format!("cursor: grabbing; touch-action: {ta};")
                     } else {
-                        "cursor: grab; touch-action: none;".to_string()
+                        format!("cursor: grab; touch-action: {ta};")
                     },
-                    CanvasTool::Selection => "cursor: crosshair; touch-action: none;".to_string(),
+                    CanvasTool::Selection => format!("cursor: crosshair; touch-action: {ta};"),
                 }
             }
         >

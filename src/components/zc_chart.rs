@@ -781,9 +781,11 @@ pub fn ZcDotChart() -> impl IntoView {
     view! {
         <div class="waveform-container"
             style=move || {
+                // When viewport is pinch-zoomed, allow native pinch so user can zoom back out
+                let ta = if state.viewport_zoomed.get() { "pinch-zoom" } else { "none" };
                 // Handle hover: show resize cursor only when over the drag zone
                 if state.spec_drag_handle.get().is_some() {
-                    return "cursor: ns-resize; touch-action: none;";
+                    return format!("cursor: ns-resize; touch-action: {ta};");
                 }
                 if let Some(handle) = state.spec_hover_handle.get() {
                     let is_ff = matches!(handle, SpectrogramHandle::FfUpper | SpectrogramHandle::FfLower | SpectrogramHandle::FfMiddle);
@@ -791,16 +793,16 @@ pub fn ZcDotChart() -> impl IntoView {
                         state.mouse_canvas_x.get(),
                         state.spectrogram_canvas_width.get(),
                     ) {
-                        return "cursor: ns-resize; touch-action: none;";
+                        return format!("cursor: ns-resize; touch-action: {ta};");
                     }
                 }
                 match state.canvas_tool.get() {
                     CanvasTool::Hand => if state.is_dragging.get() {
-                        "cursor: grabbing; touch-action: none;"
+                        format!("cursor: grabbing; touch-action: {ta};")
                     } else {
-                        "cursor: grab; touch-action: none;"
+                        format!("cursor: grab; touch-action: {ta};")
                     },
-                    CanvasTool::Selection => "cursor: crosshair; touch-action: none;",
+                    CanvasTool::Selection => format!("cursor: crosshair; touch-action: {ta};"),
                 }
             }
         >

@@ -1083,7 +1083,10 @@ pub fn OverviewPanel() -> impl IntoView {
                 on:touchstart=on_touchstart
                 on:touchmove=on_touchmove
                 on:touchend=on_touchend
-                style="position: absolute; top: 0; left: 0; cursor: crosshair; touch-action: none;"
+                style=move || {
+                    let ta = if state.viewport_zoomed.get() { "pinch-zoom" } else { "none" };
+                    format!("position: absolute; top: 0; left: 0; cursor: crosshair; touch-action: {ta};")
+                }
             />
 
             // DOM playhead dot overlay — decoupled from heavy canvas redraws

@@ -5214,3 +5214,10 @@ body.sidebar-resizing {
 .zoom-out-btn svg {
     pointer-events: none;
 }
+
+/* When viewport is pinch-zoomed, allow native pinch on elements with static
+   touch-action: none so the user can zoom back out */
+body.viewport-zoomed .overview-strip,
+body.viewport-zoomed .bottom-toolbar-drag-handle {
+    touch-action: pinch-zoom !important;
+}

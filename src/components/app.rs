@@ -1000,6 +1000,14 @@ pub fn App() -> impl IntoView {
             .map(|s| s > 1.05)
             .unwrap_or(false);
             state_vp.viewport_zoomed.set(zoomed);
+            // Toggle body class so CSS can override touch-action on canvas areas
+            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+                if zoomed {
+                    let _ = body.class_list().add_1("viewport-zoomed");
+                } else {
+                    let _ = body.class_list().remove_1("viewport-zoomed");
+                }
+            }
         });
         let window = web_sys::window().unwrap();
         if let Ok(vv) = js_sys::Reflect::get(
