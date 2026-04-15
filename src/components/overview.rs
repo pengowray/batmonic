@@ -997,8 +997,8 @@ pub fn OverviewPanel() -> impl IntoView {
 
     let on_wheel = move |ev: web_sys::WheelEvent| {
         ev.prevent_default();
+        let raw_delta = ev.delta_y() + ev.delta_x();
         let total_duration = file_duration();
-        let delta = (ev.delta_y() + ev.delta_x()) * 0.0003 * total_duration.max(1.0);
         let visible_time = {
             let files = state.files.get_untracked();
             let idx = state.current_file_index.get_untracked();
@@ -1008,6 +1008,7 @@ pub fn OverviewPanel() -> impl IntoView {
                 (canvas_w / zoom) * f.spectrogram.time_resolution
             }).unwrap_or(0.0)
         };
+        let delta = raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
         state.suspend_follow();
         let max_scroll = (total_duration - visible_time).max(0.0);
         state.scroll_offset.update(|s| *s = (*s + delta).clamp(0.0, max_scroll));

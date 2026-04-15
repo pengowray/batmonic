@@ -430,22 +430,17 @@ pub fn ZcDotChart() -> impl IntoView {
             let delta = if ev.delta_y() > 0.0 { 0.9 } else { 1.1 };
             state.zoom_level.update(|z| *z = (*z * delta).clamp(0.02, 100.0));
         } else {
-            let delta = (ev.delta_y() + ev.delta_x()) * 0.001;
-            let visible_time = {
-                let files = state.files.get_untracked();
-                let idx = state.current_file_index.get_untracked().unwrap_or(0);
-                if let Some(file) = files.get(idx) {
-                    let zoom = state.zoom_level.get_untracked();
-                    let canvas_w = state.spectrogram_canvas_width.get_untracked();
-                    viewport::visible_time(canvas_w, zoom, file.spectrogram.time_resolution)
-                } else {
-                    0.0
-                }
+            let raw_delta = ev.delta_y() + ev.delta_x();
+            let files = state.files.get_untracked();
+            let idx = state.current_file_index.get_untracked().unwrap_or(0);
+            let (visible_time, duration) = if let Some(file) = files.get(idx) {
+                let zoom = state.zoom_level.get_untracked();
+                let canvas_w = state.spectrogram_canvas_width.get_untracked();
+                (viewport::visible_time(canvas_w, zoom, file.spectrogram.time_resolution), file.audio.duration_secs)
+            } else {
+                return;
             };
-            let duration = state.files.get_untracked()
-                .get(state.current_file_index.get_untracked().unwrap_or(0))
-                .map(|f| f.audio.duration_secs)
-                .unwrap_or(0.0);
+            let delta = raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
             let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
             state.suspend_follow();
             state.scroll_offset.update(|s| *s = viewport::clamp_scroll_for_mode(*s + delta, duration, visible_time, from_here_mode));
