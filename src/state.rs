@@ -377,6 +377,42 @@ pub enum RecordMode {
     ListenOnly,  // grey out record, user can only listen
 }
 
+/// Waveform sub-view mode.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum WaveformView {
+    /// Plain waveform (green).
+    #[default]
+    Simple,
+    /// Full waveform behind + selected frequency band in blue overlay.
+    Frequency,
+    /// Three stacked channels: above, selected, below frequency bands.
+    Triple,
+}
+
+impl WaveformView {
+    pub const ALL: [WaveformView; 3] = [
+        WaveformView::Simple,
+        WaveformView::Frequency,
+        WaveformView::Triple,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            WaveformView::Simple => "Simple",
+            WaveformView::Frequency => "Frequency",
+            WaveformView::Triple => "Triple",
+        }
+    }
+
+    pub fn short_label(self) -> &'static str {
+        match self {
+            WaveformView::Simple => "Simple",
+            WaveformView::Frequency => "Freq",
+            WaveformView::Triple => "Triple",
+        }
+    }
+}
+
 /// Active interaction tool for the main spectrogram canvas.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum CanvasTool {
@@ -1022,6 +1058,9 @@ pub struct AppState {
     // HFR (High Frequency Range) mode
     pub hfr_enabled: RwSignal<bool>,
 
+    // Waveform sub-view mode
+    pub waveform_view: RwSignal<WaveformView>,
+
     // Bandpass
     pub bandpass_mode: RwSignal<BandpassMode>,
     pub bandpass_range: RwSignal<BandpassRange>,
@@ -1544,6 +1583,7 @@ impl AppState {
             // New
             canvas_tool: RwSignal::new(CanvasTool::Hand),
             hfr_enabled: RwSignal::new(false),
+            waveform_view: RwSignal::new(WaveformView::Simple),
             bandpass_mode: RwSignal::new(BandpassMode::Auto),
             bandpass_range: RwSignal::new(BandpassRange::FollowFocus),
             overview_view: RwSignal::new(OverviewView::Waveform),

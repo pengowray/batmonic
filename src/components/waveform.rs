@@ -4,7 +4,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::waveform_renderer;
 use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast, cascaded_lowpass};
 use crate::dsp::zc_divide::zc_rate_per_bin;
-use crate::state::{AppState, CanvasTool, FilterQuality, PlaybackMode};
+use crate::state::{AppState, CanvasTool, FilterQuality, PlaybackMode, WaveformView};
 use crate::audio::source::ChannelView;
 use crate::viewport;
 
@@ -79,6 +79,36 @@ pub fn Waveform() -> impl IntoView {
         })
     });
 
+    // Band-split samples for Frequency and Triple waveform views.
+    // Returns (below, selected, above) bands using cascaded lowpass splitting.
+    let band_split = Memo::new(move |_| {
+        let wv = state.waveform_view.get();
+        if wv == WaveformView::Simple { return None; }
+        let files = state.files.get();
+        let idx = state.current_file_index.get();
+        let cv = state.channel_view.get();
+        let freq_low = state.filter_freq_low.get();
+        let freq_high = state.filter_freq_high.get();
+
+        idx.and_then(|i| files.get(i).cloned()).map(|file| {
+            let sr = file.audio.sample_rate;
+            let ch_samples = match cv {
+                ChannelView::MonoMix => std::borrow::Cow::Borrowed(file.audio.samples.as_slice()),
+                _ => std::borrow::Cow::Owned(file.audio.source.read_region(cv, 0, file.audio.source.total_samples() as usize)),
+            };
+
+            // Split at freq_low: below vs rest
+            let lp_low = cascaded_lowpass(&ch_samples, freq_low, sr, 4);
+            let hp_low: Vec<f32> = ch_samples.iter().zip(lp_low.iter()).map(|(s, l)| s - l).collect();
+
+            // Split rest at freq_high: selected vs above
+            let lp_high = cascaded_lowpass(&hp_low, freq_high, sr, 4);
+            let above: Vec<f32> = hp_low.iter().zip(lp_high.iter()).map(|(s, l)| s - l).collect();
+
+            (lp_low, lp_high, above)
+        })
+    });
+
     Effect::new(move || {
         let scroll = state.scroll_offset.get();
         let zoom = state.zoom_level.get();
@@ -91,6 +121,7 @@ pub fn Waveform() -> impl IntoView {
         let idx = state.current_file_index.get();
         let mode = state.playback_mode.get();
         let hfr = state.hfr_enabled.get();
+        let waveform_view = state.waveform_view.get();
         let is_playing = state.is_playing.get();
         let canvas_tool = state.canvas_tool.get();
         let cv = state.channel_view.get();
@@ -319,20 +350,91 @@ pub fn Waveform() -> impl IntoView {
                     );
                 }
             } else {
-                waveform_renderer::draw_waveform(
-                    &ctx,
-                    &waveform_buf,
-                    sr,
-                    buf_scroll,
-                    zoom,
-                    file.spectrogram.time_resolution,
-                    display_w as f64,
-                    display_h as f64,
-                    sel_time,
-                    gain_db,
-                    buf_duration,
-                    region_start,
-                );
+                // Helper to window a full-file band buffer to the visible region
+                let window_band = |full: &[f32]| -> Vec<f32> {
+                    if region_start < full.len() {
+                        let end = (region_start + region_len).min(full.len());
+                        full[region_start..end].to_vec()
+                    } else {
+                        Vec::new()
+                    }
+                };
+
+                match waveform_view {
+                    WaveformView::Simple => {
+                        waveform_renderer::draw_waveform(
+                            &ctx,
+                            &waveform_buf,
+                            sr,
+                            buf_scroll,
+                            zoom,
+                            file.spectrogram.time_resolution,
+                            display_w as f64,
+                            display_h as f64,
+                            sel_time,
+                            gain_db,
+                            buf_duration,
+                            region_start,
+                        );
+                    }
+                    WaveformView::Frequency => {
+                        if let Some((ref _below, ref selected, ref _above)) = band_split.get().as_ref() {
+                            let selected_region = window_band(selected);
+                            waveform_renderer::draw_waveform_freq(
+                                &ctx,
+                                &waveform_buf,
+                                &selected_region,
+                                sr,
+                                buf_scroll,
+                                zoom,
+                                file.spectrogram.time_resolution,
+                                display_w as f64,
+                                display_h as f64,
+                                sel_time,
+                                gain_db,
+                                buf_duration,
+                                region_start,
+                            );
+                        } else {
+                            waveform_renderer::draw_waveform(
+                                &ctx, &waveform_buf, sr, buf_scroll, zoom,
+                                file.spectrogram.time_resolution,
+                                display_w as f64, display_h as f64,
+                                sel_time, gain_db, buf_duration, region_start,
+                            );
+                        }
+                    }
+                    WaveformView::Triple => {
+                        if let Some((ref below, ref selected, ref above)) = band_split.get().as_ref() {
+                            let below_region = window_band(below);
+                            let selected_region = window_band(selected);
+                            let above_region = window_band(above);
+                            waveform_renderer::draw_waveform_triple(
+                                &ctx,
+                                &below_region,
+                                &selected_region,
+                                &above_region,
+                                sr,
+                                buf_scroll,
+                                zoom,
+                                file.spectrogram.time_resolution,
+                                display_w as f64,
+                                display_h as f64,
+                                sel_time,
+                                gain_db,
+                                buf_duration,
+                                region_start,
+                            );
+                        } else {
+                            waveform_renderer::draw_waveform(
+                                &ctx, &waveform_buf, sr, buf_scroll, zoom,
+                                file.spectrogram.time_resolution,
+                                display_w as f64, display_h as f64,
+                                sel_time, gain_db, buf_duration, region_start,
+                            );
+                        }
+                    }
+                }
             }
 
             // Time markers along the bottom edge (use absolute scroll / waterfall
@@ -685,6 +787,27 @@ pub fn Waveform() -> impl IntoView {
                 on:touchmove=on_touchmove
                 on:touchend=on_touchend
             />
+            // Waveform view mode selector (top-right overlay)
+            <select
+                class="waveform-view-select"
+                style="position:absolute; top:4px; right:4px; pointer-events:auto; font-size:11px; padding:2px 4px; background:#222; color:#aaa; border:1px solid #444; border-radius:3px; cursor:pointer; opacity:0.7; z-index:2;"
+                style:display=move || if state.clean_view.get() { "none" } else { "" }
+                on:change=move |ev: web_sys::Event| {
+                    let target = ev.target().unwrap();
+                    let select: web_sys::HtmlSelectElement = target.unchecked_into();
+                    let val = select.value();
+                    let wv = match val.as_str() {
+                        "freq" => WaveformView::Frequency,
+                        "triple" => WaveformView::Triple,
+                        _ => WaveformView::Simple,
+                    };
+                    state.waveform_view.set(wv);
+                }
+            >
+                <option value="simple" selected=move || state.waveform_view.get() == WaveformView::Simple>"Simple"</option>
+                <option value="freq" selected=move || state.waveform_view.get() == WaveformView::Frequency>"Frequency"</option>
+                <option value="triple" selected=move || state.waveform_view.get() == WaveformView::Triple>"Triple"</option>
+            </select>
             // DOM playhead overlay — decoupled from heavy canvas redraws
             <div
                 class="playhead-line"

@@ -226,6 +226,185 @@ pub fn draw_waveform_hfr(
     }
 }
 
+/// Draw a waveform layer into a vertical sub-region of the canvas.
+/// `y_offset` and `lane_height` define the vertical band to render into.
+fn draw_waveform_layer_lane(
+    ctx: &CanvasRenderingContext2d,
+    samples: &[f32],
+    sample_rate: u32,
+    vp: &WaveViewport,
+    canvas_width: f64,
+    color: &str,
+    gain_linear: f64,
+    y_offset: f64,
+    lane_height: f64,
+) {
+    if vp.data_width <= 0.0 || vp.px_per_sec <= 0.0 || vp.samples_per_pixel <= 0.0 || lane_height <= 0.0 {
+        return;
+    }
+
+    ctx.set_stroke_style_str(color);
+    ctx.set_line_width(1.0);
+
+    let mid_y = y_offset + lane_height / 2.0;
+    let half_h = lane_height / 2.0;
+    let off = vp.region_start_sample;
+    let px_start = vp.data_x.floor().max(0.0) as usize;
+    let px_end = (vp.data_x + vp.data_width).ceil().min(canvas_width).max(vp.data_x) as usize;
+
+    if vp.samples_per_pixel <= 2.0 {
+        ctx.begin_path();
+        let mut first = true;
+        for px in px_start..px_end {
+            let x = px as f64;
+            let t = vp.start_time + ((x - vp.data_x) / vp.px_per_sec);
+            let abs_idx = (t * sample_rate as f64) as usize;
+            if abs_idx < off { continue; }
+            let idx = abs_idx - off;
+            if idx >= samples.len() { break; }
+            let y = mid_y - (samples[idx] as f64 * gain_linear * half_h * 0.9);
+            if first { ctx.move_to(x, y); first = false; } else { ctx.line_to(x, y); }
+        }
+        ctx.stroke();
+    } else {
+        ctx.begin_path();
+        for px in px_start..px_end {
+            let x = px as f64;
+            let t0 = vp.start_time + ((x - vp.data_x) / vp.px_per_sec);
+            let t1 = vp.start_time + ((x + 1.0 - vp.data_x) / vp.px_per_sec);
+            let abs_i0 = (t0 * sample_rate as f64) as usize;
+            let abs_i1 = (t1 * sample_rate as f64) as usize;
+            if abs_i1 <= off { continue; }
+            let i0 = abs_i0.saturating_sub(off).min(samples.len());
+            let i1 = abs_i1.saturating_sub(off).min(samples.len());
+            if i0 >= i1 || i0 >= samples.len() { continue; }
+
+            let mut min_val = f32::MAX;
+            let mut max_val = f32::MIN;
+            for &s in &samples[i0..i1] {
+                if s < min_val { min_val = s; }
+                if s > max_val { max_val = s; }
+            }
+
+            let y_min = mid_y - (max_val as f64 * gain_linear * half_h * 0.9);
+            let y_max = mid_y - (min_val as f64 * gain_linear * half_h * 0.9);
+            ctx.move_to(x, y_min);
+            ctx.line_to(x, y_max);
+        }
+        ctx.stroke();
+    }
+}
+
+/// Draw frequency overlay waveform: full waveform in dim green behind,
+/// selected frequency band in semi-transparent blue on top.
+pub fn draw_waveform_freq(
+    ctx: &CanvasRenderingContext2d,
+    samples: &[f32],
+    filtered_samples: &[f32],
+    sample_rate: u32,
+    scroll_offset: f64,
+    zoom: f64,
+    time_resolution: f64,
+    canvas_width: f64,
+    canvas_height: f64,
+    selection: Option<(f64, f64)>,
+    gain_db: f64,
+    total_duration: f64,
+    region_start_sample: usize,
+) {
+    ctx.set_fill_style_str("#0a0a0a");
+    ctx.fill_rect(0.0, 0.0, canvas_width, canvas_height);
+
+    if samples.is_empty() {
+        return;
+    }
+
+    let gain_linear = 10.0_f64.powf(gain_db / 20.0);
+    let vp = compute_viewport(total_duration, sample_rate, scroll_offset, zoom, time_resolution, canvas_width, canvas_height, region_start_sample);
+    draw_selection(ctx, selection, &vp, canvas_width, canvas_height);
+    draw_center_line(ctx, vp.mid_y, canvas_width);
+
+    // Full waveform behind in dim green
+    draw_waveform_layer(ctx, samples, sample_rate, &vp, canvas_width, "rgba(100, 170, 100, 0.35)", gain_linear);
+
+    // Selected frequency band overlay in semi-transparent blue
+    if !filtered_samples.is_empty() {
+        draw_waveform_layer(ctx, filtered_samples, sample_rate, &vp, canvas_width, "rgba(80, 140, 255, 0.7)", gain_linear);
+    }
+}
+
+/// Draw triple-band waveform: three stacked channels for above, selected, and below.
+pub fn draw_waveform_triple(
+    ctx: &CanvasRenderingContext2d,
+    below_samples: &[f32],
+    selected_samples: &[f32],
+    above_samples: &[f32],
+    sample_rate: u32,
+    scroll_offset: f64,
+    zoom: f64,
+    time_resolution: f64,
+    canvas_width: f64,
+    canvas_height: f64,
+    selection: Option<(f64, f64)>,
+    gain_db: f64,
+    total_duration: f64,
+    region_start_sample: usize,
+) {
+    ctx.set_fill_style_str("#0a0a0a");
+    ctx.fill_rect(0.0, 0.0, canvas_width, canvas_height);
+
+    let gain_linear = 10.0_f64.powf(gain_db / 20.0);
+    let vp = compute_viewport(total_duration, sample_rate, scroll_offset, zoom, time_resolution, canvas_width, canvas_height, region_start_sample);
+    draw_selection(ctx, selection, &vp, canvas_width, canvas_height);
+
+    let lane_height = canvas_height / 3.0;
+
+    // Draw lane dividers
+    ctx.set_stroke_style_str("#333");
+    ctx.set_line_width(1.0);
+    for i in 0..3 {
+        let mid = i as f64 * lane_height + lane_height / 2.0;
+        ctx.begin_path();
+        ctx.move_to(0.0, mid);
+        ctx.line_to(canvas_width, mid);
+        ctx.stroke();
+    }
+    // Draw lane borders
+    ctx.set_stroke_style_str("#222");
+    for i in 1..3 {
+        let y = i as f64 * lane_height;
+        ctx.begin_path();
+        ctx.move_to(0.0, y);
+        ctx.line_to(canvas_width, y);
+        ctx.stroke();
+    }
+
+    // Above band (top lane) — orange/amber
+    if !above_samples.is_empty() {
+        draw_waveform_layer_lane(ctx, above_samples, sample_rate, &vp, canvas_width,
+            "rgba(220, 160, 60, 0.8)", gain_linear, 0.0, lane_height);
+    }
+
+    // Selected band (middle lane) — blue
+    if !selected_samples.is_empty() {
+        draw_waveform_layer_lane(ctx, selected_samples, sample_rate, &vp, canvas_width,
+            "rgba(80, 140, 255, 0.85)", gain_linear, lane_height, lane_height);
+    }
+
+    // Below band (bottom lane) — green
+    if !below_samples.is_empty() {
+        draw_waveform_layer_lane(ctx, below_samples, sample_rate, &vp, canvas_width,
+            "rgba(100, 200, 100, 0.7)", gain_linear, lane_height * 2.0, lane_height);
+    }
+
+    // Lane labels
+    ctx.set_fill_style_str("rgba(255, 255, 255, 0.3)");
+    ctx.set_font("10px sans-serif");
+    let _ = ctx.fill_text("Above", 4.0, 12.0);
+    let _ = ctx.fill_text("Selected", 4.0, lane_height + 12.0);
+    let _ = ctx.fill_text("Below", 4.0, lane_height * 2.0 + 12.0);
+}
+
 /// Draw a zero-crossing rate graph from pre-computed bins.
 /// `bins` is a slice of (rate_hz, is_armed) with fixed `bin_duration` spacing.
 pub fn draw_zc_rate(
