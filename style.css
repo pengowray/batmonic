@@ -19,12 +19,12 @@ html, body {
     height: 100vh;
     height: 100dvh;
     min-height: 0;
-    grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
 }
 
 /* Sidebar */
 .sidebar {
+    grid-row: 2;
     background: #111;
     border-right: 1px solid #333;
     display: flex;
@@ -58,15 +58,7 @@ html, body {
 }
 
 .sidebar.collapsed .sidebar-collapse-btn {
-    position: fixed;
-    top: 4px;
-    left: 4px;
-    z-index: 100;
-    width: 28px;
-    height: 32px;
-    background: #282828;
-    border: 1px solid #444;
-    border-radius: 4px;
+    display: none;
 }
 
 .sidebar-collapse-btn {
@@ -1555,6 +1547,7 @@ body.sidebar-resizing {
 
 /* Main area */
 .main {
+    grid-row: 2;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -1564,10 +1557,12 @@ body.sidebar-resizing {
 }
 
 .toolbar {
+    grid-column: 1 / -1;
+    grid-row: 1;
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px 16px;
+    gap: 8px;
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 6px 8px;
     background: #181818;
     border-bottom: 1px solid #333;
     flex-shrink: 0;
@@ -3331,35 +3326,13 @@ body.sidebar-resizing {
 
 /* ── Mobile / Android ──────────────────────────────────────────────── */
 
-.toolbar-info-btn-mobile {
-    background: none;
-    border: none;
-    color: #999;
-    font-size: 20px;
-    padding: 2px 4px;
-    cursor: pointer;
-    line-height: 1;
-    flex-shrink: 0;
-}
-
-.toolbar-info-btn-mobile:hover {
-    color: #ccc;
-}
-
-.toolbar-overflow-fixed {
-    position: fixed;
-    top: 4px;
-    right: 36px;
-    z-index: 100;
-}
-
 .toolbar-overflow-wrap {
     position: relative;
 }
 
 .toolbar-overflow-btn {
     width: 28px;
-    height: 32px;
+    height: 28px;
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 4px;
@@ -3377,6 +3350,41 @@ body.sidebar-resizing {
     color: #bbb;
     background: #252525;
     border-color: #444;
+}
+
+/* Toolbar sidebar tab buttons */
+.toolbar-sidebar-tab {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    background: #282828;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 16px;
+    color: #777;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.toolbar-sidebar-tab:hover {
+    color: #ddd;
+    background: #333;
+}
+
+.toolbar-sidebar-tab.active {
+    background: #1a3a2a;
+    border-color: #4a8;
+    color: #aaa;
+}
+
+.toolbar-right-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
 }
 
 .toolbar-overflow-backdrop {
@@ -3435,24 +3443,13 @@ body.sidebar-resizing {
     margin: 4px 0;
 }
 
-/* Landscape mobile: push fixed corner buttons below the toolbar */
-@media (orientation: landscape) and (max-height: 500px) {
-    .sidebar.collapsed .sidebar-collapse-btn,
-    .right-sidebar .sidebar-collapse-btn,
-    .right-sidebar.collapsed .sidebar-collapse-btn,
-    .toolbar-overflow-fixed {
-        top: 44px;
-    }
-}
-
 .sidebar.mobile-overlay {
     position: fixed;
-    top: 0;
+    top: var(--toolbar-h, 44px);
     left: 0;
     width: 280px;
-    height: 100%;
+    height: calc(100% - var(--toolbar-h, 44px));
     z-index: 200;
-    padding-top: env(safe-area-inset-top);
     box-shadow: 4px 0 20px rgba(0,0,0,0.5);
     transition: transform 0.2s ease;
 }
@@ -3469,15 +3466,17 @@ body.sidebar-resizing {
 
 .sidebar-backdrop {
     display: none;
+    grid-row: 2;
+    grid-column: 1 / -1;
 }
 
 .sidebar-backdrop.open {
     display: block;
     position: fixed;
-    top: 0;
+    top: var(--toolbar-h, 44px);
     left: 0;
     width: 100%;
-    height: 100%;
+    height: calc(100% - var(--toolbar-h, 44px));
     background: rgba(0, 0, 0, 0.4);
     z-index: 199;
 }
@@ -3855,21 +3854,7 @@ body.sidebar-resizing {
 }
 
 .right-sidebar .sidebar-collapse-btn {
-    position: fixed;
-    top: 4px;
-    right: 4px;
-    left: auto;
-    z-index: 100;
-    width: 28px;
-    height: 32px;
-    background: #282828;
-    border: 1px solid #444;
-    border-radius: 4px;
-}
-
-.right-sidebar.collapsed .sidebar-collapse-btn {
-    left: auto;
-    right: 4px;
+    display: none;
 }
 
 .right-sidebar .sidebar-resize-handle {
@@ -3880,6 +3865,8 @@ body.sidebar-resizing {
 .right-sidebar.mobile-overlay {
     left: auto;
     right: 0;
+    top: var(--toolbar-h, 44px);
+    height: calc(100% - var(--toolbar-h, 44px));
     box-shadow: -4px 0 20px rgba(0,0,0,0.5);
 }
 

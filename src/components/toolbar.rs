@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 use crate::state::{AppState, RightSidebarTab, ListenMode, MicAcquisitionState, RecordReadyState};
 use crate::audio::streaming_source;
 use crate::components::file_sidebar::file_groups;
@@ -13,6 +14,17 @@ pub fn Toolbar() -> impl IntoView {
 
     let is_tauri = state.is_tauri;
     let overflow_menu_open = RwSignal::new(false);
+    let toolbar_ref = NodeRef::<leptos::html::Div>::new();
+
+    // Set --toolbar-h CSS variable on document root so mobile overlays know toolbar height
+    Effect::new(move |_| {
+        if let Some(el) = toolbar_ref.get() {
+            let h = el.offset_height();
+            if let Some(doc_el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.document_element()) {
+                let _ = doc_el.unchecked_ref::<web_sys::HtmlElement>().style().set_property("--toolbar-h", &format!("{}px", h));
+            }
+        }
+    });
 
     // Derived: current file name
     let file_name = Memo::new(move |_| {
@@ -264,107 +276,33 @@ pub fn Toolbar() -> impl IntoView {
     };
 
     view! {
-        // Fixed overflow "..." button (all platforms, outside toolbar to avoid flex/style conflicts)
-        <div class="toolbar-overflow-fixed">
-            <div class="toolbar-overflow-wrap">
-                <button
-                    class="toolbar-overflow-btn"
-                    on:click=move |ev: web_sys::MouseEvent| {
-                        ev.stop_propagation();
-                        overflow_menu_open.update(|v| *v = !*v);
+        <div class="toolbar" node_ref=toolbar_ref>
+            // Left: sidebar tab button
+            <button
+                class=move || if !state.sidebar_collapsed.get() {
+                    "toolbar-sidebar-tab toolbar-sidebar-tab-left active"
+                } else {
+                    "toolbar-sidebar-tab toolbar-sidebar-tab-left"
+                }
+                on:click=move |ev: web_sys::MouseEvent| {
+                    ev.stop_propagation();
+                    state.sidebar_collapsed.update(|c| *c = !*c);
+                    if !state.sidebar_collapsed.get_untracked() && state.is_mobile.get_untracked() {
+                        state.right_sidebar_collapsed.set(true);
                     }
-                    title="More actions"
-                >"\u{2026}"</button>
-                {move || overflow_menu_open.get().then(|| view! {
-                    <div class="toolbar-overflow-backdrop" on:click=move |_| overflow_menu_open.set(false)></div>
-                    <div class="toolbar-overflow-menu" on:click=move |_| overflow_menu_open.set(false)>
-                        <button
-                            class="toolbar-overflow-item"
-                            on:click=move |_| state.undo_annotations()
-                            disabled=move || !state.can_undo()
-                        >
-                            <span class="toolbar-overflow-icon">{"\u{21B6}"}</span>
-                            "Undo"
-                        </button>
-                        <button
-                            class="toolbar-overflow-item"
-                            on:click=move |_| state.redo_annotations()
-                            disabled=move || !state.can_redo()
-                        >
-                            <span class="toolbar-overflow-icon">{"\u{21B7}"}</span>
-                            "Redo"
-                        </button>
-                        <div class="toolbar-overflow-separator"></div>
-                        <button
-                            class="toolbar-overflow-item"
-                            on:click=move |_| {
-                                let idx = state.nav_index.get_untracked();
-                                if idx == 0 { return; }
-                                let new_idx = idx - 1;
-                                state.nav_index.set(new_idx);
-                                let hist = state.nav_history.get_untracked();
-                                if let Some(entry) = hist.get(new_idx) {
-                                    state.suspend_follow();
-                                    state.scroll_offset.set(entry.scroll_offset);
-                                    state.zoom_level.set(entry.zoom_level);
-                                }
-                            }
-                            disabled=move || state.nav_index.get() == 0
-                        >
-                            <span class="toolbar-overflow-icon">"←"</span>
-                            "Back"
-                        </button>
-                        <button
-                            class="toolbar-overflow-item"
-                            on:click=move |_| {
-                                let idx = state.nav_index.get_untracked();
-                                let hist = state.nav_history.get_untracked();
-                                if idx + 1 >= hist.len() { return; }
-                                let new_idx = idx + 1;
-                                state.nav_index.set(new_idx);
-                                if let Some(entry) = hist.get(new_idx) {
-                                    state.suspend_follow();
-                                    state.scroll_offset.set(entry.scroll_offset);
-                                    state.zoom_level.set(entry.zoom_level);
-                                }
-                            }
-                            disabled=move || {
-                                let idx = state.nav_index.get();
-                                let len = state.nav_history.get().len();
-                                idx + 1 >= len
-                            }
-                        >
-                            <span class="toolbar-overflow-icon">"→"</span>
-                            "Forward"
-                        </button>
-                    </div>
-                })}
-            </div>
-        </div>
-        <div class="toolbar">
-            // Left: mobile menu button (hamburger)
-            {move || state.is_mobile.get().then(|| view! {
-                <button
-                    class="toolbar-info-btn-mobile"
-                    on:click=move |ev: web_sys::MouseEvent| {
-                        ev.stop_propagation();
-                        state.sidebar_collapsed.update(|c| *c = !*c);
-                    }
-                    title="Menu"
-                >"\u{2630}"</button>
-            })}
-            // Center: brand + filename + undo/redo (row 1) + badges (row 2)
+                }
+                title=move || if state.sidebar_collapsed.get() { "Show sidebar" } else { "Hide sidebar" }
+            >{"\u{25E7}"}</button>
+
+            // Center: brand + filename (row 1) + badges (row 2)
             <div class="toolbar-title-center">
-                // Row 1: brand + status icons + filename + undo/redo
+                // Row 1: brand + status icons + filename
                 <div class="toolbar-title-row">
                     <span
                         class="toolbar-brand"
                         style=move || {
                             let mut s = String::from("cursor: pointer");
                             let mobile = state.is_mobile.get();
-                            if !mobile && state.sidebar_collapsed.get() {
-                                s.push_str("; margin-left: 24px");
-                            }
                             if mobile {
                                 let has_file = file_name.get().is_some();
                                 let recording = state.mic_recording.get();
@@ -551,6 +489,99 @@ pub fn Toolbar() -> impl IntoView {
                         }
                     })}
                 </div>
+            </div>
+
+            // Right: overflow menu + right sidebar tab
+            <div class="toolbar-right-group">
+                <div class="toolbar-overflow-wrap">
+                    <button
+                        class="toolbar-overflow-btn"
+                        on:click=move |ev: web_sys::MouseEvent| {
+                            ev.stop_propagation();
+                            overflow_menu_open.update(|v| *v = !*v);
+                        }
+                        title="More actions"
+                    >"\u{2026}"</button>
+                    {move || overflow_menu_open.get().then(|| view! {
+                        <div class="toolbar-overflow-backdrop" on:click=move |_| overflow_menu_open.set(false)></div>
+                        <div class="toolbar-overflow-menu" on:click=move |_| overflow_menu_open.set(false)>
+                            <button
+                                class="toolbar-overflow-item"
+                                on:click=move |_| state.undo_annotations()
+                                disabled=move || !state.can_undo()
+                            >
+                                <span class="toolbar-overflow-icon">{"\u{21B6}"}</span>
+                                "Undo"
+                            </button>
+                            <button
+                                class="toolbar-overflow-item"
+                                on:click=move |_| state.redo_annotations()
+                                disabled=move || !state.can_redo()
+                            >
+                                <span class="toolbar-overflow-icon">{"\u{21B7}"}</span>
+                                "Redo"
+                            </button>
+                            <div class="toolbar-overflow-separator"></div>
+                            <button
+                                class="toolbar-overflow-item"
+                                on:click=move |_| {
+                                    let idx = state.nav_index.get_untracked();
+                                    if idx == 0 { return; }
+                                    let new_idx = idx - 1;
+                                    state.nav_index.set(new_idx);
+                                    let hist = state.nav_history.get_untracked();
+                                    if let Some(entry) = hist.get(new_idx) {
+                                        state.suspend_follow();
+                                        state.scroll_offset.set(entry.scroll_offset);
+                                        state.zoom_level.set(entry.zoom_level);
+                                    }
+                                }
+                                disabled=move || state.nav_index.get() == 0
+                            >
+                                <span class="toolbar-overflow-icon">"←"</span>
+                                "Back"
+                            </button>
+                            <button
+                                class="toolbar-overflow-item"
+                                on:click=move |_| {
+                                    let idx = state.nav_index.get_untracked();
+                                    let hist = state.nav_history.get_untracked();
+                                    if idx + 1 >= hist.len() { return; }
+                                    let new_idx = idx + 1;
+                                    state.nav_index.set(new_idx);
+                                    if let Some(entry) = hist.get(new_idx) {
+                                        state.suspend_follow();
+                                        state.scroll_offset.set(entry.scroll_offset);
+                                        state.zoom_level.set(entry.zoom_level);
+                                    }
+                                }
+                                disabled=move || {
+                                    let idx = state.nav_index.get();
+                                    let len = state.nav_history.get().len();
+                                    idx + 1 >= len
+                                }
+                            >
+                                <span class="toolbar-overflow-icon">"→"</span>
+                                "Forward"
+                            </button>
+                        </div>
+                    })}
+                </div>
+                <button
+                    class=move || if !state.right_sidebar_collapsed.get() {
+                        "toolbar-sidebar-tab toolbar-sidebar-tab-right active"
+                    } else {
+                        "toolbar-sidebar-tab toolbar-sidebar-tab-right"
+                    }
+                    on:click=move |ev: web_sys::MouseEvent| {
+                        ev.stop_propagation();
+                        state.right_sidebar_collapsed.update(|c| *c = !*c);
+                        if !state.right_sidebar_collapsed.get_untracked() && state.is_mobile.get_untracked() {
+                            state.sidebar_collapsed.set(true);
+                        }
+                    }
+                    title=move || if state.right_sidebar_collapsed.get() { "Show info panel" } else { "Hide info panel" }
+                >{"\u{25E8}"}</button>
             </div>
 
             {move || show_about.get().then(|| view! {

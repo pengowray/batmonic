@@ -105,16 +105,6 @@ pub fn RightSidebar() -> impl IntoView {
                 on:mousedown=on_resize_start
             ></div>
             <div class="sidebar-tabs">
-                <button
-                    class="sidebar-tab sidebar-collapse-btn"
-                    on:click=move |_| {
-                        state.right_sidebar_collapsed.update(|c| *c = !*c);
-                        dropdown_open.set(false);
-                    }
-                    title=move || if state.right_sidebar_collapsed.get() { "Show right sidebar" } else { "Hide right sidebar" }
-                >
-                    {"\u{25E8}"}
-                </button>
                 <div class="sidebar-tab-dropdown-wrap" tabindex="-1" on:focusout=on_dropdown_blur>
                     <button class="sidebar-tab-dropdown" on:click=on_dropdown_toggle>
                         {move || state.right_sidebar_tab.get().label()}

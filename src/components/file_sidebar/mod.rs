@@ -112,17 +112,6 @@ pub fn FileSidebar() -> impl IntoView {
     view! {
         <div class=sidebar_class>
             <div class="sidebar-tabs">
-                {move || (!state.is_mobile.get()).then(|| view! {
-                    <button
-                        class="sidebar-tab sidebar-collapse-btn"
-                        on:click=move |_| {
-                            state.sidebar_collapsed.update(|c| *c = !*c);
-                        }
-                        title=move || if state.sidebar_collapsed.get() { "Show files and settings" } else { "Hide left sidebar" }
-                    >
-                        {"\u{25E7}"}
-                    </button>
-                })}
                 <button
                     class=move || if state.left_sidebar_tab.get() == LeftSidebarTab::Files {
                         "sidebar-header-label active"

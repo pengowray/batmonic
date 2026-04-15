@@ -900,11 +900,11 @@ pub fn App() -> impl IntoView {
     let grid_style = move || {
         if state.is_mobile.get() {
             // Sidebars are position:fixed overlays, so single column for main content
-            "grid-template-columns: 1fr".to_string()
+            "grid-template-columns: 1fr; grid-template-rows: auto 1fr".to_string()
         } else {
             let left = if state.sidebar_collapsed.get() { 0 } else { state.sidebar_width.get() as i32 };
             let right = if state.right_sidebar_collapsed.get() { 0 } else { state.right_sidebar_width.get() as i32 };
-            format!("grid-template-columns: {}px 1fr {}px", left, right)
+            format!("grid-template-columns: {}px 1fr {}px; grid-template-rows: auto 1fr", left, right)
         }
     };
 
@@ -1065,6 +1065,7 @@ pub fn App() -> impl IntoView {
 
     view! {
         <div class="app" style=grid_style>
+            <Toolbar />
             <FileSidebar />
             {move || state.is_mobile.get().then(|| view! {
                 <div
@@ -1107,7 +1108,6 @@ fn MainArea() -> impl IntoView {
 
     view! {
         <div class="main" on:click=on_main_click on:touchstart=on_main_touchstart>
-            <Toolbar />
             <ToastDisplay />
             {move || {
                 if has_file() {
