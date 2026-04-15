@@ -631,14 +631,14 @@ pub fn Spectrogram() -> impl IntoView {
                     ctx.translate(clip_left, 0.0).unwrap_or(());
                     spectrogram_renderer::draw_tile_debug_overlay(
                         &ctx, clip_right - clip_left, display_h as f64, seg.file_index, seg_tc, file_scroll_col, seg_zoom,
-                        state.spect_fft_mode.get_untracked().max_fft_size(), flow_on,
+                        state.spect_fft_mode.get_untracked(), flow_on,
                     );
                     ctx.restore();
                 }
             } else if total_cols > 0 {
                 spectrogram_renderer::draw_tile_debug_overlay(
                     &ctx, display_w as f64, display_h as f64, file_idx_val, total_cols, scroll_col, zoom,
-                    state.spect_fft_mode.get_untracked().max_fft_size(), flow_on,
+                    state.spect_fft_mode.get_untracked(), flow_on,
                 );
             }
         }

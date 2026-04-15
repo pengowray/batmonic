@@ -2,7 +2,7 @@ use crate::canvas::colors::{freq_marker_color, freq_marker_label, freq_resistor_
 use crate::state::ShieldStyle;
 use crate::canvas::spectrogram_renderer::freq_to_y;
 use crate::dsp::filters::harmonics_band_bounds;
-use crate::state::{SpectrogramHandle, Selection, ResizeHandlePosition};
+use crate::state::{FftMode, SpectrogramHandle, Selection, ResizeHandlePosition};
 use web_sys::CanvasRenderingContext2d;
 
 // Time markers extracted to crate::canvas::time_markers
@@ -1112,7 +1112,7 @@ pub fn draw_tile_debug_overlay(
     total_cols: usize,
     scroll_col: f64,
     zoom: f64,
-    user_fft: usize,
+    fft_mode: FftMode,
     flow_on: bool,
 ) {
     use crate::canvas::tile_cache::{self, TILE_COLS};
@@ -1211,7 +1211,7 @@ pub fn draw_tile_debug_overlay(
         // Actual FFT used for this LOD (same logic as schedule_tile_lod)
         let (res_line, tex_line) = if displayed_lod < tile_cache::NUM_LODS as u8 {
             let cfg = &tile_cache::LOD_CONFIGS[displayed_lod as usize];
-            let actual_fft = user_fft.max(cfg.hop_size);
+            let actual_fft = fft_mode.fft_for_lod(displayed_lod);
             let res = format!("fft={} hop={}", actual_fft, cfg.hop_size);
             // Get tile texture dimensions
             let tex = if flow_on {
@@ -1248,7 +1248,7 @@ pub fn draw_tile_debug_overlay(
 
     // Draw telemetry panel in bottom-right so it doesn't overlap tile labels.
     let ideal_hop = tile_cache::LOD_CONFIGS[ideal_lod as usize].hop_size;
-    let actual_fft = user_fft.max(ideal_hop);
+    let actual_fft = fft_mode.fft_for_lod(ideal_lod);
     let used_mb = stats.used_bytes as f64 / 1_048_576.0;
     let max_mb = stats.max_bytes as f64 / 1_048_576.0;
     let headroom_mb = stats.max_bytes.saturating_sub(stats.used_bytes) as f64 / 1_048_576.0;
