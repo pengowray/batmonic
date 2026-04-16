@@ -69,6 +69,8 @@ struct RecordingInfo {
     date: String,
     sound_type: String,
     smp: String,
+    dvc: String,
+    mic: String,
 }
 
 #[derive(Clone, Debug)]
@@ -141,8 +143,10 @@ fn parse_recordings(val: &JsValue) -> Vec<RecordingInfo> {
             loc: s("loc"),
             rec: s("rec"),
             date: s("date"),
-            sound_type: s("sound_type"),
+            sound_type: s("type"),
             smp: s("smp"),
+            dvc: s("dvc"),
+            mic: s("mic"),
         });
     }
     result
@@ -912,7 +916,9 @@ pub fn XcBrowser() -> impl IntoView {
                                 let has_details = !rec.sound_type.is_empty()
                                     || !rec.smp.is_empty()
                                     || !rec.date.is_empty()
-                                    || !rec.rec.is_empty();
+                                    || !rec.rec.is_empty()
+                                    || !rec.dvc.is_empty()
+                                    || !rec.mic.is_empty();
                                 view! {
                                     <div class="xc-rec-row">
                                         <div class="xc-rec-main">
@@ -956,6 +962,12 @@ pub fn XcBrowser() -> impl IntoView {
                                                 })}
                                                 {(!rec.rec.is_empty()).then(|| view! {
                                                     <span class="xc-rec-tag xc-rec-recordist">{rec.rec}</span>
+                                                })}
+                                                {(!rec.dvc.is_empty()).then(|| view! {
+                                                    <span class="xc-rec-tag" title="Device">{rec.dvc}</span>
+                                                })}
+                                                {(!rec.mic.is_empty()).then(|| view! {
+                                                    <span class="xc-rec-tag" title="Microphone">{rec.mic}</span>
                                                 })}
                                             </div>
                                         })}
