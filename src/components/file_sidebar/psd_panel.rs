@@ -398,7 +398,7 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                             else { "psd-btn" }
                         }
                         on:click=move |_| freq_range_mode.set(PsdFreqRangeMode::FF)
-                        title="Use frequency focus (HFR) range"
+                        title="Use frequency focus (HF) range"
                     >"FF"</button>
                 </div>
             </div>

@@ -436,7 +436,7 @@ pub fn HfrButton() -> impl IntoView {
 
     view! {
             <ComboButton
-                left_label="HFR"
+                left_label="HF"
                 left_value=left_value
                 left_click=left_click
                 left_class=left_class
@@ -444,8 +444,8 @@ pub fn HfrButton() -> impl IntoView {
                 right_class=right_class
                 is_open=is_open
                 toggle_menu=toggle_menu
-                left_title="Toggle High Frequency Range mode"
-                right_title="HFR playback mode"
+                left_title="Toggle High Frequency mode"
+                right_title="HF playback mode"
                 menu_direction="above"
                 panel_style="min-width: 210px;"
             >

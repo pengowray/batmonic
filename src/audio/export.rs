@@ -334,7 +334,7 @@ fn build_export_guano(
 pub struct ExportInfo {
     pub count: usize,
     pub source_label: &'static str, // "selection" or "region" or "regions"
-    pub mode_label: Option<String>,  // e.g. "TE 10x", "HFR", etc.
+    pub mode_label: Option<String>,  // e.g. "TE 10x", "HF", etc.
     pub estimated_duration_secs: Option<f64>,
 }
 
@@ -382,7 +382,7 @@ pub fn get_export_info(state: &AppState) -> Option<ExportInfo> {
     let mode = state.playback_mode.get();
     let hfr = state.hfr_enabled.get();
     let mode_label = match mode {
-        PlaybackMode::Normal if hfr => Some("HFR".to_string()),
+        PlaybackMode::Normal if hfr => Some("HF".to_string()),
         PlaybackMode::TimeExpansion => {
             let te = state.te_factor.get();
             Some(format!("TE {te}x"))

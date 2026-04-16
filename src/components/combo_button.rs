@@ -8,7 +8,7 @@ use crate::state::AppState;
 /// Press-and-hold on either side also opens the menu (mobile-friendly).
 #[component]
 pub fn ComboButton(
-    /// Category label on the left button (e.g. "View", "HFR")
+    /// Category label on the left button (e.g. "View", "HF")
     left_label: &'static str,
     /// Value text on the left button (e.g. "ON"/"OFF"); empty string hides it
     #[prop(into)]
