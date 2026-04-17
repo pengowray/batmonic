@@ -545,6 +545,7 @@ pub fn Waveform() -> impl IntoView {
         let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
+        state.suspend_waterfall_follow(2000.0);
         state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
     };
 
@@ -657,6 +658,7 @@ pub fn Waveform() -> impl IntoView {
                 let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
+        state.suspend_waterfall_follow(2000.0);
                 state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
         // Record velocity sample for inertia
         let now = web_sys::window().unwrap().performance().unwrap().now();

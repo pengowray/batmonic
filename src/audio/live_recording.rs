@@ -488,6 +488,7 @@ pub(crate) fn spawn_live_processing_loop(state: AppState, file_index: usize, sam
         // creates a duplicate file.
         state.mic_live_data_cols.set(0);
         state.mic_recording_target_scroll.set(0.0);
+        state.mic_scroll_user_pan_until.set(0.0);
     });
 }
 
@@ -506,13 +507,20 @@ pub(crate) fn spawn_smooth_scroll_animation(state: AppState) {
             // Neither recording nor listening — exit the animation loop
             return;
         }
-        let target = state.mic_recording_target_scroll.get_untracked();
-        let current = state.scroll_offset.get_untracked();
-        let diff = target - current;
-        if diff.abs() > 0.0001 {
-            // Exponential ease: move 30% of remaining distance each frame (~60fps)
-            let new_scroll = current + diff * 0.3;
-            state.scroll_offset.set(new_scroll);
+        // If the user is panning (or just released a pan within the grace
+        // window), leave scroll_offset alone so they can look at earlier
+        // material without fighting the auto-scroll.
+        let pan_until = state.mic_scroll_user_pan_until.get_untracked();
+        let suspended = pan_until > 0.0 && js_sys::Date::now() < pan_until;
+        if !suspended {
+            let target = state.mic_recording_target_scroll.get_untracked();
+            let current = state.scroll_offset.get_untracked();
+            let diff = target - current;
+            if diff.abs() > 0.0001 {
+                // Exponential ease: move 30% of remaining distance each frame (~60fps)
+                let new_scroll = current + diff * 0.3;
+                state.scroll_offset.set(new_scroll);
+            }
         }
         // Re-register for next frame
         if let Some(w) = web_sys::window() {

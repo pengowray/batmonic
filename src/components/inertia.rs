@@ -162,6 +162,7 @@ pub fn start_inertia(
 
         state.scroll_offset.set(clamped);
         state.suspend_follow();
+        state.suspend_waterfall_follow(2000.0);
 
         // Stop conditions: velocity too low, or hit bounds
         let hit_bound = (clamped <= min_scroll && current_v < 0.0)

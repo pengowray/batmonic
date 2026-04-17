@@ -1203,6 +1203,12 @@ pub struct AppState {
     /// Target scroll offset during recording. The rAF animation loop interpolates
     /// scroll_offset toward this value for smooth waterfall scrolling.
     pub mic_recording_target_scroll: RwSignal<f64>,
+    /// Epoch ms (Date.now) until which the waterfall smooth-scroll animation must
+    /// leave `scroll_offset` alone — lets the user drag backwards during
+    /// listen/record without the animation snapping back to "now". After this
+    /// timestamp elapses, the smooth-scroll loop resumes snapping to the live
+    /// edge. 0.0 = no suspension.
+    pub mic_scroll_user_pan_until: RwSignal<f64>,
     /// Rightmost spectrogram column with actual data during recording.
     /// Used to clip the canvas so partial tiles don't show black padding.
     pub mic_live_data_cols: RwSignal<usize>,
@@ -1691,6 +1697,7 @@ impl AppState {
             mic_usb_connected: RwSignal::new(false),
             mic_effective_mode: RwSignal::new(if detect_tauri() { MicMode::Cpal } else { MicMode::Browser }),
             mic_recording_target_scroll: RwSignal::new(0.0),
+            mic_scroll_user_pan_until: RwSignal::new(0.0),
             mic_live_data_cols: RwSignal::new(0),
             mic_needs_permission: RwSignal::new(false),
             mic_selected_device: RwSignal::new(None),
@@ -2083,6 +2090,17 @@ impl AppState {
         if self.follow_cursor.get_untracked() && self.is_playing.get_untracked() {
             self.follow_suspended.set(true);
             self.follow_visible_since.set(Some(js_sys::Date::now()));
+        }
+    }
+
+    /// Suspend the waterfall smooth-scroll animation for `delay_ms` from now so
+    /// the user can drag backwards during live listening/recording without
+    /// the display immediately snapping back to the live edge. Called on every
+    /// pan tick so the timer always extends past the last gesture.
+    pub fn suspend_waterfall_follow(&self, delay_ms: f64) {
+        if self.mic_recording.get_untracked() || self.mic_listening.get_untracked() {
+            let until = js_sys::Date::now() + delay_ms;
+            self.mic_scroll_user_pan_until.set(until);
         }
     }
 

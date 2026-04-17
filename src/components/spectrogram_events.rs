@@ -344,6 +344,9 @@ pub fn apply_hand_pan(
     let from_here_mode = state.play_start_mode.get_untracked() .uses_from_here();
     let dt = -(dx / cw) * visible_time;
     state.suspend_follow();
+    // During live listen/record, push the waterfall snap-back 2s into the
+    // future so a release between gestures doesn't yank the view to "now".
+    state.suspend_waterfall_follow(2000.0);
     state.scroll_offset.set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
 }
 
