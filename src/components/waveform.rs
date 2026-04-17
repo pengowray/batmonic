@@ -61,8 +61,13 @@ pub fn Waveform() -> impl IntoView {
         let files = state.files.get();
         let idx = state.current_file_index.get();
         let cv = state.channel_view.get();
-        let freq_low = state.band_ff_freq_lo.get();
-        let freq_high = state.band_ff_freq_hi.get();
+        // Use the user's Band regardless of HFR state — the band_ff_freq_lo/hi
+        // signals get zeroed when HFR is off, which would make the "above"
+        // lane show the entire signal. effective_range_ignoring_hfr() always
+        // reflects what the drag handles on the spectrogram show.
+        let ff = state.focus_stack.get().effective_range_ignoring_hfr();
+        let freq_low = ff.lo;
+        let freq_high = ff.hi;
 
         idx.and_then(|i| files.get(i).cloned()).map(|file| {
             let sr = file.audio.sample_rate;
@@ -118,8 +123,9 @@ pub fn Waveform() -> impl IntoView {
         // switching from Simple (which never reads it) to Frequency/Triple.
         let band_data = band_split.get();
         // Band boundaries for lane labels (Band wave + Triple).
-        let band_freq_low = state.band_ff_freq_lo.get();
-        let band_freq_high = state.band_ff_freq_hi.get();
+        let ff = state.focus_stack.get().effective_range_ignoring_hfr();
+        let band_freq_low = ff.lo;
+        let band_freq_high = ff.hi;
 
         let Some(canvas_el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
