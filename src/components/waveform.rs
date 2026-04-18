@@ -410,6 +410,52 @@ pub fn Waveform() -> impl IntoView {
                 );
             }
 
+            // File-embedded time markers (WAV cue points, M4A chapters)
+            // and user annotation markers.
+            if !clean_view {
+                if !file.wav_markers.is_empty() {
+                    let sr = file.audio.sample_rate as f64;
+                    let markers: Vec<(f64, Option<String>)> = file.wav_markers.iter()
+                        .map(|m| (m.position as f64 / sr, m.label.clone()))
+                        .collect();
+                    crate::canvas::overlays::draw_time_marker_lines(
+                        &ctx,
+                        &markers,
+                        crate::canvas::overlays::TimeMarkerStyle::FileEmbedded,
+                        buf_scroll,
+                        file.spectrogram.time_resolution,
+                        zoom,
+                        display_w as f64,
+                        display_h as f64,
+                    );
+                }
+                if let Some(file_idx_val) = idx {
+                    let store = state.annotation_store.get();
+                    if let Some(Some(set)) = store.sets.get(file_idx_val) {
+                        let ann_markers: Vec<(f64, Option<String>)> = set.annotations.iter()
+                            .filter_map(|a| match &a.kind {
+                                crate::annotations::AnnotationKind::Marker(m) => {
+                                    Some((m.time, m.label.clone()))
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        if !ann_markers.is_empty() {
+                            crate::canvas::overlays::draw_time_marker_lines(
+                                &ctx,
+                                &ann_markers,
+                                crate::canvas::overlays::TimeMarkerStyle::Annotation,
+                                buf_scroll,
+                                file.spectrogram.time_resolution,
+                                zoom,
+                                display_w as f64,
+                                display_h as f64,
+                            );
+                        }
+                    }
+                }
+            }
+
             // Draw "play here" marker when not playing
             if !clean_view && state.play_start_mode.get() .uses_from_here() && !is_playing && canvas_tool == CanvasTool::Hand {
                 let visible_time = viewport::visible_time(display_w as f64, zoom, file.spectrogram.time_resolution);

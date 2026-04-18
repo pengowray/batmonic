@@ -1467,3 +1467,97 @@ pub fn draw_annotations(
         }
     }
 }
+
+/// Style for a time-position marker drawn as a vertical line + optional label.
+#[derive(Clone, Copy, PartialEq)]
+pub enum TimeMarkerStyle {
+    /// File-embedded (WAV cue, M4A chapter) — muted cyan dashed line.
+    FileEmbedded,
+    /// User annotation marker — warm yellow dashed line.
+    Annotation,
+}
+
+impl TimeMarkerStyle {
+    fn stroke(self) -> &'static str {
+        match self {
+            Self::FileEmbedded => "rgba(120, 200, 220, 0.72)",
+            Self::Annotation   => "rgba(255, 210, 90, 0.85)",
+        }
+    }
+    fn label_bg(self) -> &'static str {
+        match self {
+            Self::FileEmbedded => "rgba(20, 45, 55, 0.78)",
+            Self::Annotation   => "rgba(60, 45, 10, 0.85)",
+        }
+    }
+    fn label_fg(self) -> &'static str {
+        match self {
+            Self::FileEmbedded => "rgba(200, 235, 245, 0.95)",
+            Self::Annotation   => "rgba(255, 230, 160, 0.95)",
+        }
+    }
+}
+
+/// Draw vertical dashed lines at a list of timestamps, with optional labels
+/// at the top of the canvas. Used for WAV cue points, M4A chapters, and
+/// user-created annotation markers. All inputs share the same time/zoom
+/// coordinate system as the spectrogram/waveform Effects.
+pub fn draw_time_marker_lines(
+    ctx: &CanvasRenderingContext2d,
+    markers: &[(f64, Option<String>)],
+    style: TimeMarkerStyle,
+    scroll_offset: f64,
+    time_resolution: f64,
+    zoom: f64,
+    canvas_width: f64,
+    canvas_height: f64,
+) {
+    if markers.is_empty() || canvas_width <= 0.0 || canvas_height <= 0.0 { return; }
+    let visible_time = (canvas_width / zoom) * time_resolution;
+    if visible_time <= 0.0 { return; }
+    let start_time = scroll_offset;
+    let end_time = start_time + visible_time;
+    let px_per_sec = canvas_width / visible_time;
+
+    let dash = js_sys::Array::new();
+    dash.push(&wasm_bindgen::JsValue::from_f64(5.0));
+    dash.push(&wasm_bindgen::JsValue::from_f64(4.0));
+
+    ctx.save();
+    ctx.set_stroke_style_str(style.stroke());
+    ctx.set_line_width(1.0);
+    let _ = ctx.set_line_dash(&dash);
+    ctx.set_font("11px system-ui, -apple-system, sans-serif");
+
+    for (time, label) in markers {
+        if *time < start_time || *time > end_time { continue; }
+        let x = (time - start_time) * px_per_sec;
+
+        ctx.begin_path();
+        ctx.move_to(x + 0.5, 0.0);
+        ctx.line_to(x + 0.5, canvas_height);
+        ctx.stroke();
+
+        if let Some(label) = label.as_ref().filter(|s| !s.is_empty()) {
+            let tm = ctx.measure_text(label).ok();
+            let text_w = tm.as_ref().map(|m| m.width()).unwrap_or(0.0);
+            let pad_x = 4.0;
+            let box_w = text_w + pad_x * 2.0;
+            let box_h = 15.0;
+            // Place label to the right of the line; if clipped, flip to the left.
+            let box_x = if x + 2.0 + box_w <= canvas_width {
+                x + 2.0
+            } else {
+                (x - 2.0 - box_w).max(0.0)
+            };
+            let text_x = box_x + pad_x;
+            ctx.set_fill_style_str(style.label_bg());
+            ctx.fill_rect(box_x, 2.0, box_w, box_h);
+            ctx.set_fill_style_str(style.label_fg());
+            let _ = ctx.fill_text(label, text_x, 13.0);
+        }
+    }
+
+    let _ = ctx.set_line_dash(&js_sys::Array::new());
+    ctx.restore();
+}

@@ -1754,7 +1754,7 @@ impl AppState {
             noise_reduce_learning: RwSignal::new(false),
 
             detected_pulses: RwSignal::new(Vec::new()),
-            pulse_overlay_enabled: RwSignal::new(true),
+            pulse_overlay_enabled: RwSignal::new(false),
             selected_pulse_index: RwSignal::new(None),
             pulse_detecting: RwSignal::new(false),
 

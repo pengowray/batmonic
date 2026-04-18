@@ -897,6 +897,54 @@ pub fn Spectrogram() -> impl IntoView {
                 }
             }
 
+            // File-embedded time markers (WAV cue points, M4A chapters).
+            // Rendered on top of annotations so a label on the line is visible.
+            if !xform_on && annotations_visible {
+                if let Some(file_idx_val) = idx {
+                    if let Some(file) = files.get(file_idx_val) {
+                        if !file.wav_markers.is_empty() {
+                            let sr = file.audio.sample_rate as f64;
+                            let markers: Vec<(f64, Option<String>)> = file.wav_markers.iter()
+                                .map(|m| (m.position as f64 / sr, m.label.clone()))
+                                .collect();
+                            spectrogram_renderer::draw_time_marker_lines(
+                                &ctx,
+                                &markers,
+                                spectrogram_renderer::TimeMarkerStyle::FileEmbedded,
+                                scroll,
+                                time_res,
+                                zoom,
+                                display_w as f64,
+                                display_h as f64,
+                            );
+                        }
+                    }
+                    // User annotation markers (AnnotationKind::Marker).
+                    if let Some(Some(set)) = annotation_store.sets.get(file_idx_val) {
+                        let ann_markers: Vec<(f64, Option<String>)> = set.annotations.iter()
+                            .filter_map(|a| match &a.kind {
+                                crate::annotations::AnnotationKind::Marker(m) => {
+                                    Some((m.time, m.label.clone()))
+                                }
+                                _ => None,
+                            })
+                            .collect();
+                        if !ann_markers.is_empty() {
+                            spectrogram_renderer::draw_time_marker_lines(
+                                &ctx,
+                                &ann_markers,
+                                spectrogram_renderer::TimeMarkerStyle::Annotation,
+                                scroll,
+                                time_res,
+                                zoom,
+                                display_w as f64,
+                                display_h as f64,
+                            );
+                        }
+                    }
+                }
+            }
+
             // Draw filter band overlay when hovering a slider
             if filter_enabled {
                 if let Some(band) = filter_hovering {
