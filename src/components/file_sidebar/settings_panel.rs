@@ -329,7 +329,8 @@ pub(crate) fn SelectionPanel() -> impl IntoView {
     }
 }
 
-/// Read-only list of WAV cue-point markers parsed from the file.
+/// Read-only list of file-embedded time markers — WAV cue points or
+/// M4A/M4B chapters — parsed from the current file.
 #[component]
 fn WavMarkersList() -> impl IntoView {
     let state = expect_context::<AppState>();
@@ -340,20 +341,29 @@ fn WavMarkersList() -> impl IntoView {
         let file = files.get(idx)?;
         if file.wav_markers.is_empty() { return None; }
         let sr = file.audio.sample_rate;
-        Some(file.wav_markers.iter().map(|m| {
-            let time_secs = m.position as f64 / sr as f64;
-            let time_str = crate::format_time::format_time_display(time_secs, 3);
-            let label = m.label.clone().unwrap_or_else(|| format!("Cue {}", m.id));
-            (m.position, time_str, label)
-        }).collect::<Vec<_>>())
+        // Heading adapts to what kind of markers these are based on the
+        // file format. Same underlying field, different source semantics.
+        let heading = match file.audio.metadata.format {
+            "M4A" => "Chapters",
+            _ => "Cue Points",
+        };
+        Some((
+            heading,
+            file.wav_markers.iter().map(|m| {
+                let time_secs = m.position as f64 / sr as f64;
+                let time_str = crate::format_time::format_time_display(time_secs, 3);
+                let label = m.label.clone().unwrap_or_else(|| format!("Marker {}", m.id));
+                (m.position, time_str, label)
+            }).collect::<Vec<_>>()
+        ))
     };
 
     view! {
         {move || {
-            if let Some(items) = markers() {
+            if let Some((heading, items)) = markers() {
                 view! {
                     <div class="setting-group">
-                        <div class="setting-group-title">"WAV Markers"</div>
+                        <div class="setting-group-title">{heading}</div>
                         <div class="annotation-tree">
                             {items.into_iter().map(|(pos, time_str, label)| {
                                 let state2 = state;
@@ -362,7 +372,6 @@ fn WavMarkersList() -> impl IntoView {
                                         class="annotation-tree-item wav-marker-item"
                                         title=format!("Sample {}", pos)
                                         on:click=move |_| {
-                                            // Jump to this marker position (scroll + playhead)
                                             let sr = state2.files.with_untracked(|files| {
                                                 state2.current_file_index.get_untracked()
                                                     .and_then(|i| files.get(i))
@@ -370,8 +379,19 @@ fn WavMarkersList() -> impl IntoView {
                                                     .unwrap_or(1)
                                             });
                                             let time = pos as f64 / sr as f64;
+                                            // 1) Remember this as the "play from here" position
+                                            //    so the play button picks up from the marker
+                                            //    instead of the previous scroll position.
+                                            state2.play_from_here_time.set(time);
+                                            // 2) Update the visual playhead.
                                             state2.playhead_time.set(time);
+                                            // 3) Scroll viewport to center on the marker.
                                             jump_to_time(state2, time);
+                                            // 4) If playback is active, restart from here so
+                                            //    the audio actually jumps.
+                                            if state2.is_playing.get_untracked() {
+                                                crate::audio::playback::play_from_time(&state2, time);
+                                            }
                                         }
                                     >
                                         <span class="annotation-icon">{"\u{25C6} "}</span>
