@@ -9,6 +9,14 @@ pub fn ToastDisplay() -> impl IntoView {
 
     view! {
         <div class="app-toast-container">
+            // Persistent "Buffering…" indicator while the streaming decoder
+            // is behind the playhead. Distinct from transient status toasts
+            // so it doesn't auto-dismiss.
+            {move || state.is_buffering.get().then(|| {
+                view! {
+                    <span class="status-toast status-toast-info">"Buffering\u{2026}"</span>
+                }
+            })}
             {move || state.status_message.get().map(|msg| {
                 let state2 = state;
                 wasm_bindgen_futures::spawn_local(async move {

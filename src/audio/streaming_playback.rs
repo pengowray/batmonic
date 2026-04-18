@@ -52,6 +52,23 @@ thread_local! {
     static STREAM_GAIN: RefCell<Option<web_sys::GainNode>> = const { RefCell::new(None) };
     /// Monotonically increasing generation counter to detect stale streams.
     static STREAM_GEN: RefCell<u32> = const { RefCell::new(0) };
+    /// Web Audio time at which the most recently scheduled buffer ends.
+    /// Compared against the audio context's current_time() from the playhead
+    /// animation to detect buffer underruns.
+    static SCHEDULED_END: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+}
+
+/// How many seconds of audio are scheduled beyond the audio context's
+/// current_time. Returns None if no stream is active. Negative means the
+/// scheduler has fallen behind and audio is running out (buffer underrun).
+pub fn audio_buffer_ahead_secs() -> Option<f64> {
+    STREAM_CTX.with(|ctx| {
+        let borrow = ctx.borrow();
+        let audio_ctx = borrow.as_ref()?;
+        let sched = SCHEDULED_END.with(|s| s.get());
+        if sched <= 0.0 { return None; }
+        Some(sched - audio_ctx.current_time())
+    })
 }
 
 /// Snapshot of all playback parameters, frozen at play start so that
@@ -115,6 +132,7 @@ pub(crate) fn stop_stream() {
         let mut generation = g.borrow_mut();
         *generation = generation.wrapping_add(1);
     });
+    SCHEDULED_END.with(|s| s.set(0.0));
 
     // Take the gain node but keep the context alive for reuse.
     let gain = STREAM_GAIN.with(|g| g.borrow_mut().take());
@@ -296,6 +314,7 @@ async fn chunk_loop(
 
     // Now schedule all pre-buffered chunks at once, starting slightly in the future
     let mut scheduled_time = ctx.current_time() + 0.02;
+    SCHEDULED_END.with(|s| s.set(scheduled_time));
 
     // Fade in from silence to avoid click when crossfading with old stream
     {
@@ -331,6 +350,7 @@ async fn chunk_loop(
                     scheduled_time += chunk_duration;
                 }
             }
+            SCHEDULED_END.with(|s| s.set(scheduled_time));
         }
     }
 
@@ -367,6 +387,7 @@ async fn chunk_loop(
                     scheduled_time += chunk_duration;
                 }
             }
+            SCHEDULED_END.with(|s| s.set(scheduled_time));
         }
 
         // Yield to browser so UI stays responsive

@@ -991,6 +991,9 @@ pub struct AppState {
     pub zoom_level: RwSignal<f64>,
     pub scroll_offset: RwSignal<f64>,
     pub is_playing: RwSignal<bool>,
+    /// True when playback is frozen waiting for streaming chunks to decode.
+    /// Drives the "Buffering…" toast and pauses the playhead animation.
+    pub is_buffering: RwSignal<bool>,
     pub playhead_time: RwSignal<f64>,
     pub active_playback_selection: RwSignal<Option<Selection>>,
     pub loading_files: RwSignal<Vec<LoadingEntry>>,
@@ -1550,6 +1553,7 @@ impl AppState {
             zoom_level: RwSignal::new(1.0),
             scroll_offset: RwSignal::new(0.0),
             is_playing: RwSignal::new(false),
+            is_buffering: RwSignal::new(false),
             playhead_time: RwSignal::new(0.0),
             active_playback_selection: RwSignal::new(None),
             loading_files: RwSignal::new(Vec::new()),

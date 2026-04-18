@@ -177,6 +177,7 @@ pub fn stop(state: &AppState) {
     cancel_replay_timer();
     cancel_playhead();
     streaming_playback::stop_stream();
+    state.is_buffering.set(false);
     if was_playing {
         if state.user_panned_during_playback.get_untracked()
             && !is_playhead_visible(state)
@@ -539,23 +540,70 @@ fn start_playhead(state: AppState, start_time: f64, duration: f64, speed: f64) {
 
     use std::rc::Rc;
     use wasm_bindgen::prelude::*;
+    use crate::audio::streaming_playback::audio_buffer_ahead_secs;
 
     let cb: Rc<RefCell<Option<wasm_bindgen::closure::Closure<dyn FnMut()>>>> =
         Rc::new(RefCell::new(None));
     let cb_clone = cb.clone();
 
+    // Mutable across animation ticks: total wall-clock time spent frozen
+    // while the audio scheduler was draining. Subtracted from elapsed so the
+    // playhead tracks actual audio position, not wall-clock time.
+    let buffering_total = Rc::new(RefCell::new(0.0_f64));
+    let buffering_started_at: Rc<RefCell<Option<f64>>> = Rc::new(RefCell::new(None));
+
+    // Underrun hysteresis: enter buffering when the scheduled-ahead budget
+    // drops near empty, exit once it's comfortably refilled. Tuned against
+    // LOOKAHEAD_SECS (1.5s) in streaming_playback.
+    const BUFFER_UNDERRUN_THRESHOLD: f64 = 0.05; // seconds of audio remaining
+    const BUFFER_RECOVER_THRESHOLD: f64 = 0.35;  // need this much ahead to resume
+
     *cb.borrow_mut() = Some(wasm_bindgen::closure::Closure::new(move || {
         if !state.is_playing.get_untracked() {
+            state.is_buffering.set(false);
             return;
         }
         let window = web_sys::window().unwrap();
         let perf = window.performance().unwrap();
-        let elapsed_ms = perf.now() - anim_start;
-        let elapsed_real = elapsed_ms / 1000.0;
+        let now_ms = perf.now();
+
+        // Check streaming buffer health (None for non-streaming sources →
+        // treat as always healthy).
+        let ahead = audio_buffer_ahead_secs();
+        let is_buffering = match ahead {
+            Some(a) => {
+                let currently = state.is_buffering.get_untracked();
+                if currently {
+                    a < BUFFER_RECOVER_THRESHOLD
+                } else {
+                    a < BUFFER_UNDERRUN_THRESHOLD
+                }
+            }
+            None => false,
+        };
+
+        // Manage the buffering signal + accumulated-freeze timer.
+        let was_buffering = state.is_buffering.get_untracked();
+        if is_buffering && !was_buffering {
+            *buffering_started_at.borrow_mut() = Some(now_ms);
+            state.is_buffering.set(true);
+        } else if !is_buffering && was_buffering {
+            if let Some(started) = buffering_started_at.borrow_mut().take() {
+                *buffering_total.borrow_mut() += now_ms - started;
+            }
+            state.is_buffering.set(false);
+        }
+
+        // Effective elapsed time excludes any wall-clock spent frozen.
+        let freeze_so_far = *buffering_total.borrow()
+            + buffering_started_at.borrow().map(|s| now_ms - s).unwrap_or(0.0);
+        let elapsed_ms = now_ms - anim_start - freeze_so_far;
+        let elapsed_real = elapsed_ms.max(0.0) / 1000.0;
         let current = start_time + elapsed_real * speed;
 
         if current >= end_time {
             state.playhead_time.set(end_time);
+            state.is_buffering.set(false);
             if !(state.user_panned_during_playback.get_untracked()
                 && !is_playhead_visible(&state))
             {
