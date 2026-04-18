@@ -140,12 +140,6 @@ impl StreamingM4aSource {
         };
         if all_cached { return; }
 
-        // If another task is already decoding, bail out — it will make
-        // progress and the next prefetch cycle will pick up where it left off.
-        if self.decoding_in_progress.get() {
-            return;
-        }
-
         for chunk_idx in first_chunk..=last_chunk {
             if self.cache.borrow().contains(chunk_idx) { continue; }
             if self.decode_chunk(chunk_idx).await.is_err() {
@@ -164,12 +158,21 @@ impl StreamingM4aSource {
         let chunk_end = (chunk_start + CHUNK_FRAMES as u64).min(self.total_frames);
         if chunk_start >= self.total_frames { return Err("Past EOF".into()); }
 
-        // Re-entrance guard: if another task is already decoding, abort. The
-        // caller (prefetch_region) treats Err as "skip this chunk, try again
-        // later", so this behaves like a cooperative mutex across .await
-        // points without holding a RefCell borrow.
-        if self.decoding_in_progress.get() {
-            return Err("decode_chunk already in progress".into());
+        // Cooperative mutex: the FormatReader + Decoder are shared mutable
+        // state, so two decode_chunk calls cannot interleave across .await
+        // points without corrupting the decoder position. Wait for any
+        // in-flight decode to finish before starting our own.
+        let mut attempts = 0u32;
+        while self.decoding_in_progress.get() {
+            attempts += 1;
+            if attempts > 600 {
+                return Err("decode_chunk waited >6s for lock".into());
+            }
+            let p = js_sys::Promise::new(&mut |resolve, _| {
+                web_sys::window().unwrap()
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 10).unwrap();
+            });
+            wasm_bindgen_futures::JsFuture::from(p).await.ok();
         }
         self.decoding_in_progress.set(true);
         let _guard = DecodeGuard(&self.decoding_in_progress);

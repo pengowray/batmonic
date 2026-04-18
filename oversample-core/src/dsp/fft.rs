@@ -1,6 +1,5 @@
 use crate::canvas::colors::magnitude_to_greyscale;
 use crate::types::PreRendered;
-use crate::audio::source::ChannelView;
 use crate::types::{AudioData, PreviewImage, SpectrogramColumn, SpectrogramData};
 use realfft::RealFftPlanner;
 use std::cell::RefCell;
@@ -207,14 +206,11 @@ pub fn compute_spectrogram(
 ) -> SpectrogramData {
     let fft = FFT_PLANNER.with(|p| p.borrow_mut().plan_fft_forward(fft_size));
 
-    // Use loaded samples only — for streaming files, total_samples() could be
-    // billions while only 30s are in memory.
-    let total = if audio.source.is_fully_loaded() {
-        audio.source.total_samples() as usize
-    } else {
-        audio.samples.len()
-    };
-    let samples = audio.source.read_region(ChannelView::MonoMix, 0, total);
+    // Use the in-memory mono-mixed samples directly — allocating a fresh Vec
+    // via read_region would duplicate up to a gigabyte for long audiobooks
+    // that already fit in audio.samples (and OOM the WASM heap). For streaming
+    // sources audio.samples is the head (~30s), which is all we need anyway.
+    let samples: &[f32] = &audio.samples;
 
     let mut columns = Vec::new();
 
@@ -273,13 +269,9 @@ pub fn compute_spectrogram_partial(
     col_start: usize,
     col_count: usize,
 ) -> Vec<SpectrogramColumn> {
-    let total = if audio.source.is_fully_loaded() {
-        audio.source.total_samples() as usize
-    } else {
-        audio.samples.len()
-    };
-    let samples = audio.source.read_region(ChannelView::MonoMix, 0, total);
-    compute_stft_columns(&samples, audio.sample_rate, fft_size, hop_size, col_start, col_count)
+    // Use audio.samples directly — same rationale as compute_spectrogram:
+    // avoid allocating a duplicate Vec for multi-hour files.
+    compute_stft_columns(&audio.samples, audio.sample_rate, fft_size, hop_size, col_start, col_count)
 }
 
 /// Compute STFT columns directly from a sample slice.
