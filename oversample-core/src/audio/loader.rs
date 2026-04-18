@@ -1239,8 +1239,9 @@ pub fn parse_m4a_tags(bytes: &[u8]) -> Vec<(String, String)> {
             if data.len() > 8 {
                 let type_indicator = u32::from_be_bytes(data[0..4].try_into().unwrap_or([0; 4])) & 0x00FF_FFFF;
                 let payload = &data[8..];
-                let key = render_fourcc(key_bytes);
-                let value = render_ilst_value(type_indicator, payload);
+                let key_raw: [u8; 4] = key_bytes.try_into().unwrap_or([0; 4]);
+                let key = friendly_ilst_key(key_raw).unwrap_or_else(|| render_fourcc(key_bytes));
+                let value = render_ilst_value(type_indicator, key_raw, payload);
                 if !value.is_empty() {
                     out.push((key, value));
                 }
@@ -1254,11 +1255,23 @@ pub fn parse_m4a_tags(bytes: &[u8]) -> Vec<(String, String)> {
 
 /// Render an iTunes ilst value according to its type_indicator:
 /// 1 = UTF-8 text, 21 = signed integer BE, 0 = implicit (guess).
-fn render_ilst_value(type_indicator: u32, payload: &[u8]) -> String {
+/// Some keys use structured binary payloads (`trkn`, `disk`) that we format
+/// specially.
+fn render_ilst_value(type_indicator: u32, key: [u8; 4], payload: &[u8]) -> String {
+    // `trkn` and `disk` payloads are 8 bytes: 2 reserved + u16 BE index + u16 BE total.
+    if (&key == b"trkn" || &key == b"disk") && payload.len() >= 6 {
+        let index = u16::from_be_bytes(payload[2..4].try_into().unwrap_or([0; 2]));
+        let total = u16::from_be_bytes(payload[4..6].try_into().unwrap_or([0; 2]));
+        return if total > 0 { format!("{index}/{total}") } else { index.to_string() };
+    }
+    // `gnre` (legacy genre): 2-byte BE index into ID3 genre list.
+    if &key == b"gnre" && payload.len() >= 2 {
+        let idx = u16::from_be_bytes(payload[0..2].try_into().unwrap_or([0; 2]));
+        return format!("Genre #{idx}");
+    }
     match type_indicator {
         1 => String::from_utf8_lossy(payload).into_owned(),
         21 | 22 => {
-            // Signed/unsigned integer, big-endian, 1–8 bytes.
             match payload.len() {
                 1 => (payload[0] as i8).to_string(),
                 2 => i16::from_be_bytes(payload.try_into().unwrap_or([0; 2])).to_string(),
@@ -1268,7 +1281,6 @@ fn render_ilst_value(type_indicator: u32, payload: &[u8]) -> String {
             }
         }
         _ => {
-            // Implicit: if it looks like UTF-8 text, treat it as such.
             if payload.iter().all(|&b| b != 0 && b.is_ascii() || b >= 0x20) {
                 String::from_utf8_lossy(payload).into_owned()
             } else {
@@ -1276,6 +1288,42 @@ fn render_ilst_value(type_indicator: u32, payload: &[u8]) -> String {
             }
         }
     }
+}
+
+/// Translate a well-known iTunes fourcc to a friendlier display label.
+/// Returns `None` for unknown keys so the caller can fall back to the raw fourcc.
+fn friendly_ilst_key(key: [u8; 4]) -> Option<String> {
+    let name = match &key {
+        b"\xA9nam" => "Title",
+        b"\xA9ART" => "Artist",
+        b"aART"   => "Album Artist",
+        b"\xA9alb" => "Album",
+        b"\xA9day" => "Year",
+        b"\xA9gen" => "Genre",
+        b"gnre"   => "Genre",
+        b"\xA9cmt" => "Comment",
+        b"\xA9wrt" => "Composer",
+        b"\xA9too" => "Encoder",
+        b"\xA9grp" => "Grouping",
+        b"\xA9lyr" => "Lyrics",
+        b"trkn"   => "Track",
+        b"disk"   => "Disc",
+        b"cprt"   => "Copyright",
+        b"desc"   => "Description",
+        b"ldes"   => "Long Description",
+        b"tvsh"   => "TV Show",
+        b"tven"   => "TV Episode ID",
+        b"tvsn"   => "TV Season",
+        b"tves"   => "TV Episode",
+        b"pcst"   => "Podcast",
+        b"catg"   => "Category",
+        b"keyw"   => "Keywords",
+        b"purd"   => "Purchase Date",
+        b"rtng"   => "Rating",
+        b"stik"   => "Media Kind",
+        _ => return None,
+    };
+    Some(name.to_string())
 }
 
 /// Best-effort fourcc rendering — replaces the leading `©` byte (0xA9) so
