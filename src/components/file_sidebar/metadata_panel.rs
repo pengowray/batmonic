@@ -318,13 +318,25 @@ pub(crate) fn MetadataPanel() -> impl IntoView {
                                 view! { <span></span> }.into_any()
                             }}
                             {if has_guano {
+                                let is_guano_source = matches!(meta.format, "WAV" | "W4V");
+                                let default_section: &str = if is_guano_source {
+                                    "Guano metadata"
+                                } else {
+                                    "Audio file metadata"
+                                };
                                 let mut items: Vec<leptos::tachys::view::any_view::AnyView> = Vec::new();
                                 let mut current_section: Option<String> = None;
                                 for (k, v) in guano_fields {
-                                    let (section, display_key) = categorize_guano_key(&k);
+                                    let (section, display_key) = if is_guano_source {
+                                        let (s, d) = categorize_guano_key(&k);
+                                        let s = if s == "GUANO" { default_section.to_string() } else { s };
+                                        (s, d)
+                                    } else {
+                                        (default_section.to_string(), k.clone())
+                                    };
                                     if current_section.as_ref() != Some(&section) {
                                         let heading = section.clone();
-                                        let show_badge = heading != "GUANO";
+                                        let show_badge = is_guano_source && heading != default_section;
                                         items.push(view! {
                                             <div class="setting-group-title">
                                                 {heading}
