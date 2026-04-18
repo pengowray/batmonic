@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use crate::state::{ActiveFocus, AppState, Selection};
-use crate::annotations::{Annotation, AnnotationKind, AnnotationSet, Region, generate_default_label, generate_uuid, now_iso8601};
+use crate::annotations::{Annotation, AnnotationKind, AnnotationSet, Marker, Region, generate_default_label, generate_uuid, now_iso8601};
 use crate::canvas::spectrogram_renderer::freq_to_y;
 use crate::components::file_sidebar::settings_panel::{
     toggle_annotation_lock, delete_annotation,
@@ -72,6 +72,65 @@ pub fn annotate_selection(state: &AppState) {
         state.annotation_is_new_edit.set(true);
         state.show_info_toast(if has_freq { "Region annotated" } else { "Segment annotated" });
     }
+}
+
+/// Drop an annotation marker at the given time on the current file, open label
+/// edit. Called from the keyboard shortcut (M) and the overflow menu.
+pub fn add_marker_at_time(state: &AppState, time: f64) {
+    let Some(idx) = state.current_file_index.get_untracked() else { return; };
+    let duration = state.files.with_untracked(|files| {
+        files.get(idx).map(|f| f.audio.duration_secs).unwrap_or(0.0)
+    });
+    if duration <= 0.0 { return; }
+    let time = time.clamp(0.0, duration);
+
+    state.snapshot_annotations();
+    let ann_id = generate_uuid();
+    state.annotation_store.update(|store| {
+        store.ensure_len(idx + 1);
+        if store.sets[idx].is_none() {
+            let new_set = state.files.with_untracked(|files| {
+                files.get(idx).map(|f| {
+                    let id = f.identity.clone().unwrap_or_else(|| {
+                        crate::file_identity::identity_layer1(&f.name, f.audio.metadata.file_size as u64)
+                    });
+                    AnnotationSet::new_with_metadata(id, &f.audio, f.cached_peak_db, f.cached_full_peak_db)
+                })
+            });
+            if let Some(set) = new_set {
+                store.sets[idx] = Some(set);
+            }
+        }
+        if let Some(ref mut set) = store.sets[idx] {
+            let mut kind = AnnotationKind::Marker(Marker {
+                time,
+                label: None,
+                color: None,
+            });
+            let default_label = generate_default_label(&set.annotations, &kind, None);
+            if let AnnotationKind::Marker(ref mut m) = kind {
+                m.label = Some(default_label);
+            }
+            set.annotations.push(Annotation {
+                id: ann_id.clone(),
+                kind,
+                created_at: now_iso8601(),
+                modified_at: now_iso8601(),
+                notes: None,
+                parent_id: None,
+                sort_order: None,
+                tags: Vec::new(),
+                label_default: Some(true),
+            });
+        }
+    });
+    state.annotations_dirty.set(true);
+    state.annotations_visible.set(true);
+    state.selected_annotation_ids.set(vec![ann_id]);
+    state.active_focus.set(Some(ActiveFocus::Annotations));
+    state.annotation_editing.set(true);
+    state.annotation_is_new_edit.set(true);
+    state.show_info_toast("Marker added");
 }
 
 /// Get frequency bounds from focus stack or display range.

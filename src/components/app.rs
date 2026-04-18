@@ -681,6 +681,14 @@ pub fn App() -> impl IntoView {
             ev.prevent_default();
             state_kb.bat_book_open.update(|v| *v = !*v);
         }
+        // M = drop a marker annotation at the current playhead position.
+        if (ev.key() == "m" || ev.key() == "M") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
+            // If something else wants the key (label editor, etc.), skip.
+            if state_kb.annotation_editing.get_untracked() { return; }
+            ev.prevent_default();
+            let t = state_kb.playhead_time.get_untracked();
+            crate::components::overflow_menu::add_marker_at_time(&state_kb, t);
+        }
         // Q = toggle frequency bounds on current selection or selected annotations (region ↔ segment)
         if (ev.key() == "q" || ev.key() == "Q") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
             if let Some(sel) = state_kb.selection.get_untracked() {
