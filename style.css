@@ -1761,22 +1761,6 @@ body.sidebar-resizing {
     margin-left: -3px;
 }
 
-.time-axis-tooltip {
-    position: absolute;
-    bottom: 18px;
-    transform: translateX(-50%);
-    background: rgba(0, 0, 0, 0.85);
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 11px;
-    font-family: system-ui, sans-serif;
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    pointer-events: none;
-    white-space: nowrap;
-    z-index: 10;
-}
-
 .analysis-panel {
     padding: 8px 16px;
     background: #181818;

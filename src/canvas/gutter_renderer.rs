@@ -20,9 +20,6 @@ pub const LABEL_COL_WIDTH: f64 = 22.0;
 /// Recommended band gutter width (px) — label column + two 20px fog cells.
 pub const BAND_GUTTER_WIDTH: f64 = LABEL_COL_WIDTH + 40.0;
 
-/// Recommended time gutter height (px).
-pub const TIME_GUTTER_HEIGHT: f64 = 24.0;
-
 /// Draw the fogged-mirror checkerboard. Two colour cells alternated across
 /// a rectangle. `dim` is the checker brightness multiplier (1.0 = normal,
 /// < 1.0 fades the fog — used when the gutter is inactive).

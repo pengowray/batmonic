@@ -26,7 +26,6 @@ pub fn Spectrogram() -> impl IntoView {
     // Interaction state for event handlers (drag, pinch, axis drag, etc.)
     let ix = SpectInteraction::new();
     let label_hover_target = ix.label_hover_target;
-    let time_axis_tooltip = ix.time_axis_tooltip;
     let anim_gen: Rc<Cell<u32>> = Rc::new(Cell::new(0));
 
     // Disposal guard: async callbacks (rAF, setTimeout) check this before
@@ -1270,8 +1269,7 @@ pub fn Spectrogram() -> impl IntoView {
                 // left-axis drag carries the pointer into the main canvas.
                 if state.axis_drag_start_freq.get().is_some()
                     || ix.freq_pan_start.get().is_some()
-                    || state.mouse_in_label_area.get()
-                    || state.mouse_in_time_axis.get() {
+                    || state.mouse_in_label_area.get() {
                     return format!("cursor: cell; touch-action: {ta};");
                 }
                 if state.spec_drag_handle.get().is_some() {
@@ -1351,20 +1349,6 @@ pub fn Spectrogram() -> impl IntoView {
                 }
                 style:display=move || if state.is_playing.get() && !state.clean_view.get() { "block" } else { "none" }
             />
-            // Time-axis hover tooltip (shows full date/time/timezone + source)
-            {move || {
-                if state.clean_view.get() { return None; }
-                time_axis_tooltip.get().map(|(x, text)| {
-                    view! {
-                        <div
-                            class="time-axis-tooltip"
-                            style:left=format!("{}px", x)
-                        >
-                            {text}
-                        </div>
-                    }
-                })
-            }}
             </div>
             <BandGutter/>
             </div>

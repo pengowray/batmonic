@@ -29,41 +29,20 @@ pub struct SpectInteraction {
     pub hand_drag_start: RwSignal<(f64, f64)>,
     /// Pinch-to-zoom state (two-finger touch)
     pub pinch_state: RwSignal<Option<crate::components::pinch::PinchState>>,
-    /// Raw (un-snapped) frequency where axis drag started
-    pub axis_drag_raw_start: RwSignal<f64>,
     /// Label hover animation target (0.0 or 1.0)
     pub label_hover_target: RwSignal<f64>,
     /// Double-tap detection: timestamp of last tap
     pub last_tap_time: RwSignal<f64>,
     /// Double-tap detection: x-position of last tap
     pub last_tap_x: RwSignal<f64>,
-    /// Double-tap detection: y-position of last tap (needed for x-axis zone check)
+    /// Double-tap detection: y-position of last tap
     pub last_tap_y: RwSignal<f64>,
-    /// Time-axis tooltip: (x_px, tooltip_text) — None when not hovering the axis
-    pub time_axis_tooltip: RwSignal<Option<(f64, String)>>,
-    /// True when dragging along the bottom time axis to select a time segment
-    pub time_axis_dragging: RwSignal<bool>,
-    /// Raw (un-snapped) time where time-axis drag started
-    pub time_axis_drag_raw_start: RwSignal<f64>,
     /// Velocity tracker for inertia scrolling
     pub velocity_tracker: StoredValue<crate::components::inertia::VelocityTracker>,
     /// Generation counter for cancelling inertia animations
     pub inertia_generation: StoredValue<u32>,
-    /// True when drag started in the ambiguous bottom-left corner zone
-    pub corner_drag_active: RwSignal<bool>,
-    /// Client (x, y) at the start of a corner drag
-    pub corner_drag_start_client: RwSignal<(f64, f64)>,
-    /// Which axis is currently committed: None = undecided, true = Y (freq), false = X (time)
-    pub corner_drag_axis: RwSignal<Option<bool>>,
-    /// Saved BandFF range before corner drag, for restoration when switching to X-axis
-    pub corner_drag_saved_ff: RwSignal<(f64, f64)>,
-    /// Saved selection before corner drag, for restoration when switching to Y-axis
-    pub corner_drag_saved_selection: RwSignal<Option<Selection>>,
     /// Pending annotation hit for Hand tool — deferred to mouseup so panning takes priority
     pub pending_annotation_hit: RwSignal<Option<(String, bool)>>, // (annotation_id, ctrl_held)
-    /// Pending time-axis drag: defers actual drag until pointer moves >3px, allowing tap-to-clear.
-    /// Stores (client_x, time, shift_held, anchor_time) when set.
-    pub time_axis_pending: RwSignal<Option<(f64, f64, bool, f64)>>,
     /// Pending BandFF body click — deferred to mouseup so panning takes priority
     pub pending_band_ff_hit: RwSignal<bool>,
     /// Pending transient selection body click — deferred to mouseup so panning takes priority
@@ -90,23 +69,13 @@ impl SpectInteraction {
             drag_start: RwSignal::new((0.0f64, 0.0f64)),
             hand_drag_start: RwSignal::new((0.0f64, 0.0f64)),
             pinch_state: RwSignal::new(None),
-            axis_drag_raw_start: RwSignal::new(0.0f64),
             label_hover_target: RwSignal::new(0.0f64),
             last_tap_time: RwSignal::new(0.0f64),
             last_tap_x: RwSignal::new(0.0f64),
             last_tap_y: RwSignal::new(0.0f64),
-            time_axis_tooltip: RwSignal::new(None),
-            time_axis_dragging: RwSignal::new(false),
-            time_axis_drag_raw_start: RwSignal::new(0.0f64),
             velocity_tracker: StoredValue::new(crate::components::inertia::VelocityTracker::new()),
             inertia_generation: StoredValue::new(0u32),
-            corner_drag_active: RwSignal::new(false),
-            corner_drag_start_client: RwSignal::new((0.0, 0.0)),
-            corner_drag_axis: RwSignal::new(None),
-            corner_drag_saved_ff: RwSignal::new((0.0, 0.0)),
-            corner_drag_saved_selection: RwSignal::new(None),
             pending_annotation_hit: RwSignal::new(None),
-            time_axis_pending: RwSignal::new(None),
             pending_band_ff_hit: RwSignal::new(false),
             pending_selection_hit: RwSignal::new(false),
             freq_pan_start: RwSignal::new(None),
@@ -723,14 +692,10 @@ pub fn on_pointermove(
                 canvas.get_bounding_client_rect().height()
             });
 
-        // Time-axis tooltip + hover tracking lives on the <TimeGutter/>
-        // strip now — the spectrogram's bottom pixels are just spectrogram.
-        ix.time_axis_tooltip.set(None);
-
-        // Update label hover target and in-label-area state
+        // Update label hover target + in-label-area state. (Time-axis
+        // interactions live on the sibling <TimeGutter/> now.)
         let in_label_area = px_x < LABEL_AREA_WIDTH;
         state.mouse_in_label_area.set(in_label_area);
-        state.mouse_in_time_axis.set(false);
         let current_target = ix.label_hover_target.get_untracked();
         let new_target = if in_label_area { 1.0 } else { 0.0 };
         if current_target != new_target {
@@ -759,107 +724,6 @@ pub fn on_pointermove(
             // Annotation resize handle drag takes second priority
             if let Some((ref ann_id, handle_pos)) = state.annotation_drag_handle.get_untracked() {
                 apply_annotation_resize(state, ann_id.clone(), handle_pos, t, f);
-                return;
-            }
-
-            // Corner drag: determine axis from drag direction, allow switching
-            if ix.corner_drag_active.get_untracked() {
-                let (sx, sy) = ix.corner_drag_start_client.get_untracked();
-                let dx = (ev.client_x() as f64 - sx).abs();
-                let dy = (ev.client_y() as f64 - sy).abs();
-                // Need a minimum movement before committing
-                if dx < 4.0 && dy < 4.0 {
-                    return; // still undecided
-                }
-                let want_y_axis = dy >= dx; // true = freq axis, false = time axis
-                let prev_axis = ix.corner_drag_axis.get_untracked();
-                let axis_changed = prev_axis != Some(want_y_axis);
-                if axis_changed {
-                    if want_y_axis {
-                        // Switching to Y-axis: restore saved selection, activate
-                        // left-axis viewport pan (the freq-axis is a display
-                        // control now, not a band-selection surface).
-                        let saved_sel = ix.corner_drag_saved_selection.get_untracked();
-                        state.selection.set(saved_sel);
-                        ix.time_axis_dragging.set(false);
-                        let anchor_freq = ix.axis_drag_raw_start.get_untracked();
-                        let nyquist = file_nyquist(state);
-                        let start_min = state.min_display_freq.get_untracked().unwrap_or(0.0);
-                        let start_max = state.max_display_freq.get_untracked().unwrap_or(nyquist);
-                        ix.freq_pan_start.set(Some((
-                            ev.client_x() as f64, ev.client_y() as f64,
-                            anchor_freq, start_min, start_max,
-                        )));
-                    } else {
-                        // Switching to X-axis: restore saved BandFF range, activate time drag
-                        let (saved_lo, saved_hi) = ix.corner_drag_saved_ff.get_untracked();
-                        if saved_hi > saved_lo {
-                            state.set_band_ff_range(saved_lo, saved_hi);
-                        }
-                        ix.freq_pan_start.set(None);
-                        ix.time_axis_dragging.set(true);
-                    }
-                    ix.corner_drag_axis.set(Some(want_y_axis));
-                }
-                // Apply the committed axis's drag update
-                if want_y_axis {
-                    if let Some((_cx, _cy, anchor_freq, start_min, start_max)) = ix.freq_pan_start.get_untracked() {
-                        if let Some(ch) = canvas_height {
-                            apply_freq_axis_pan(state, px_y, ch, anchor_freq, start_min, start_max);
-                        }
-                    }
-                } else {
-                    let t0 = ix.time_axis_drag_raw_start.get_untracked();
-                    let ff = state.focus_stack.get_untracked().effective_range();
-                    let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
-                    state.selection.set(Some(Selection {
-                        time_start: t0.min(t),
-                        time_end: t0.max(t),
-                        freq_low: fl,
-                        freq_high: fh,
-                    }));
-                }
-                return;
-            }
-
-            // Axis drag takes third priority
-            if state.axis_drag_start_freq.get_untracked().is_some() {
-                let raw_start = ix.axis_drag_raw_start.get_untracked();
-                apply_axis_drag(state, raw_start, f, ev.shift_key());
-                return;
-            }
-
-            // Pending time-axis: commit to drag once pointer moves >3px
-            if let Some((start_cx, _start_t, _shift, anchor_t)) = ix.time_axis_pending.get_untracked() {
-                let dx = (ev.client_x() as f64 - start_cx).abs();
-                if dx > 3.0 {
-                    // Commit to drag
-                    ix.time_axis_pending.set(None);
-                    ix.time_axis_dragging.set(true);
-                    ix.time_axis_drag_raw_start.set(anchor_t);
-                    let ff = state.focus_stack.get_untracked().effective_range();
-                    let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
-                    state.selection.set(Some(Selection {
-                        time_start: anchor_t.min(t),
-                        time_end: anchor_t.max(t),
-                        freq_low: fl,
-                        freq_high: fh,
-                    }));
-                }
-                return;
-            }
-
-            // Time-axis drag takes third priority
-            if ix.time_axis_dragging.get_untracked() {
-                let t0 = ix.time_axis_drag_raw_start.get_untracked();
-                let ff = state.focus_stack.get_untracked().effective_range();
-                let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
-                state.selection.set(Some(Selection {
-                    time_start: t0.min(t),
-                    time_end: t0.max(t),
-                    freq_low: fl,
-                    freq_high: fh,
-                }));
                 return;
             }
 
@@ -946,12 +810,10 @@ pub fn on_pointerleave(
     state.pointer_is_down.set(false);
     state.mouse_freq.set(None);
     state.mouse_in_label_area.set(false);
-    state.mouse_in_time_axis.set(false);
     state.cursor_time.set(None);
     ix.label_hover_target.set(0.0);
     state.spec_hover_handle.set(None);
     state.annotation_hover_handle.set(None);
-    ix.time_axis_tooltip.set(None);
     ix.pending_annotation_hit.set(None);
 }
 
@@ -1001,69 +863,6 @@ pub fn on_pointerup(
         state.annotation_drag_handle.set(None);
         state.annotation_drag_original.set(None);
         state.is_dragging.set(false);
-        return;
-    }
-
-    // End corner drag — clear corner state, then fall through to axis/time finalization
-    let was_corner = ix.corner_drag_active.get_untracked();
-    if was_corner {
-        ix.corner_drag_active.set(false);
-        let committed = ix.corner_drag_axis.get_untracked();
-        ix.corner_drag_axis.set(None);
-        // If never committed to an axis (tiny drag), just cancel
-        if committed.is_none() {
-            state.is_dragging.set(false);
-            state.axis_drag_start_freq.set(None);
-            state.axis_drag_current_freq.set(None);
-            ix.time_axis_dragging.set(false);
-            return;
-        }
-        // Otherwise fall through — the committed axis's signals are set
-    }
-
-    // End axis drag (BandFF range already updated live during drag)
-    if state.axis_drag_start_freq.get_untracked().is_some() {
-        finalize_axis_drag(state);
-        return;
-    }
-
-    // End pending time-axis tap (pointer didn't move enough — treat as tap-to-clear)
-    if ix.time_axis_pending.get_untracked().is_some() {
-        ix.time_axis_pending.set(None);
-        state.is_dragging.set(false);
-        // Tap on x-axis: clear any existing selection
-        if state.selection.get_untracked().is_some() {
-            state.selection.set(None);
-        }
-        return;
-    }
-
-    // End time-axis drag (selection already updated live during drag)
-    if ix.time_axis_dragging.get_untracked() {
-        ix.time_axis_dragging.set(false);
-        state.is_dragging.set(false);
-        // Clear tiny accidental drags
-        if let Some(sel) = state.selection.get_untracked() {
-            if sel.time_end - sel.time_start < 0.0001 {
-                state.selection.set(None);
-            } else {
-                if sel.freq_low.is_none() {
-                    // Auto-combine: only upgrade segment to region when HFR is on
-                    let ff = state.focus_stack.get_untracked().effective_range();
-                    if ff.is_active() {
-                        state.selection.set(Some(Selection {
-                            freq_low: Some(ff.lo),
-                            freq_high: Some(ff.hi),
-                            ..sel
-                        }));
-                    }
-                }
-                // Mutual exclusion: clear annotation selection when time selection is created
-                state.selected_annotation_ids.set(Vec::new());
-                // Focus the new transient selection
-                state.active_focus.set(Some(ActiveFocus::TransientSelection));
-            }
-        }
         return;
     }
 
@@ -1293,10 +1092,6 @@ pub fn on_touchstart(
         state.spec_drag_handle.set(None);
         state.axis_drag_start_freq.set(None);
         state.axis_drag_current_freq.set(None);
-        ix.time_axis_dragging.set(false);
-        ix.time_axis_pending.set(None);
-        ix.corner_drag_active.set(false);
-        ix.corner_drag_axis.set(None);
         return;
     }
 
@@ -1512,113 +1307,6 @@ pub fn on_touchmove(
         return;
     }
 
-    // Corner drag: determine axis from drag direction, allow switching
-    if ix.corner_drag_active.get_untracked() {
-        if let Some((_, _, t, _f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-            let (sx, sy) = ix.corner_drag_start_client.get_untracked();
-            let dx = (touch.client_x() as f64 - sx).abs();
-            let dy = (touch.client_y() as f64 - sy).abs();
-            if dx < 4.0 && dy < 4.0 {
-                return;
-            }
-            let want_y_axis = dy >= dx;
-            let prev_axis = ix.corner_drag_axis.get_untracked();
-            let axis_changed = prev_axis != Some(want_y_axis);
-            if axis_changed {
-                if want_y_axis {
-                    // Corner → Y commits to left-axis viewport pan (the axis
-                    // no longer does band selection).
-                    let saved_sel = ix.corner_drag_saved_selection.get_untracked();
-                    state.selection.set(saved_sel);
-                    ix.time_axis_dragging.set(false);
-                    let anchor_freq = ix.axis_drag_raw_start.get_untracked();
-                    let nyquist = file_nyquist(state);
-                    let start_min = state.min_display_freq.get_untracked().unwrap_or(0.0);
-                    let start_max = state.max_display_freq.get_untracked().unwrap_or(nyquist);
-                    ix.freq_pan_start.set(Some((
-                        touch.client_x() as f64, touch.client_y() as f64,
-                        anchor_freq, start_min, start_max,
-                    )));
-                } else {
-                    let (saved_lo, saved_hi) = ix.corner_drag_saved_ff.get_untracked();
-                    if saved_hi > saved_lo {
-                        state.set_band_ff_range(saved_lo, saved_hi);
-                    }
-                    ix.freq_pan_start.set(None);
-                    ix.time_axis_dragging.set(true);
-                }
-                ix.corner_drag_axis.set(Some(want_y_axis));
-            }
-            if want_y_axis {
-                if let Some((_cx, _cy, anchor_freq, start_min, start_max)) = ix.freq_pan_start.get_untracked() {
-                    if let Some((_, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-                        let Some(canvas_el) = canvas_ref.get() else { return };
-                        let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-                        let ch = canvas.get_bounding_client_rect().height();
-                        apply_freq_axis_pan(state, px_y, ch, anchor_freq, start_min, start_max);
-                    }
-                }
-            } else {
-                let t0 = ix.time_axis_drag_raw_start.get_untracked();
-                let ff = state.focus_stack.get_untracked().effective_range();
-                let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
-                state.selection.set(Some(Selection {
-                    time_start: t0.min(t),
-                    time_end: t0.max(t),
-                    freq_low: fl,
-                    freq_high: fh,
-                }));
-            }
-        }
-        return;
-    }
-
-    // Axis drag takes second priority
-    if state.axis_drag_start_freq.get_untracked().is_some() {
-        if let Some((_, _, _, f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-            let raw_start = ix.axis_drag_raw_start.get_untracked();
-            apply_axis_drag(state, raw_start, f, false);
-        }
-        return;
-    }
-
-    // Pending time-axis: commit to drag once finger moves >5px
-    if let Some((start_cx, _start_t, _shift, anchor_t)) = ix.time_axis_pending.get_untracked() {
-        let dx = (touch.client_x() as f64 - start_cx).abs();
-        if dx > 5.0 {
-            ix.time_axis_pending.set(None);
-            ix.time_axis_dragging.set(true);
-            ix.time_axis_drag_raw_start.set(anchor_t);
-            if let Some((_, _, t, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-                let ff = state.focus_stack.get_untracked().effective_range();
-                let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
-                state.selection.set(Some(Selection {
-                    time_start: anchor_t.min(t),
-                    time_end: anchor_t.max(t),
-                    freq_low: fl,
-                    freq_high: fh,
-                }));
-            }
-        }
-        return;
-    }
-
-    // Time-axis drag takes third priority
-    if ix.time_axis_dragging.get_untracked() {
-        if let Some((_, _, t, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-            let t0 = ix.time_axis_drag_raw_start.get_untracked();
-            let ff = state.focus_stack.get_untracked().effective_range();
-            let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
-            state.selection.set(Some(Selection {
-                time_start: t0.min(t),
-                time_end: t0.max(t),
-                freq_low: fl,
-                freq_high: fh,
-            }));
-        }
-        return;
-    }
-
     match state.canvas_tool.get_untracked() {
         CanvasTool::Hand => {
             apply_hand_pan(state, touch.client_x() as f64, canvas_ref, ix.hand_drag_start.get_untracked());
@@ -1705,74 +1393,6 @@ pub fn on_touchend(
             return;
         }
 
-        // End corner drag — clear corner state, then fall through
-        let was_corner = ix.corner_drag_active.get_untracked();
-        if was_corner {
-            ix.corner_drag_active.set(false);
-            let committed = ix.corner_drag_axis.get_untracked();
-            ix.corner_drag_axis.set(None);
-            if committed.is_none() {
-                state.is_dragging.set(false);
-                state.axis_drag_start_freq.set(None);
-                state.axis_drag_current_freq.set(None);
-                ix.time_axis_dragging.set(false);
-                return;
-            }
-        }
-        // Finalize axis drag
-        if state.axis_drag_start_freq.get_untracked().is_some() {
-            finalize_axis_drag(state);
-            // Track tap for double-tap detection (y-axis taps return early here)
-            if let Some(touch) = ev.changed_touches().get(0) {
-                if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-                    ix.last_tap_time.set(js_sys::Date::now());
-                    ix.last_tap_x.set(px_x);
-                    ix.last_tap_y.set(px_y);
-                }
-            }
-            return;
-        }
-        // End pending time-axis tap (finger didn't move enough — treat as tap-to-clear)
-        if ix.time_axis_pending.get_untracked().is_some() {
-            ix.time_axis_pending.set(None);
-            state.is_dragging.set(false);
-            if state.selection.get_untracked().is_some() {
-                state.selection.set(None);
-            }
-            // Track tap for double-tap detection (x-axis taps return early here)
-            if let Some(touch) = ev.changed_touches().get(0) {
-                if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-                    ix.last_tap_time.set(js_sys::Date::now());
-                    ix.last_tap_x.set(px_x);
-                    ix.last_tap_y.set(px_y);
-                }
-            }
-            return;
-        }
-        // Finalize time-axis drag
-        if ix.time_axis_dragging.get_untracked() {
-            ix.time_axis_dragging.set(false);
-            state.is_dragging.set(false);
-            if let Some(sel) = state.selection.get_untracked() {
-                if sel.time_end - sel.time_start < 0.0001 {
-                    state.selection.set(None);
-                } else {
-                    if sel.freq_low.is_none() {
-                        // Auto-combine: only upgrade segment to region when HFR is on
-                        let ff = state.focus_stack.get_untracked().effective_range();
-                        if ff.is_active() {
-                            state.selection.set(Some(Selection {
-                                freq_low: Some(ff.lo),
-                                freq_high: Some(ff.hi),
-                                ..sel
-                            }));
-                        }
-                    }
-                    state.active_focus.set(Some(ActiveFocus::TransientSelection));
-                }
-            }
-            return;
-        }
         state.is_dragging.set(false);
 
         // Hand tool: bookmark on tap (no significant drag) while playing, or launch inertia
