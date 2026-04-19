@@ -1610,11 +1610,18 @@ body.sidebar-resizing {
     flex: 1;
     position: relative;
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     min-height: 80px;
     max-height: 170px;
     background: #0a0a0a;
     border-top: 1px solid #333;
+}
+
+.waveform-container .waveform-row {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
 }
 
 .band-gutter {
