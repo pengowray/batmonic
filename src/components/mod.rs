@@ -21,6 +21,7 @@ pub mod chromagram_view;
 pub mod pinch;
 pub mod inertia;
 pub mod debug_panel;
+pub mod playhead;
 pub mod bat_book_strip;
 pub mod bat_book_ref_panel;
 pub mod display_filter_button;

@@ -3,6 +3,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::waveform_renderer;
 use crate::components::gutter::{BandGutter, TimeGutter};
+use crate::components::playhead::Playhead;
 use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast, split_three_bands_fft};
 use crate::dsp::zc_divide::zc_rate_per_bin;
 use crate::state::{AppState, CanvasTool, FilterQuality, PlaybackMode, WaveformView};
@@ -842,31 +843,7 @@ pub fn Waveform() -> impl IntoView {
                     on:touchmove=on_touchmove
                     on:touchend=on_touchend
                 />
-                // DOM playhead overlay — decoupled from heavy canvas redraws
-                <div
-                    class="playhead-line"
-                    style:transform=move || {
-                        let playhead = state.playhead_time.get();
-                        let scroll = state.scroll_offset.get();
-                        let zoom = state.zoom_level.get();
-                        let cw = state.spectrogram_canvas_width.get();
-                        let files = state.files.get_untracked();
-                        let time_res = if let Some(ref tl) = state.active_timeline.get_untracked() {
-                            tl.segments.first().and_then(|s| files.get(s.file_index))
-                                .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
-                        } else {
-                            let idx = state.current_file_index.get_untracked();
-                            idx.and_then(|i| files.get(i))
-                                .map(|f| f.spectrogram.time_resolution)
-                                .unwrap_or(1.0)
-                        };
-                        let visible_time = (cw / zoom) * time_res;
-                        let px_per_sec = if visible_time > 0.0 { cw / visible_time } else { 0.0 };
-                        let x = (playhead - scroll) * px_per_sec;
-                        format!("translateX({:.1}px)", x)
-                    }
-                    style:display=move || if state.is_playing.get() && !state.clean_view.get() { "block" } else { "none" }
-                />
+                <Playhead/>
             </div>
             <BandGutter/>
             </div>

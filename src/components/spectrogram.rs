@@ -12,6 +12,7 @@ use crate::canvas::freq_adjustments::compute_freq_adjustments;
 use crate::canvas::spectrogram_renderer::{self, Colormap, ColormapMode, FreqMarkerState, FreqShiftMode, PreRendered, SpectDisplaySettings};
 use crate::components::spectrogram_events::{self, SpectInteraction, LABEL_AREA_WIDTH};
 use crate::components::gutter::{BandGutter, TimeGutter};
+use crate::components::playhead::Playhead;
 use crate::state::{AppState, CanvasTool, SpectrogramHandle, MainView, PlaybackMode};
 use crate::viewport;
 
@@ -1324,31 +1325,7 @@ pub fn Spectrogram() -> impl IntoView {
                 on:touchmove=on_touchmove
                 on:touchend=on_touchend
             />
-            // DOM playhead overlay — decoupled from heavy canvas redraws
-            <div
-                class="playhead-line"
-                style:transform=move || {
-                    let playhead = state.playhead_time.get();
-                    let scroll = state.scroll_offset.get();
-                    let zoom = state.zoom_level.get();
-                    let cw = state.spectrogram_canvas_width.get();
-                    let files = state.files.get_untracked();
-                    let time_res = if let Some(ref tl) = state.active_timeline.get_untracked() {
-                        tl.segments.first().and_then(|s| files.get(s.file_index))
-                            .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
-                    } else {
-                        let idx = state.current_file_index.get_untracked();
-                        idx.and_then(|i| files.get(i))
-                            .map(|f| f.spectrogram.time_resolution)
-                            .unwrap_or(1.0)
-                    };
-                    let visible_time = (cw / zoom) * time_res;
-                    let px_per_sec = if visible_time > 0.0 { cw / visible_time } else { 0.0 };
-                    let x = (playhead - scroll) * px_per_sec;
-                    format!("translateX({:.1}px)", x)
-                }
-                style:display=move || if state.is_playing.get() && !state.clean_view.get() { "block" } else { "none" }
-            />
+            <Playhead/>
             </div>
             <BandGutter/>
             </div>
