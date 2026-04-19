@@ -56,12 +56,19 @@ thread_local! {
     /// Compared against the audio context's current_time() from the playhead
     /// animation to detect buffer underruns.
     static SCHEDULED_END: std::cell::Cell<f64> = const { std::cell::Cell::new(0.0) };
+    /// Set once the chunk loop has scheduled the final chunk of the selection.
+    /// While this is true the already-scheduled tail is draining normally and
+    /// `audio_buffer_ahead_secs` should not be interpreted as an underrun.
+    static SCHEDULER_DONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// How many seconds of audio are scheduled beyond the audio context's
 /// current_time. Returns None if no stream is active. Negative means the
 /// scheduler has fallen behind and audio is running out (buffer underrun).
 pub fn audio_buffer_ahead_secs() -> Option<f64> {
+    // Once the scheduler has queued the final chunk, the remaining lead time
+    // only shrinks — that's expected end-of-stream drain, not an underrun.
+    if SCHEDULER_DONE.with(|d| d.get()) { return None; }
     STREAM_CTX.with(|ctx| {
         let borrow = ctx.borrow();
         let audio_ctx = borrow.as_ref()?;
@@ -133,6 +140,7 @@ pub(crate) fn stop_stream() {
         *generation = generation.wrapping_add(1);
     });
     SCHEDULED_END.with(|s| s.set(0.0));
+    SCHEDULER_DONE.with(|d| d.set(false));
 
     // Take the gain node but keep the context alive for reuse.
     let gain = STREAM_GAIN.with(|g| g.borrow_mut().take());
@@ -401,6 +409,14 @@ async fn chunk_loop(
                 sleep(sleep_ms).await;
             }
         }
+    }
+
+    // Scheduler finished naturally — mark so the playhead animation treats the
+    // draining tail as healthy rather than an underrun. Guard on generation so
+    // a concurrent stop_stream (which already reset the flag) wins.
+    let current_gen = STREAM_GEN.with(|g| *g.borrow());
+    if current_gen == generation {
+        SCHEDULER_DONE.with(|d| d.set(true));
     }
 }
 
