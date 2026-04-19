@@ -21,6 +21,11 @@ pub fn Spectrogram() -> impl IntoView {
     let state = expect_context::<AppState>();
     let canvas_ref = NodeRef::<leptos::html::Canvas>::new();
 
+    // Bumped by a ResizeObserver whenever the canvas' CSS box changes size.
+    // The main render Effect subscribes to this so initial layout races and
+    // container resizes both re-trigger a redraw at the correct dimensions.
+    let canvas_size_tick: RwSignal<u32> = RwSignal::new(0);
+
     let pre_rendered: RwSignal<Option<PreRendered>> = RwSignal::new(None);
     let _flow_cache_removed = (); // flow tiles are now in tile_cache::MV_CACHE
 
@@ -99,11 +104,36 @@ pub fn Spectrogram() -> impl IntoView {
     // Cache-clearing effects: invalidate tile caches when FFT mode, flow, transform, or reassignment changes
     crate::canvas::tile_scheduler::setup_cache_clearing_effects(state);
 
+    // ResizeObserver: watch the parent .chart-stage's CSS box and bump the
+    // render tick whenever it changes. Observing the parent (which flex sizes
+    // correctly) rather than the canvas (which may be stuck at its intrinsic
+    // dimensions when height:100% doesn't resolve through nested flex) means
+    // we actually notice when the container is laid out or resized.
+    Effect::new(move || {
+        let Some(el) = canvas_ref.get() else { return };
+        let canvas: &HtmlCanvasElement = el.as_ref();
+        let Some(parent) = canvas.parent_element() else { return };
+        let cb = Closure::<dyn Fn(js_sys::Array)>::new(move |_entries: js_sys::Array| {
+            canvas_size_tick.set(canvas_size_tick.get_untracked().wrapping_add(1));
+        });
+        if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
+            observer.observe(&parent);
+            // Keep the observer alive for the parent's lifetime.
+            let _ = js_sys::Reflect::set(
+                &parent,
+                &JsValue::from_str("__spec_resize_obs"),
+                &observer,
+            );
+        }
+        cb.forget();
+    });
+
     // Effect 3: redraw when pre-rendered data, scroll, zoom, selection, playhead, overlays, hover, or new tile change
     Effect::new({
         let disposed = disposed.clone();
         move || {
         let _tile_ready = state.tile_ready_signal.get(); // trigger redraw when tiles arrive
+        let _size_tick = canvas_size_tick.get(); // trigger redraw when canvas resizes
         let scroll = state.scroll_offset.get();
         let zoom = state.zoom_level.get();
         let bookmarks = state.bookmarks.get();
@@ -200,9 +230,22 @@ pub fn Spectrogram() -> impl IntoView {
         let Some(canvas_el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
 
-        let rect = canvas.get_bounding_client_rect();
-        let display_w = rect.width() as u32;
-        let display_h = rect.height() as u32;
+        // Measure the parent .chart-stage, not the canvas itself. In nested
+        // flex-column/flex-row layouts, `height: 100%` on the canvas can fail
+        // to resolve (the flex chain doesn't always provide a definite height
+        // for %-based children), in which case the canvas falls back to its
+        // intrinsic dimensions and produces a rect that's smaller than the
+        // visible container. The parent's box is flex-sized correctly.
+        let (display_w, display_h) = match canvas.parent_element() {
+            Some(parent) => {
+                let r = parent.get_bounding_client_rect();
+                (r.width() as u32, r.height() as u32)
+            }
+            None => {
+                let r = canvas.get_bounding_client_rect();
+                (r.width() as u32, r.height() as u32)
+            }
+        };
         if display_w == 0 || display_h == 0 {
             return;
         }

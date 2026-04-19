@@ -7,7 +7,9 @@
 // time axis labels that previously sat inside the main canvas.
 
 use leptos::prelude::*;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
+use wasm_bindgen::closure::Closure;
+use js_sys;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::gutter_renderer;
 use crate::components::axis_drag::{
@@ -32,6 +34,9 @@ pub fn BandGutter() -> impl IntoView {
     // Tooltip position (canvas-local y, in px) — drives the drag tooltip.
     // None while not dragging.
     let tooltip_y = RwSignal::new_local(Option::<f64>::None);
+    // Bumped by a ResizeObserver so the draw Effect re-runs when the gutter's
+    // box changes height (see Spectrogram for the same pattern and rationale).
+    let canvas_size_tick: RwSignal<u32> = RwSignal::new(0);
 
     // Resolve the visible frequency window for the gutter. On the
     // spectrogram this tracks min/max_display_freq so the gutter ticks
@@ -71,12 +76,23 @@ pub fn BandGutter() -> impl IntoView {
         let _rsidebar = state.right_sidebar_collapsed.get();
         let _rsidebar_width = state.right_sidebar_width.get();
         let _tile_ready = state.tile_ready_signal.get();
+        let _size_tick = canvas_size_tick.get();
 
         let Some(canvas_el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-        let rect = canvas.get_bounding_client_rect();
-        let display_w = rect.width() as u32;
-        let display_h = rect.height() as u32;
+        // Measure the parent .band-gutter so the canvas pixel buffer tracks
+        // the flex-sized container height even when `height: 100%` on the
+        // canvas doesn't resolve through nested flex containers.
+        let (display_w, display_h) = match canvas.parent_element() {
+            Some(parent) => {
+                let r = parent.get_bounding_client_rect();
+                (r.width() as u32, r.height() as u32)
+            }
+            None => {
+                let r = canvas.get_bounding_client_rect();
+                (r.width() as u32, r.height() as u32)
+            }
+        };
         if display_w == 0 || display_h == 0 { return; }
         if canvas.width() != display_w || canvas.height() != display_h {
             canvas.set_width(display_w);
@@ -98,6 +114,27 @@ pub fn BandGutter() -> impl IntoView {
             shield_style,
             drag_range,
         );
+    });
+
+    // ResizeObserver: observe the parent .band-gutter (not the canvas), so
+    // flex-driven container resizes re-trigger a draw with the container's
+    // real height even when the canvas itself is stuck at an intrinsic size.
+    Effect::new(move |_| {
+        let Some(el) = canvas_ref.get() else { return };
+        let canvas: &HtmlCanvasElement = el.as_ref();
+        let Some(parent) = canvas.parent_element() else { return };
+        let cb = Closure::<dyn Fn(js_sys::Array)>::new(move |_entries: js_sys::Array| {
+            canvas_size_tick.set(canvas_size_tick.get_untracked().wrapping_add(1));
+        });
+        if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
+            observer.observe(&parent);
+            let _ = js_sys::Reflect::set(
+                &parent,
+                &JsValue::from_str("__band_resize_obs"),
+                &observer,
+            );
+        }
+        cb.forget();
     });
 
     // Resolve (local_y, canvas_height, min_freq, max_freq) for a pointer
@@ -239,6 +276,9 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
     let drag_anchor: StoredValue<Option<f64>> = StoredValue::new(None);
     // Client-space start so we can detect a "tap" (no meaningful drag).
     let drag_start_client: StoredValue<(f64, f64)> = StoredValue::new((0.0, 0.0));
+    // Bumped by a ResizeObserver so the draw Effect re-runs when the
+    // parent's box changes height (see BandGutter for the same pattern).
+    let canvas_size_tick: RwSignal<u32> = RwSignal::new(0);
 
     // Resolve (scroll, visible_time, total_duration, time_res, clock_cfg).
     // Mirrors the per-view bookkeeping the main Effect does so the gutter
@@ -297,13 +337,26 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
         let _rsidebar_width = state.right_sidebar_width.get();
         let _main_view = state.main_view.get();
         let show_clock = state.show_clock_time.get();
+        let _size_tick = canvas_size_tick.get();
         let Some((scroll, visible_time, duration, _time_res, clock)) = time_window() else { return };
 
         let Some(canvas_el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-        let rect = canvas.get_bounding_client_rect();
-        let display_w = rect.width() as u32;
-        let display_h = rect.height() as u32;
+        // Measure the parent .time-gutter, not the canvas. The canvas'
+        // `height: 100%` can fail to resolve through the flex chain and
+        // fall back to the intrinsic 150px — writing that height back via
+        // set_height() feedback-loops the .view-bottom-row past its 24px
+        // flex-basis, swallowing most of the view.
+        let (display_w, display_h) = match canvas.parent_element() {
+            Some(parent) => {
+                let r = parent.get_bounding_client_rect();
+                (r.width() as u32, r.height() as u32)
+            }
+            None => {
+                let r = canvas.get_bounding_client_rect();
+                (r.width() as u32, r.height() as u32)
+            }
+        };
         if display_w == 0 || display_h == 0 { return; }
         if canvas.width() != display_w || canvas.height() != display_h {
             canvas.set_width(display_w);
@@ -340,6 +393,27 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
             duration, clock, show_clock, 1.0,
         );
         ctx.restore();
+    });
+
+    // ResizeObserver: observe the parent .time-gutter (not the canvas), so
+    // flex-driven container resizes re-trigger a draw with the container's
+    // real height even when the canvas itself is stuck at an intrinsic size.
+    Effect::new(move |_| {
+        let Some(el) = canvas_ref.get() else { return };
+        let canvas: &HtmlCanvasElement = el.as_ref();
+        let Some(parent) = canvas.parent_element() else { return };
+        let cb = Closure::<dyn Fn(js_sys::Array)>::new(move |_entries: js_sys::Array| {
+            canvas_size_tick.set(canvas_size_tick.get_untracked().wrapping_add(1));
+        });
+        if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
+            observer.observe(&parent);
+            let _ = js_sys::Reflect::set(
+                &parent,
+                &JsValue::from_str("__time_resize_obs"),
+                &observer,
+            );
+        }
+        cb.forget();
     });
 
     // Map a client-x to a time value inside the data strip.
