@@ -280,10 +280,19 @@ pub fn BottomToolbar() -> impl IntoView {
             class:panel-open=move || state.layer_panel_open.get().is_some()
             node_ref=toolbar_node
             style=move || {
-                match max_height.get() {
-                    Some(h) => format!("max-height: {h}px; overflow-y: auto;"),
-                    None => String::new(),
+                // Inline z-index is the load-bearing lift: keeps combo dropdowns
+                // above .main-overlays (z-index: 20) immediately and across all
+                // views, regardless of :has() invalidation quirks or Leptos
+                // class-diff timing. Matches the CSS-backup rule at line ~1793.
+                let mut s = if state.layer_panel_open.get().is_some() {
+                    String::from("z-index: 25;")
+                } else {
+                    String::new()
+                };
+                if let Some(h) = max_height.get() {
+                    s.push_str(&format!("max-height: {h}px; overflow-y: auto;"));
                 }
+                s
             }
             on:click=|ev: web_sys::MouseEvent| ev.stop_propagation()
             on:touchstart=|ev: web_sys::TouchEvent| ev.stop_propagation()
@@ -299,11 +308,6 @@ pub fn BottomToolbar() -> impl IntoView {
             >
                 <div class="bottom-toolbar-drag-grip"></div>
             </div>
-
-            // ── HFR combo button (only when file is open) ──
-            {move || has_file().then(|| view! { <HfrButton /> })}
-
-            {move || has_file().then(|| view! { <div class="bottom-toolbar-sep"></div> })}
 
             // ── Play combo button ──
             {move || has_file().then(|| view! {
@@ -1185,6 +1189,13 @@ pub fn BottomToolbar() -> impl IntoView {
             {move || (!state.is_mobile.get() && has_file()).then(|| view! {
                 <div class="bottom-toolbar-sep"></div>
                 <ToolButtonInline />
+            })}
+
+            // ── HFR combo button — pinned to the right end so it sits under
+            // the right gutter it controls. On mobile it occupies the top-right
+            // grid cell via `.hfr-slot` rules in style.css. ──
+            {move || has_file().then(|| view! {
+                <div class="hfr-slot"><HfrButton /></div>
             })}
         </div>
     }

@@ -2841,6 +2841,19 @@ body.sidebar-resizing {
     height: 14px;
 }
 
+/* HFR sits under the right gutter it controls. On desktop flex, margin-left:
+   auto pushes it to the far-right end. On mobile grid, pin it to the top-right
+   cell (row 2 is the first button row; row 1 is the drag handle). */
+.bottom-toolbar .hfr-slot {
+    margin-left: auto;
+    display: flex;
+}
+.bottom-toolbar.mobile .hfr-slot {
+    margin-left: 0;
+    grid-column: 3;
+    grid-row: 2;
+}
+
 .bottom-toolbar.mobile .bottom-toolbar-drag-grip {
     width: 50px;
     height: 4px;
