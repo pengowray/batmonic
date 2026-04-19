@@ -11,7 +11,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::freq_adjustments::compute_freq_adjustments;
 use crate::canvas::spectrogram_renderer::{self, Colormap, ColormapMode, FreqMarkerState, FreqShiftMode, PreRendered, SpectDisplaySettings};
 use crate::components::spectrogram_events::{self, SpectInteraction, LABEL_AREA_WIDTH};
-use crate::components::gutter::BandGutter;
+use crate::components::gutter::{BandGutter, TimeGutter};
 use crate::state::{AppState, CanvasTool, SpectrogramHandle, MainView, PlaybackMode};
 use crate::viewport;
 
@@ -716,41 +716,9 @@ pub fn Spectrogram() -> impl IntoView {
                 xform_on,
             );
 
-            // Time scale along the bottom edge
-            {
-                let clock_cfg = if let Some(ref tl) = timeline {
-                    // In timeline mode, use the timeline origin as the clock reference
-                    if tl.origin_epoch_ms > 0.0 {
-                        Some(crate::canvas::time_markers::ClockTimeConfig {
-                            recording_start_epoch_ms: tl.origin_epoch_ms,
-                        })
-                    } else {
-                        None
-                    }
-                } else {
-                    state.current_file()
-                        .and_then(|f| f.recording_start_epoch_ms())
-                        .map(|ms| crate::canvas::time_markers::ClockTimeConfig {
-                            recording_start_epoch_ms: ms,
-                        })
-                };
-                let time_scale = if xform_on && playback_mode == PlaybackMode::TimeExpansion && te_factor.abs() > 1.0 {
-                    te_factor.abs()
-                } else {
-                    1.0
-                };
-                spectrogram_renderer::draw_time_markers(
-                    &ctx,
-                    scroll,
-                    visible_time,
-                    display_w as f64,
-                    display_h as f64,
-                    duration,
-                    clock_cfg,
-                    state.show_clock_time.get(),
-                    time_scale,
-                );
-            }
+            // Time scale moved out of the canvas — it now lives in the
+            // <TimeGutter/> strip below, which keeps the bottom rows of
+            // the spectrogram readable for low frequencies.
 
             // Pulse detection overlay
             if pulse_overlay && !detected_pulses.is_empty() {
@@ -1343,6 +1311,7 @@ pub fn Spectrogram() -> impl IntoView {
                 }
             }
         >
+            <div class="spectrogram-row">
             <div class="spectrogram-stage">
             <canvas
                 node_ref=canvas_ref
@@ -1398,6 +1367,11 @@ pub fn Spectrogram() -> impl IntoView {
             }}
             </div>
             <BandGutter/>
+            </div>
+            <div class="view-bottom-row">
+                <TimeGutter/>
+                <div class="view-bottom-corner"></div>
+            </div>
         </div>
     }
 }

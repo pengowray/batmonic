@@ -1,10 +1,10 @@
 // Gutter components — dedicated drag surfaces for range selection that
-// live alongside (not on top of) the spectrogram / waveform axes.
+// live alongside (not on top of) the main view canvases.
 //
-// `BandGutter` is a narrow vertical canvas showing the frequency-band
-// selection. The time gutter is drawn as an overlay strip on the
-// waveform canvas itself (see waveform.rs) rather than as its own
-// component — the user asked for it to be "part of the main canvas".
+// `BandGutter` is a narrow vertical strip on the right of a view, owning
+// frequency-band (HFR) selection. `TimeGutter` is a thin horizontal
+// strip below a view, owning time-range selection and rendering the
+// time axis labels that previously sat inside the main canvas.
 
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
@@ -12,8 +12,9 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::gutter_renderer;
 use crate::components::spectrogram_events::{
     apply_axis_drag, finalize_axis_drag, freq_snap, select_all_frequencies,
+    select_all_time,
 };
-use crate::state::AppState;
+use crate::state::{ActiveFocus, AppState, Selection};
 
 /// Vertical band-selection gutter. Interactions mirror the spectrogram's
 /// left y-axis so the two feel like one control surface: single tap
@@ -214,6 +215,228 @@ pub fn BandGutter() -> impl IntoView {
             >
                 {format_range}
             </div>
+        </div>
+    }
+}
+
+/// Horizontal time-range gutter. Mounts as the bottom strip of a main
+/// view; the strip renders the time-axis labels that used to live inside
+/// the host canvas (so low frequencies in the spectrogram stay readable)
+/// and acts as the single drag surface for creating `state.selection`
+/// time ranges. A tap clears the selection, a drag sets it, a double-
+/// click selects the full file duration.
+///
+/// `data_left_offset` is the number of pixels on the left that the host
+/// view reserves for its own y-axis labels (0 for spectrogram / waveform,
+/// `LABEL_AREA_WIDTH` on ZcChart). The gutter leaves that strip blank and
+/// maps pointer events to time only within the data region, so the ticks
+/// line up 1:1 with the host canvas.
+#[component]
+pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView {
+    let state = expect_context::<AppState>();
+    let canvas_ref = NodeRef::<leptos::html::Canvas>::new();
+    // Anchor time (seconds) at pointerdown. None when no drag is active.
+    let drag_anchor: StoredValue<Option<f64>> = StoredValue::new(None);
+    // Client-space start so we can detect a "tap" (no meaningful drag).
+    let drag_start_client: StoredValue<(f64, f64)> = StoredValue::new((0.0, 0.0));
+
+    // Resolve (scroll, visible_time, total_duration, time_res, clock_cfg).
+    // Mirrors the per-view bookkeeping the main Effect does so the gutter
+    // paints the same ticks as the host would have.
+    let time_window = move || -> Option<(f64, f64, f64, f64, Option<crate::canvas::time_markers::ClockTimeConfig>)> {
+        let canvas_w = state.spectrogram_canvas_width.get();
+        if canvas_w <= 0.0 { return None; }
+        let zoom = state.zoom_level.get();
+        let scroll = state.scroll_offset.get();
+        // Timeline mode has its own time_res/duration/clock.
+        if let Some(tl) = state.active_timeline.get() {
+            let files = state.files.get();
+            let time_res = tl.segments.first()
+                .and_then(|s| files.get(s.file_index))
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(1.0);
+            let duration = tl.total_duration_secs;
+            let clock = if tl.origin_epoch_ms > 0.0 {
+                Some(crate::canvas::time_markers::ClockTimeConfig {
+                    recording_start_epoch_ms: tl.origin_epoch_ms,
+                })
+            } else { None };
+            let data_w = (canvas_w - data_left_offset).max(1.0);
+            let visible_time = (data_w / zoom) * time_res;
+            return Some((scroll, visible_time, duration, time_res, clock));
+        }
+        let files = state.files.get();
+        let idx = state.current_file_index.get()?;
+        let file = files.get(idx)?;
+        let time_res = file.spectrogram.time_resolution;
+        let data_w = (canvas_w - data_left_offset).max(1.0);
+        let visible_time = (data_w / zoom) * time_res;
+        // Live listen/record uses waterfall total time as the duration
+        // ceiling so the x-axis reads real elapsed seconds.
+        let is_live = (file.is_live_listen || file.is_recording)
+            && crate::canvas::live_waterfall::is_active();
+        let duration = if is_live {
+            crate::canvas::live_waterfall::total_time()
+        } else {
+            file.audio.duration_secs
+        };
+        let clock = file.recording_start_epoch_ms().map(|ms| {
+            crate::canvas::time_markers::ClockTimeConfig {
+                recording_start_epoch_ms: ms,
+            }
+        });
+        Some((scroll, visible_time, duration, time_res, clock))
+    };
+
+    // Redraw on any relevant signal change.
+    Effect::new(move |_| {
+        let selection = state.selection.get();
+        let _sidebar = state.sidebar_collapsed.get();
+        let _sidebar_width = state.sidebar_width.get();
+        let _rsidebar = state.right_sidebar_collapsed.get();
+        let _rsidebar_width = state.right_sidebar_width.get();
+        let _main_view = state.main_view.get();
+        let show_clock = state.show_clock_time.get();
+        let Some((scroll, visible_time, duration, _time_res, clock)) = time_window() else { return };
+
+        let Some(canvas_el) = canvas_ref.get() else { return };
+        let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+        let rect = canvas.get_bounding_client_rect();
+        let display_w = rect.width() as u32;
+        let display_h = rect.height() as u32;
+        if display_w == 0 || display_h == 0 { return; }
+        if canvas.width() != display_w || canvas.height() != display_h {
+            canvas.set_width(display_w);
+            canvas.set_height(display_h);
+        }
+
+        let Ok(Some(obj)) = canvas.get_context("2d") else { return };
+        let Ok(ctx) = obj.dyn_into::<CanvasRenderingContext2d>() else { return };
+
+        let w = display_w as f64;
+        let h = display_h as f64;
+        let data_x = data_left_offset.clamp(0.0, w);
+        let data_w = (w - data_x).max(0.0);
+
+        // Blank + fog across the data strip; the left-offset area stays
+        // solid black so it reads as "no data here" next to the host's
+        // y-axis labels.
+        ctx.set_fill_style_str("#0a0a0a");
+        ctx.fill_rect(0.0, 0.0, w, h);
+        gutter_renderer::draw_time_gutter_overlay(
+            &ctx,
+            data_x, 0.0, data_w, h,
+            scroll, scroll + visible_time,
+            selection.map(|s| (s.time_start, s.time_end)),
+        );
+
+        // Time tick labels — translate so (0, 0) is the data origin, then
+        // call the shared renderer with the data-region width. That keeps
+        // label positions aligned with whatever the host draws above.
+        ctx.save();
+        let _ = ctx.translate(data_x, 0.0);
+        crate::canvas::time_markers::draw_time_markers(
+            &ctx, scroll, visible_time, data_w, h,
+            duration, clock, show_clock, 1.0,
+        );
+        ctx.restore();
+    });
+
+    // Map a client-x to a time value inside the data strip.
+    let x_to_time = move |client_x: f64| -> Option<f64> {
+        let canvas_el = canvas_ref.get()?;
+        let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+        let rect = canvas.get_bounding_client_rect();
+        let w = rect.width();
+        let data_w = (w - data_left_offset).max(1.0);
+        let (scroll, visible_time, _, _, _) = time_window()?;
+        let local_x = client_x - rect.left() - data_left_offset;
+        let frac = (local_x / data_w).clamp(0.0, 1.0);
+        Some(scroll + frac * visible_time)
+    };
+
+    let on_pointerdown = move |ev: web_sys::PointerEvent| {
+        if ev.button() != 0 { return; }
+        let Some(t) = x_to_time(ev.client_x() as f64) else { return };
+        ev.prevent_default();
+        drag_anchor.set_value(Some(t));
+        drag_start_client.set_value((ev.client_x() as f64, ev.client_y() as f64));
+        // Seed a zero-width selection so the highlight starts drawing; the
+        // range expands as the pointer moves.
+        let ff = state.focus_stack.get_untracked().effective_range();
+        let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
+        state.selection.set(Some(Selection {
+            time_start: t, time_end: t,
+            freq_low: fl, freq_high: fh,
+        }));
+        state.is_dragging.set(true);
+        if let Some(target) = ev.target() {
+            if let Ok(el) = target.dyn_into::<web_sys::Element>() {
+                let _ = el.set_pointer_capture(ev.pointer_id());
+            }
+        }
+    };
+
+    let on_pointermove = move |ev: web_sys::PointerEvent| {
+        let Some(anchor) = drag_anchor.get_value() else { return };
+        let Some(t) = x_to_time(ev.client_x() as f64) else { return };
+        let (ts, te) = if t < anchor { (t, anchor) } else { (anchor, t) };
+        let ff = state.focus_stack.get_untracked().effective_range();
+        let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
+        state.selection.set(Some(Selection {
+            time_start: ts, time_end: te,
+            freq_low: fl, freq_high: fh,
+        }));
+    };
+
+    let on_pointerup = move |ev: web_sys::PointerEvent| {
+        if drag_anchor.get_value().is_none() { return; }
+        let (sx, sy) = drag_start_client.get_value();
+        let dx = (ev.client_x() as f64 - sx).abs();
+        let dy = (ev.client_y() as f64 - sy).abs();
+        let was_tap = dx < 3.0 && dy < 3.0;
+        drag_anchor.set_value(None);
+        state.is_dragging.set(false);
+        if was_tap {
+            // Tap on the time gutter clears any existing selection — same
+            // "fog returns" metaphor the waveform's old in-canvas strip had.
+            if state.selection.get_untracked().is_some() {
+                state.selection.set(None);
+            }
+            return;
+        }
+        // Real drag committed. Promote a time-only segment to a region when
+        // HFR is on so the selection carries the active band.
+        if let Some(sel) = state.selection.get_untracked() {
+            if sel.time_end - sel.time_start < 1e-4 {
+                state.selection.set(None);
+            } else if sel.freq_low.is_none() {
+                let ff = state.focus_stack.get_untracked().effective_range();
+                if ff.is_active() {
+                    state.selection.set(Some(Selection {
+                        freq_low: Some(ff.lo),
+                        freq_high: Some(ff.hi),
+                        ..sel
+                    }));
+                }
+            }
+        }
+        state.active_focus.set(Some(ActiveFocus::TransientSelection));
+    };
+
+    let on_dblclick = move |_ev: web_sys::MouseEvent| {
+        select_all_time(state);
+    };
+
+    view! {
+        <div class="time-gutter">
+            <canvas
+                node_ref=canvas_ref
+                on:pointerdown=on_pointerdown
+                on:pointermove=on_pointermove
+                on:pointerup=on_pointerup
+                on:dblclick=on_dblclick
+            />
         </div>
     }
 }

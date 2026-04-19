@@ -1577,8 +1577,16 @@ body.sidebar-resizing {
     position: relative;
     min-height: 0;
     background: #000;
-    /* Flex-row so the right-side band gutter sits alongside the canvas
-       (mirroring the waveform's layout). */
+    /* Outer column: [top row: stage + band gutter] [bottom row: time
+       gutter + corner]. Lets the time-axis labels live in a separate
+       strip below the canvas without stealing pixels from low frequencies. */
+    display: flex;
+    flex-direction: column;
+}
+
+.spectrogram-container .spectrogram-row {
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: row;
 }
@@ -1648,6 +1656,43 @@ body.sidebar-resizing {
         rgba(0, 0, 0, 0) 12%,
         rgba(0, 0, 0, 0) 88%,
         rgba(0, 0, 0, 0.35) 100%);
+}
+
+/* Bottom-row layout shared by every gutter-equipped view: the time gutter
+   claims the remaining width beside the corner spacer that sits under the
+   band gutter. Keeps the time ticks aligned with the main canvas data
+   region and leaves a clean empty square in the corner. */
+.view-bottom-row {
+    flex: 0 0 24px;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+}
+
+.view-bottom-corner {
+    /* Matches .band-gutter total occupation: flex-basis 64px (border-box,
+       so includes the 2px border) + 3px margin-left = 67px. Kept in sync
+       manually so the corner perfectly aligns with the column above. */
+    flex: 0 0 67px;
+    background: #0a0a0a;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.time-gutter {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    position: relative;
+    background: #0a0a0a;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    touch-action: none;
+}
+
+.time-gutter canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: cell;
 }
 
 .band-gutter-tooltip {

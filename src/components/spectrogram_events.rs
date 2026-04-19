@@ -575,51 +575,10 @@ pub fn on_pointerdown(
         }
     }
 
-    // Check for ambiguous corner drag (bottom-left: both axis zones overlap)
-    if let Some((px_x, px_y, t, freq)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
-        if let Some(canvas_el) = canvas_ref.get() {
-            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-            let ch = canvas.get_bounding_client_rect().height();
-            let in_left_axis = px_x < LABEL_AREA_WIDTH && !state.display_transform.get_untracked();
-            let in_bottom_axis = px_y > ch - 16.0;
-
-            if in_left_axis && in_bottom_axis {
-                // Corner zone — defer axis choice until drag direction is clear.
-                // Pre-initialize both axis drag states so we can commit to either.
-                let band_ff_lo = state.band_ff_freq_lo.get_untracked();
-                let band_ff_hi = state.band_ff_freq_hi.get_untracked();
-                ix.corner_drag_saved_ff.set((band_ff_lo, band_ff_hi));
-                ix.corner_drag_saved_selection.set(state.selection.get_untracked());
-
-                // Y-axis (freq) init: stash the freq at pointerdown so the
-                // viewport-pan anchor is correct if the corner drag commits
-                // to the Y-axis.
-                ix.axis_drag_raw_start.set(freq);
-
-                // X-axis (time) init
-                let anchor_time = if ev.shift_key() {
-                    state.selection.get_untracked().and_then(|sel| {
-                        if sel.time_end - sel.time_start > 0.0001 {
-                            Some(if (t - sel.time_start).abs() < (t - sel.time_end).abs() {
-                                sel.time_end
-                            } else {
-                                sel.time_start
-                            })
-                        } else { None }
-                    })
-                } else { None };
-                ix.time_axis_drag_raw_start.set(anchor_time.unwrap_or(t));
-
-                ix.corner_drag_active.set(true);
-                ix.corner_drag_start_client.set((ev.client_x() as f64, ev.client_y() as f64));
-                ix.corner_drag_axis.set(None);
-                state.is_dragging.set(true);
-                capture_pointer(&ev);
-                ev.prevent_default();
-                return;
-            }
-        }
-    }
+    // Corner drag is gone: with the time axis moved out to the TimeGutter
+    // below the canvas, the bottom-left corner is no longer an ambiguous
+    // dual-axis zone — the left edge routes to freq-axis viewport pan,
+    // and time selection happens in the gutter strip.
 
     // Left-axis viewport pan. Band selection lives on the right-side band
     // gutter now; the left axis is for navigating what you *look at*
@@ -640,49 +599,9 @@ pub fn on_pointerdown(
         }
     }
 
-    // Check for time-axis interaction (bottom axis)
-    if let Some((px_x, px_y, t, _)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
-        if let Some(canvas_el) = canvas_ref.get() {
-            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-            let ch = canvas.get_bounding_client_rect().height();
-            if px_y > ch - 16.0 && px_x > LABEL_AREA_WIDTH {
-                // Shift+click: extend existing time selection immediately (anchor at far edge)
-                let anchor = if ev.shift_key() {
-                    if let Some(sel) = state.selection.get_untracked() {
-                        if sel.time_end - sel.time_start > 0.0001 {
-                            Some(if (t - sel.time_start).abs() < (t - sel.time_end).abs() {
-                                sel.time_end
-                            } else {
-                                sel.time_start
-                            })
-                        } else { None }
-                    } else { None }
-                } else { None };
-                if ev.shift_key() && anchor.is_some() {
-                    // Shift-extend: start drag immediately
-                    let start = anchor.unwrap();
-                    ix.time_axis_dragging.set(true);
-                    ix.time_axis_drag_raw_start.set(start);
-                    let ff = state.focus_stack.get_untracked().effective_range();
-                    let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
-                    state.selection.set(Some(Selection {
-                        time_start: start.min(t),
-                        time_end: start.max(t),
-                        freq_low: fl,
-                        freq_high: fh,
-                    }));
-                    state.is_dragging.set(true);
-                } else {
-                    // Non-shift: defer drag until pointer moves (allows tap-to-clear)
-                    ix.time_axis_pending.set(Some((ev.client_x() as f64, t, ev.shift_key(), t)));
-                    state.is_dragging.set(true);
-                }
-                capture_pointer(&ev);
-                ev.prevent_default();
-                return;
-            }
-        }
-    }
+    // Time-axis selection moved out to the <TimeGutter/> strip; the
+    // bottom pixels of the spectrogram canvas no longer have special
+    // gesture meaning.
 
     // Check for annotation body, transient selection body, and BandFF body clicks.
     // Priority: annotation > selection > BandFF. All deferred to pointer-up so panning takes priority.
@@ -804,31 +723,14 @@ pub fn on_pointermove(
                 canvas.get_bounding_client_rect().height()
             });
 
-        // Time-axis tooltip: show full datetime when hovering bottom 16px
-        if let Some(ch) = canvas_height {
-            if px_y > ch - 16.0 && px_x > LABEL_AREA_WIDTH {
-                let tooltip = state.current_file()
-                    .and_then(|f| f.recording_start_info())
-                    .map(|(epoch, source)| {
-                        crate::canvas::time_markers::format_clock_time_full(epoch, t, source)
-                    });
-                if let Some(text) = tooltip {
-                    ix.time_axis_tooltip.set(Some((px_x, text)));
-                } else {
-                    ix.time_axis_tooltip.set(None);
-                }
-            } else {
-                ix.time_axis_tooltip.set(None);
-            }
-        }
+        // Time-axis tooltip + hover tracking lives on the <TimeGutter/>
+        // strip now — the spectrogram's bottom pixels are just spectrogram.
+        ix.time_axis_tooltip.set(None);
 
-        // Update label hover target and in-label-area / time-axis state
+        // Update label hover target and in-label-area state
         let in_label_area = px_x < LABEL_AREA_WIDTH;
         state.mouse_in_label_area.set(in_label_area);
-        let in_time_axis = canvas_height
-            .map(|ch| px_y > ch - 16.0 && px_x > LABEL_AREA_WIDTH)
-            .unwrap_or(false);
-        state.mouse_in_time_axis.set(in_time_axis);
+        state.mouse_in_time_axis.set(false);
         let current_target = ix.label_hover_target.get_untracked();
         let new_target = if in_label_area { 1.0 } else { 0.0 };
         if current_target != new_target {
@@ -1255,16 +1157,8 @@ pub fn on_dblclick(
             ev.prevent_default();
             return;
         }
-        // Double-click on x-axis: select all time
-        if let Some(canvas_el) = canvas_ref.get() {
-            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-            let ch = canvas.get_bounding_client_rect().height();
-            if px_y > ch - 16.0 && px_x > LABEL_AREA_WIDTH {
-                select_all_time(state);
-                ev.prevent_default();
-                return;
-            }
-        }
+        // Double-click time-axis-select-all now lives on the TimeGutter.
+        let _ = px_y;
     }
 
     // Double-click inside a transient selection: promote it to an annotation and open label edit.
@@ -1506,30 +1400,7 @@ pub fn on_touchstart(
         }
     }
 
-    // Check for ambiguous corner drag (bottom-left: both axis zones overlap)
-    if let Some((px_x, px_y, t, freq)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-        if let Some(canvas_el) = canvas_ref.get() {
-            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-            let ch = canvas.get_bounding_client_rect().height();
-            let in_left_axis = px_x < LABEL_AREA_WIDTH;
-            let in_bottom_axis = px_y > ch - 16.0;
-
-            if in_left_axis && in_bottom_axis {
-                let band_ff_lo = state.band_ff_freq_lo.get_untracked();
-                let band_ff_hi = state.band_ff_freq_hi.get_untracked();
-                ix.corner_drag_saved_ff.set((band_ff_lo, band_ff_hi));
-                ix.corner_drag_saved_selection.set(state.selection.get_untracked());
-                ix.axis_drag_raw_start.set(freq);
-                ix.time_axis_drag_raw_start.set(t);
-                ix.corner_drag_active.set(true);
-                ix.corner_drag_start_client.set((touch.client_x() as f64, touch.client_y() as f64));
-                ix.corner_drag_axis.set(None);
-                state.is_dragging.set(true);
-                ev.prevent_default();
-                return;
-            }
-        }
-    }
+    // Corner drag gone — see pointer variant above.
 
     // Left-axis viewport pan (touch). Band selection lives on the right-
     // side band gutter. Double-tap resets the view; single-tap after
@@ -1559,30 +1430,8 @@ pub fn on_touchstart(
         }
     }
 
-    // Check for time-axis interaction (bottom axis) — defer drag to allow tap-to-clear
-    if let Some((px_x, px_y, t, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-        if let Some(canvas_el) = canvas_ref.get() {
-            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-            let ch = canvas.get_bounding_client_rect().height();
-            if px_y > ch - 16.0 && px_x > LABEL_AREA_WIDTH {
-                // Double-tap on x-axis: select all time
-                let now = js_sys::Date::now();
-                let last_time = ix.last_tap_time.get_untracked();
-                let last_x = ix.last_tap_x.get_untracked();
-                let last_y = ix.last_tap_y.get_untracked();
-                if now - last_time < 400.0 && last_x > LABEL_AREA_WIDTH && last_y > ch - 16.0 {
-                    select_all_time(state);
-                    ix.last_tap_time.set(0.0);
-                    ev.prevent_default();
-                    return;
-                }
-                ix.time_axis_pending.set(Some((touch.client_x() as f64, t, false, t)));
-                state.is_dragging.set(true);
-                ev.prevent_default();
-                return;
-            }
-        }
-    }
+    // Time-axis touch interactions (drag-to-select, double-tap) moved to
+    // the <TimeGutter/> strip.
 
     match state.canvas_tool.get_untracked() {
         CanvasTool::Hand => {
