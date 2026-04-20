@@ -12,11 +12,9 @@ struct Suggestion {
     details: Option<DemoDetails>,
 }
 
-fn format_max_freq(sample_rate_hz: u64) -> String {
-    let khz = sample_rate_hz as f64 / 2000.0;
-    if khz >= 100.0 {
-        format!("{khz:.0} kHz")
-    } else if khz >= 10.0 {
+fn format_sample_rate(sample_rate_hz: u64) -> String {
+    let khz = sample_rate_hz as f64 / 1000.0;
+    if khz >= 10.0 {
         format!("{khz:.0} kHz")
     } else {
         format!("{khz:.1} kHz")
@@ -223,8 +221,8 @@ pub(super) fn BatsForYou(
                 None => view! { <span class="bats-for-you-card-placeholder">"\u{2026}"</span> }.into_any(),
                 Some(d) => {
                     let len = d.duration_secs.map(format_duration);
-                    let freq = d.sample_rate_hz.map(format_max_freq);
-                    let parts: Vec<String> = [len, freq].into_iter().flatten().collect();
+                    let rate = d.sample_rate_hz.map(format_sample_rate);
+                    let parts: Vec<String> = [len, rate].into_iter().flatten().collect();
                     let text = if parts.is_empty() {
                         "\u{00A0}".to_string()
                     } else {
