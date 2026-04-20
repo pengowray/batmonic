@@ -378,6 +378,7 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                 playback::stop(&state);
                             }
                             tile_cache::clear_file(i);
+                            let was_current = state.current_file_index.get_untracked() == Some(i);
                             state.files.update(|files| { files.remove(i); });
                             state.current_file_index.update(|idx| {
                                 *idx = match *idx {
@@ -391,6 +392,28 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                     other => other,
                                 };
                             });
+                            // If closing the current file left current_file_index unchanged
+                            // (e.g. closing file 0 when file 1 slides into slot 0), the
+                            // per-file vertical-zoom sync Effect won't fire — so reload
+                            // the new current file's stored viewport manually.
+                            if was_current {
+                                let new_idx = state.current_file_index.get_untracked();
+                                let (min, max) = if let Some(n) = new_idx {
+                                    state.files.with_untracked(|files| {
+                                        files.get(n)
+                                            .map(|f| (f.min_display_freq, f.max_display_freq))
+                                            .unwrap_or((None, None))
+                                    })
+                                } else {
+                                    (None, None)
+                                };
+                                if state.min_display_freq.get_untracked() != min {
+                                    state.min_display_freq.set(min);
+                                }
+                                if state.max_display_freq.get_untracked() != max {
+                                    state.max_display_freq.set(max);
+                                }
+                            }
                         };
                         let name_dl = name.clone();
                         let on_download = move |_: ()| {

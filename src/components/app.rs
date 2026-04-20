@@ -344,6 +344,50 @@ pub fn App() -> impl IntoView {
         state.sync_annotation_auto_focus();
     });
 
+    // Per-file vertical zoom: on file switch, load the new file's stored
+    // min/max_display_freq into the global signals. New files have None,
+    // so they default to full range rather than inheriting the previous file.
+    Effect::new(move |_| {
+        let idx = state.current_file_index.get();
+        let (min, max) = if let Some(i) = idx {
+            state.files.with_untracked(|files| {
+                files.get(i)
+                    .map(|f| (f.min_display_freq, f.max_display_freq))
+                    .unwrap_or((None, None))
+            })
+        } else {
+            (None, None)
+        };
+        if state.min_display_freq.get_untracked() != min {
+            state.min_display_freq.set(min);
+        }
+        if state.max_display_freq.get_untracked() != max {
+            state.max_display_freq.set(max);
+        }
+    });
+
+    // Persist vertical zoom back to the current file whenever it changes.
+    Effect::new(move |_| {
+        let min = state.min_display_freq.get();
+        let max = state.max_display_freq.get();
+        let idx = state.current_file_index.get_untracked();
+        if let Some(i) = idx {
+            let needs_write = state.files.with_untracked(|files| {
+                files.get(i)
+                    .map(|f| f.min_display_freq != min || f.max_display_freq != max)
+                    .unwrap_or(false)
+            });
+            if needs_write {
+                state.files.update(|files| {
+                    if let Some(f) = files.get_mut(i) {
+                        f.min_display_freq = min;
+                        f.max_display_freq = max;
+                    }
+                });
+            }
+        }
+    });
+
     // Resolve display filter modes → effective display_* booleans.
     // When the DSP panel is enabled, the per-stage modes drive the existing
     // display_auto_gain / display_eq / display_noise_filter signals.

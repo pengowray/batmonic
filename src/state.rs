@@ -121,6 +121,11 @@ pub struct LoadedFile {
     /// Loading entry ID while this file is still loading (for inline progress display).
     /// Set when the file is pushed to `files`, cleared by `loading_done`.
     pub loading_id: Option<u64>,
+    /// Per-file vertical zoom: lower frequency bound in Hz. `None` = default (0 Hz).
+    /// Persisted so switching between files restores each file's view.
+    pub min_display_freq: Option<f64>,
+    /// Per-file vertical zoom: upper frequency bound in Hz. `None` = default (Nyquist).
+    pub max_display_freq: Option<f64>,
 }
 
 impl LoadedFile {

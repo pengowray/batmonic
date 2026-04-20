@@ -239,6 +239,8 @@ pub(crate) async fn load_named_bytes(name: String, bytes: &[u8], xc_metadata: Op
                 all_hashes_verified: false,
                 wav_markers,
                 loading_id: Some(load_id),
+                min_display_freq: None,
+                max_display_freq: None,
             });
             state.current_file_index.set(Some(idx));
         });

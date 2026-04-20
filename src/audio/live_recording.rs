@@ -131,6 +131,8 @@ pub(crate) fn start_live_recording(state: &AppState, sample_rate: u32) -> usize 
             all_hashes_verified: false,
             wav_markers: Vec::new(),
             loading_id: None,
+            min_display_freq: None,
+            max_display_freq: None,
         });
     });
 
@@ -211,6 +213,8 @@ pub(crate) fn start_live_listening(state: &AppState, sample_rate: u32) -> usize 
             all_hashes_verified: false,
             wav_markers: Vec::new(),
             loading_id: None,
+            min_display_freq: None,
+            max_display_freq: None,
         });
     });
 
@@ -704,6 +708,8 @@ fn update_or_create_file(
                 all_hashes_verified: false,
                 wav_markers: Vec::new(),
                 loading_id: None,
+                min_display_freq: None,
+                max_display_freq: None,
             });
         });
         state.current_file_index.set(Some(idx));

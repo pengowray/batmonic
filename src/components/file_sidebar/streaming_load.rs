@@ -221,6 +221,8 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
                 all_hashes_verified: false,
                 wav_markers,
                 loading_id: Some(load_id),
+                min_display_freq: None,
+                max_display_freq: None,
             });
             state.current_file_index.set(Some(idx));
         });
@@ -515,6 +517,8 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
                 all_hashes_verified: false,
                 wav_markers: Vec::new(),
                 loading_id: Some(load_id),
+                min_display_freq: None,
+                max_display_freq: None,
             });
             state.current_file_index.set(Some(idx));
         });
@@ -898,6 +902,8 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
                 all_hashes_verified: false,
                 wav_markers: Vec::new(),
                 loading_id: Some(load_id),
+                min_display_freq: None,
+                max_display_freq: None,
             });
             state.current_file_index.set(Some(idx));
         });
@@ -1288,6 +1294,8 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
                 all_hashes_verified: false,
                 wav_markers: Vec::new(),
                 loading_id: Some(load_id),
+                min_display_freq: None,
+                max_display_freq: None,
             });
             state.current_file_index.set(Some(idx));
         });
@@ -1939,6 +1947,8 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
                 all_hashes_verified: false,
                 wav_markers,
                 loading_id: Some(load_id),
+                min_display_freq: None,
+                max_display_freq: None,
             });
             state.current_file_index.set(Some(idx));
         });
