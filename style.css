@@ -1516,11 +1516,36 @@ body.sidebar-resizing {
     border-color: #6a6a70;
 }
 
+.bats-for-you-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
 .bats-for-you-grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: 5px;
     width: 100%;
+}
+
+.bats-for-you-shuffle {
+    background: transparent;
+    color: #9a8a70;
+    border: 1px solid #4a4a50;
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78em;
+    letter-spacing: 0.03em;
+    text-align: center;
+}
+
+.bats-for-you-shuffle:hover {
+    background: #2a2a2e;
+    color: #d0c0a0;
+    border-color: #6a6a70;
 }
 
 .bats-for-you-empty {
