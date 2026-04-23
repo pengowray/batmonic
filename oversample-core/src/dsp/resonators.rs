@@ -143,26 +143,6 @@ pub fn compute_resonator_columns(
         .collect();
     let mut bank = ResonatorBank::new(&configs, sr_f);
 
-    // Process exactly the samples needed for col_end frames. `resonate`
-    // drops any trailing samples smaller than one hop, so passing more is
-    // harmless but we trim for tidiness.
-    let col_end = col_start + col_count;
-    let need_samples = col_end.saturating_mul(hop_size).min(samples.len());
-    if need_samples < hop_size {
-        return vec![];
-    }
-    let slice = &samples[..need_samples];
-
-    let complex_out = bank.resonate(slice, hop_size);
-    let n_frames = complex_out.len() / bank_bins;
-    if n_frames <= col_start {
-        return vec![];
-    }
-
-    let first = col_start;
-    let last = (col_start + col_count).min(n_frames);
-    let mag_scale = (fft_size as f32) * 0.5;
-
     // For Log layout, pre-compute a bank-bin index for each linear output
     // row so the per-frame loop is a cheap gather. For Linear the mapping
     // is the identity (bank_bins == output_bins).
@@ -171,29 +151,44 @@ pub fn compute_resonator_columns(
         ResonatorLayout::Log => Some(build_log_row_map(output_bins, &bank_freqs, nyq)),
     };
 
-    let mut out: Vec<SpectrogramColumn> = Vec::with_capacity(last - first);
-    for frame in first..last {
-        let offset = frame * bank_bins;
-        let bank_slice = &complex_out[offset..offset + bank_bins];
+    let mag_scale = (fft_size as f32) * 0.5;
+    let col_end = col_start + col_count;
+    let total_samples = samples.len();
+    let mut out: Vec<SpectrogramColumn> = Vec::with_capacity(col_count);
+
+    // Stream hop-by-hop instead of calling `bank.resonate()` — that method
+    // allocates a `Vec<Complex32>` the size of (n_frames * n_bins) up front
+    // (~1 MB per baseline tile) which we'd then discard. Processing one hop
+    // at a time and reading magnitudes directly from bank state avoids the
+    // intermediate buffer entirely.
+    let mut pos = 0usize;
+    for frame in 0..col_end {
+        let next = pos + hop_size;
+        if next > total_samples {
+            break;
+        }
+        bank.process_samples(&samples[pos..next]);
+        pos = next;
+
+        if frame < col_start {
+            continue;
+        }
 
         let mags: Vec<f32> = if let Some(map) = &row_to_bank {
             map.iter()
-                .map(|&k| {
-                    let c = bank_slice[k];
-                    (c.re * c.re + c.im * c.im).sqrt() * mag_scale
-                })
+                .map(|&k| bank.magnitude(k) * mag_scale)
                 .collect()
         } else {
-            bank_slice
-                .iter()
-                .map(|c| (c.re * c.re + c.im * c.im).sqrt() * mag_scale)
+            (0..bank_bins)
+                .map(|k| bank.magnitude(k) * mag_scale)
                 .collect()
         };
 
-        // Library emits at the end of each hop; frame 0 = after sample hop-1.
+        // Library state reflects end of this hop.
         let time_offset = ((frame + 1) * hop_size) as f64 / sample_rate as f64;
         out.push(SpectrogramColumn { magnitudes: mags, time_offset });
     }
+
     out
 }
 

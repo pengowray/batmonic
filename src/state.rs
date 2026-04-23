@@ -614,9 +614,13 @@ pub enum ResonatorFftMode {
 
 impl ResonatorFftMode {
     /// Per-LOD equivalent FFT size for Adaptive mode. Index = LOD level (0–7).
-    /// Coarse overviews (LOD 0–1) use fewer bins to keep tile compute bounded;
-    /// LOD 2+ uses the full 513-bin layout.
-    const ADAPTIVE_FFT: [usize; 8] = [128, 512, 1024, 1024, 1024, 1024, 1024, 1024];
+    ///
+    /// Resonator cost ≈ `hop × num_bins`, so bins are scaled inversely to hop
+    /// size to keep per-tile compute roughly constant across LODs. Baseline
+    /// (LOD 2, hop=512) holds 1024 eq. FFT (513 bins); coarser LODs shrink
+    /// 4× per step to match, finer LODs keep the 1024 ceiling since further
+    /// bins wouldn't add visible detail past the display's vertical resolution.
+    const ADAPTIVE_FFT: [usize; 8] = [64, 256, 1024, 1024, 1024, 1024, 1024, 1024];
 
     /// The equivalent FFT size to use for a given LOD level (0–7).
     pub fn fft_for_lod(&self, lod: u8) -> usize {
