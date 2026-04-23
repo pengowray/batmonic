@@ -2496,7 +2496,17 @@ impl AppState {
                 Some(mode) => self.playback_mode.set(mode),
                 None => {
                     if self.playback_mode.get_untracked() == PlaybackMode::Normal {
-                        self.playback_mode.set(PlaybackMode::PitchShift);
+                        // For ≤48 kHz files, keep 1:1 — HF is used for bandpass only.
+                        let sample_rate = self.files.with_untracked(|files| {
+                            self.current_file_index
+                                .get_untracked()
+                                .and_then(|i| files.get(i))
+                                .map(|f| f.audio.sample_rate)
+                                .unwrap_or(0)
+                        });
+                        if sample_rate == 0 || sample_rate > 48_000 {
+                            self.playback_mode.set(PlaybackMode::PitchShift);
+                        }
                     }
                 }
             }
