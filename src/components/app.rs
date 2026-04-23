@@ -1712,6 +1712,14 @@ pub fn MainViewButton() -> impl IntoView {
                         />
                         "Viewport zoom"
                     </label>
+                    <div style="padding: 4px 8px;">
+                        <button
+                            class="setting-button"
+                            style="width: 100%"
+                            title="Run a SIMD-vs-scalar A/B benchmark on the resonator hot loop. Result logs to the browser console (open DevTools)."
+                            on:click=move |_| crate::components::file_sidebar::run_resonator_bench()
+                        >"Bench SIMD vs scalar"</button>
+                    </div>
                 }
             })}
 

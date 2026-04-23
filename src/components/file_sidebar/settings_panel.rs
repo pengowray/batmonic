@@ -33,48 +33,66 @@ fn format_hz(hz: f64) -> String {
 
 /// Run a fixed SIMD-vs-scalar benchmark on the resonator hot loop and log
 /// the result to the browser console. Uses `performance.now()` for wall
-/// time. Runs at a couple of bank sizes so one click gives a useful picture.
-fn run_resonator_bench() {
+/// time. Yields to the browser between bin sizes so the main thread isn't
+/// blocked for the multi-second scalar passes — blocking that long
+/// starves queued reactive-graph work and has triggered "disposed value"
+/// panics downstream.
+pub(crate) fn run_resonator_bench() {
     use crate::dsp::resonators::bench_simd_vs_scalar;
 
-    let Some(perf) = web_sys::window().and_then(|w| w.performance()) else {
-        log::warn!("bench: window.performance unavailable");
-        return;
-    };
-    let now_ms = {
-        let perf = perf.clone();
-        move || perf.now()
-    };
+    wasm_bindgen_futures::spawn_local(async move {
+        let Some(perf) = web_sys::window().and_then(|w| w.performance()) else {
+            log::warn!("bench: window.performance unavailable");
+            return;
+        };
+        let now_ms = {
+            let perf = perf.clone();
+            move || perf.now()
+        };
 
-    let simd128 = cfg!(target_feature = "simd128");
-    let header = format!(
-        "Resonators bench (target-feature simd128={}): 1s of 48 kHz audio, 10 iterations",
-        if simd128 { "on" } else { "off" },
-    );
-    log::info!("{header}");
-
-    let sample_rate = 48_000u32;
-    let samples_per_iter = sample_rate as usize; // ~1 second
-    let iterations = 10;
-    let bandwidth_hz = 20.0;
-
-    for &num_bins in &[65usize, 129, 257, 513] {
-        let r = bench_simd_vs_scalar(
-            num_bins,
-            samples_per_iter,
-            iterations,
-            bandwidth_hz,
-            sample_rate,
-            now_ms.clone(),
+        let simd128 = cfg!(target_feature = "simd128");
+        log::info!(
+            "Resonators bench (target-feature simd128={}): 1s of 48 kHz audio, 10 iterations",
+            if simd128 { "on" } else { "off" },
         );
-        let speedup = r.speedup();
-        let msg = format!(
-            "bins={:>4}: SIMD {:>7.2} ms,  scalar {:>7.2} ms,  speedup {:.2}x",
-            r.num_bins, r.simd_ms, r.scalar_ms, speedup,
-        );
-        log::info!("{msg}");
-    }
-    log::info!("(open DevTools Console to read these)");
+
+        let sample_rate = 48_000u32;
+        let samples_per_iter = sample_rate as usize; // ~1 second
+        let iterations = 10;
+        let bandwidth_hz = 20.0;
+
+        for &num_bins in &[65usize, 129, 257, 513] {
+            // Yield before each size so browser can run reactive work.
+            crate::canvas::tile_cache::yield_to_browser().await;
+
+            // Sum per-iteration timings, yielding between iterations so the
+            // worst single-iteration block stays under ~250 ms (the scalar
+            // 513-bin pass runs ~230 ms per iteration in current SIMD
+            // builds, ~5× that without SIMD). Each call builds a fresh
+            // bank — construction cost is ~microseconds, negligible.
+            let mut simd_total = 0.0;
+            let mut scalar_total = 0.0;
+            for _ in 0..iterations {
+                crate::canvas::tile_cache::yield_to_browser().await;
+                let r = bench_simd_vs_scalar(
+                    num_bins,
+                    samples_per_iter,
+                    1,
+                    bandwidth_hz,
+                    sample_rate,
+                    now_ms.clone(),
+                );
+                simd_total += r.simd_ms;
+                scalar_total += r.scalar_ms;
+            }
+            let speedup = if simd_total > 0.0 { scalar_total / simd_total } else { 0.0 };
+            log::info!(
+                "bins={:>4}: SIMD {:>7.2} ms,  scalar {:>7.2} ms,  speedup {:.2}x",
+                num_bins, simd_total, scalar_total, speedup,
+            );
+        }
+        log::info!("(open DevTools Console to read these)");
+    });
 }
 
 #[component]
