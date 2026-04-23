@@ -563,6 +563,74 @@ impl FftMode {
     }
 }
 
+// ── Resonator bandwidth slider mapping ───────────────────────────────────────
+
+/// Minimum selectable resonator bandwidth (Hz).
+pub const RESONATOR_BW_MIN: f32 = 5.0;
+/// Maximum selectable resonator bandwidth (Hz).
+pub const RESONATOR_BW_MAX: f32 = 100.0;
+/// Slider position range (0..=RESONATOR_BW_SLIDER_MAX) mapped log-scale to
+/// [RESONATOR_BW_MIN, RESONATOR_BW_MAX]. The log mapping gives a gentle bias
+/// toward the low end, where differences between 5 and 20 Hz matter more than
+/// differences between 80 and 100 Hz.
+pub const RESONATOR_BW_SLIDER_MAX: f32 = 1000.0;
+
+/// Convert a bandwidth in Hz to a slider position 0..RESONATOR_BW_SLIDER_MAX.
+pub fn resonator_bw_to_slider(bw: f32) -> f32 {
+    let bw = bw.clamp(RESONATOR_BW_MIN, RESONATOR_BW_MAX);
+    (bw / RESONATOR_BW_MIN).ln() / (RESONATOR_BW_MAX / RESONATOR_BW_MIN).ln()
+        * RESONATOR_BW_SLIDER_MAX
+}
+
+/// Convert a slider position 0..RESONATOR_BW_SLIDER_MAX back to a bandwidth in Hz.
+pub fn resonator_slider_to_bw(pos: f32) -> f32 {
+    let pos = pos.clamp(0.0, RESONATOR_BW_SLIDER_MAX);
+    RESONATOR_BW_MIN
+        * (RESONATOR_BW_MAX / RESONATOR_BW_MIN).powf(pos / RESONATOR_BW_SLIDER_MAX)
+}
+
+// ── Resonator FFT mode ───────────────────────────────────────────────────────
+
+/// Frequency-bin count mode for the Resonators view.
+///
+/// Resonator compute cost scales as `O(hop × num_bins)` per column, so coarse
+/// LODs (huge hops) need fewer bins to stay tractable. Unlike STFT's Adaptive
+/// pattern (which gives coarse LODs *larger* FFTs for more frequency detail),
+/// Adaptive here goes the other way: coarse LODs get fewer bins, fine LODs
+/// get the full count.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ResonatorFftMode {
+    /// Fixed equivalent-FFT size at all LOD levels (num_bins = size/2 + 1).
+    Single(usize),
+    /// Adaptive: fewer bins at coarse LODs for cheaper tiles, full bins when
+    /// detail matters.
+    Adaptive,
+}
+
+impl ResonatorFftMode {
+    /// Per-LOD equivalent FFT size for Adaptive mode. Index = LOD level (0–7).
+    /// Coarse overviews (LOD 0–1) use fewer bins to keep tile compute bounded;
+    /// LOD 2+ uses the full 513-bin layout.
+    const ADAPTIVE_FFT: [usize; 8] = [128, 512, 1024, 1024, 1024, 1024, 1024, 1024];
+
+    /// The equivalent FFT size to use for a given LOD level (0–7).
+    pub fn fft_for_lod(&self, lod: u8) -> usize {
+        let idx = (lod as usize).min(7);
+        match self {
+            Self::Single(sz) => *sz,
+            Self::Adaptive => Self::ADAPTIVE_FFT[idx],
+        }
+    }
+
+    /// The maximum equivalent FFT size this mode will ever produce.
+    pub fn max_fft_size(&self) -> usize {
+        match self {
+            Self::Single(sz) => *sz,
+            Self::Adaptive => *Self::ADAPTIVE_FFT.iter().max().unwrap(),
+        }
+    }
+}
+
 /// Display filter mode: controls how each processing stage affects the spectrogram.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum DisplayFilterMode {
@@ -1324,8 +1392,8 @@ pub struct AppState {
 
     // Resonator view: per-bin EMA bandwidth in Hz (controls time-frequency tradeoff)
     pub resonator_bandwidth_hz: RwSignal<f32>,
-    // Resonator view: number of bins expressed as an "fft_size" (num_bins = fft_size/2 + 1)
-    pub resonator_fft_size: RwSignal<usize>,
+    // Resonator view: bin-count mode (fixed or adaptive-per-LOD).
+    pub resonator_fft_mode: RwSignal<ResonatorFftMode>,
     // Colormap preference used when HFR mode is active
     pub hfr_colormap_preference: RwSignal<Colormap>,
     // When false, the Range button is hidden at full range
@@ -1768,8 +1836,8 @@ impl AppState {
             chroma_gain: RwSignal::new(0.0),
             chroma_gamma: RwSignal::new(1.0),
             chroma_range: RwSignal::new(ChromaRange::Full),
-            resonator_bandwidth_hz: RwSignal::new(500.0),
-            resonator_fft_size: RwSignal::new(256),
+            resonator_bandwidth_hz: RwSignal::new(20.0),
+            resonator_fft_mode: RwSignal::new(ResonatorFftMode::Adaptive),
             hfr_colormap_preference: RwSignal::new(Colormap::Inferno),
             always_show_view_range: RwSignal::new(false),
 

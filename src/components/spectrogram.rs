@@ -16,6 +16,29 @@ use crate::components::playhead::Playhead;
 use crate::state::{AppState, CanvasTool, SpectrogramHandle, MainView, PlaybackMode};
 use crate::viewport;
 
+/// Pick the right `DebugTileKind` so the debug-tiles overlay reads from the
+/// cache that's actually being rendered — magnitude/flow for STFT-based views,
+/// resonator for the Resonators view (which uses its own FFT-mode enum).
+fn debug_tile_kind(
+    state: AppState,
+    flow_on: bool,
+    main_view: MainView,
+) -> spectrogram_renderer::DebugTileKind {
+    if main_view == MainView::Resonators {
+        spectrogram_renderer::DebugTileKind::Resonators {
+            mode: state.resonator_fft_mode.get_untracked(),
+        }
+    } else if flow_on {
+        spectrogram_renderer::DebugTileKind::Flow {
+            fft_mode: state.spect_fft_mode.get_untracked(),
+        }
+    } else {
+        spectrogram_renderer::DebugTileKind::Magnitude {
+            fft_mode: state.spect_fft_mode.get_untracked(),
+        }
+    }
+}
+
 #[component]
 pub fn Spectrogram() -> impl IntoView {
     let state = expect_context::<AppState>();
@@ -698,14 +721,14 @@ pub fn Spectrogram() -> impl IntoView {
                     ctx.translate(clip_left, 0.0).unwrap_or(());
                     spectrogram_renderer::draw_tile_debug_overlay(
                         &ctx, clip_right - clip_left, display_h as f64, seg.file_index, seg_tc, file_scroll_col, seg_zoom,
-                        state.spect_fft_mode.get_untracked(), flow_on,
+                        debug_tile_kind(state, flow_on, main_view),
                     );
                     ctx.restore();
                 }
             } else if total_cols > 0 {
                 spectrogram_renderer::draw_tile_debug_overlay(
                     &ctx, display_w as f64, display_h as f64, file_idx_val, total_cols, scroll_col, zoom,
-                    state.spect_fft_mode.get_untracked(), flow_on,
+                    debug_tile_kind(state, flow_on, main_view),
                 );
             }
         }

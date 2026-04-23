@@ -16,7 +16,7 @@ use crate::viewport;
 // Re-export from split modules so callers don't need to change imports
 pub use crate::canvas::flow::{FlowAlgo, FlowData, compute_flow_data, composite_flow, pre_render_flow_columns};
 pub use crate::canvas::overlays::{
-    FreqShiftMode, FreqMarkerState, TimeMarkerStyle,
+    FreqShiftMode, FreqMarkerState, TimeMarkerStyle, DebugTileKind,
     draw_freq_markers, draw_time_markers, draw_band_ff_overlay, draw_het_overlay,
     draw_pulses, draw_selection, draw_harmonic_shadows, draw_filter_overlay,
     pixel_to_time_freq, draw_notch_bands, draw_tile_debug_overlay, draw_annotations,

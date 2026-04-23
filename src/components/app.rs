@@ -1,7 +1,12 @@
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::state::{AppState, ChromaColormap, ChromaRange, DisplayFilterMode, FftMode, FileSettings, FlowColorScheme, GainMode, LayerPanel, MainView, MicBackend, MicStrategy, MicAcquisitionState, PlayStartMode, PlaybackMode, SpectrogramDisplay, WaveformView};
+use crate::state::{
+    AppState, ChromaColormap, ChromaRange, DisplayFilterMode, FftMode, FileSettings,
+    FlowColorScheme, GainMode, LayerPanel, MainView, MicBackend, MicStrategy,
+    MicAcquisitionState, PlayStartMode, PlaybackMode, ResonatorFftMode, SpectrogramDisplay,
+    WaveformView, RESONATOR_BW_SLIDER_MAX, resonator_bw_to_slider, resonator_slider_to_bw,
+};
 use crate::audio::playback;
 use crate::audio::microphone;
 use crate::components::file_sidebar::FileSidebar;
@@ -1366,6 +1371,20 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
     });
 }
 
+/// Current effective sample rate for the Resonators readouts — the live
+/// waterfall's rate when mic is active, otherwise the current file's, with a
+/// sensible default so the label stays populated with no file loaded.
+fn resonator_quick_sample_rate(state: AppState) -> f64 {
+    if crate::canvas::live_waterfall::is_active() {
+        return crate::canvas::live_waterfall::max_freq() * 2.0;
+    }
+    let files = state.files.get();
+    let idx = state.current_file_index.get();
+    idx.and_then(|i| files.get(i))
+        .map(|f| f.spectrogram.sample_rate as f64)
+        .unwrap_or(192_000.0)
+}
+
 fn layer_opt_class(active: bool) -> &'static str {
     if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
 }
@@ -1577,37 +1596,79 @@ pub fn MainViewButton() -> impl IntoView {
                     <hr />
                     <div class="layer-panel-title">"Resonators"</div>
                     <div class="dsp-custom-section">
-                        <div class="dsp-custom-title">{move || format!("Bandwidth: {:.0} Hz", state.resonator_bandwidth_hz.get())}</div>
+                        <div class="dsp-custom-title">{move || {
+                            let bw = state.resonator_bandwidth_hz.get().max(0.001);
+                            let tau_ms = 1000.0 / (2.0 * std::f32::consts::PI * bw);
+                            let bw_str = if bw < 10.0 {
+                                format!("{:.1}", bw)
+                            } else {
+                                format!("{:.0}", bw.round())
+                            };
+                            format!("Bandwidth: {} Hz (\u{03c4} \u{2248} {:.1} ms)", bw_str, tau_ms)
+                        }}</div>
                         <div class="dsp-custom-slider-row">
+                            // Log-scale slider: 0..RESONATOR_BW_SLIDER_MAX ↦ 1..2000 Hz.
                             <input
                                 type="range"
                                 class="setting-range"
-                                min="20" max="4000" step="10"
-                                prop:value=move || state.resonator_bandwidth_hz.get().round().to_string()
+                                min="0"
+                                max=RESONATOR_BW_SLIDER_MAX.to_string()
+                                step="1"
+                                prop:value=move || {
+                                    resonator_bw_to_slider(state.resonator_bandwidth_hz.get())
+                                        .round()
+                                        .to_string()
+                                }
                                 on:input=move |ev: web_sys::Event| {
                                     let target = ev.target().unwrap();
                                     let input: web_sys::HtmlInputElement = target.unchecked_into();
-                                    if let Ok(v) = input.value().parse::<f32>() {
-                                        state.resonator_bandwidth_hz.set(v.max(1.0));
+                                    if let Ok(pos) = input.value().parse::<f32>() {
+                                        state.resonator_bandwidth_hz.set(resonator_slider_to_bw(pos));
                                     }
                                 }
-                                on:dblclick=move |_| state.resonator_bandwidth_hz.set(500.0)
+                                on:dblclick=move |_| state.resonator_bandwidth_hz.set(20.0)
                             />
                         </div>
                     </div>
                     <div class="setting-row" style="padding: 4px 8px;">
-                        <span class="setting-label">"Bins"</span>
+                        <span class="setting-label">{move || {
+                            let mode = state.resonator_fft_mode.get();
+                            let sr = resonator_quick_sample_rate(state);
+                            let current_lod = crate::canvas::tile_cache::select_lod(
+                                state.zoom_level.get(),
+                            );
+                            let f = mode.fft_for_lod(current_lod).max(2);
+                            let spacing = sr / f as f64;
+                            let spacing_str = if spacing >= 1000.0 {
+                                format!("{:.2} kHz", spacing / 1000.0)
+                            } else if spacing >= 100.0 {
+                                format!("{:.0} Hz", spacing)
+                            } else {
+                                format!("{:.1} Hz", spacing)
+                            };
+                            format!("Bins ({}/bin)", spacing_str)
+                        }}</span>
                         <select
                             class="setting-select"
                             on:change=move |ev: web_sys::Event| {
                                 let target = ev.target().unwrap();
                                 let select: web_sys::HtmlSelectElement = target.unchecked_into();
-                                if let Ok(v) = select.value().parse::<usize>() {
-                                    state.resonator_fft_size.set(v.max(16));
-                                }
+                                let v = select.value();
+                                let new_mode = if v == "adaptive" {
+                                    ResonatorFftMode::Adaptive
+                                } else if let Ok(sz) = v.parse::<usize>() {
+                                    ResonatorFftMode::Single(sz.max(16))
+                                } else {
+                                    return;
+                                };
+                                state.resonator_fft_mode.set(new_mode);
                             }
-                            prop:value=move || state.resonator_fft_size.get().to_string()
+                            prop:value=move || match state.resonator_fft_mode.get() {
+                                ResonatorFftMode::Adaptive => "adaptive".to_string(),
+                                ResonatorFftMode::Single(sz) => sz.to_string(),
+                            }
                         >
+                            <option value="adaptive">"Adaptive"</option>
                             <option value="64">"33"</option>
                             <option value="128">"65"</option>
                             <option value="256">"129"</option>

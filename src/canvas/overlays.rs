@@ -1144,6 +1144,35 @@ pub fn draw_notch_bands(
     }
 }
 
+/// Which tile cache / fft mode the debug overlay should report on.
+#[derive(Clone, Copy, Debug)]
+pub enum DebugTileKind {
+    /// Normal (or reassigned) magnitude spectrogram tiles — resolves per-LOD
+    /// FFT via `FftMode`.
+    Magnitude { fft_mode: FftMode },
+    /// Flow tiles — same FFT as magnitude but stats come from the flow cache.
+    Flow { fft_mode: FftMode },
+    /// Resonator tiles — per-LOD bins come from `ResonatorFftMode`.
+    Resonators { mode: crate::state::ResonatorFftMode },
+}
+
+impl DebugTileKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Magnitude { .. } => "mag",
+            Self::Flow { .. } => "flow",
+            Self::Resonators { .. } => "reson",
+        }
+    }
+
+    fn fft_for_lod(self, lod: u8) -> usize {
+        match self {
+            Self::Magnitude { fft_mode } | Self::Flow { fft_mode } => fft_mode.fft_for_lod(lod),
+            Self::Resonators { mode } => mode.fft_for_lod(lod),
+        }
+    }
+}
+
 /// Draw tile debug overlay: colored borders and LOD labels for each visible tile.
 ///
 /// Shows the ideal LOD tile grid with colors indicating which LOD is actually
@@ -1157,8 +1186,7 @@ pub fn draw_tile_debug_overlay(
     total_cols: usize,
     scroll_col: f64,
     zoom: f64,
-    fft_mode: FftMode,
-    flow_on: bool,
+    kind: DebugTileKind,
 ) {
     use crate::canvas::tile_cache::{self, TILE_COLS};
 
@@ -1177,10 +1205,10 @@ pub fn draw_tile_debug_overlay(
 
     let first_tile = (vis_start_lod / tile_cache::TILE_COLS as f64).floor() as usize;
     let last_tile = ((vis_end_lod - 0.001).max(0.0) / tile_cache::TILE_COLS as f64).floor() as usize;
-    let stats = if flow_on {
-        tile_cache::flow_debug_stats(file_idx, ideal_lod, first_tile, last_tile)
-    } else {
-        tile_cache::magnitude_debug_stats(file_idx, ideal_lod, first_tile, last_tile)
+    let stats = match kind {
+        DebugTileKind::Flow { .. } => tile_cache::flow_debug_stats(file_idx, ideal_lod, first_tile, last_tile),
+        DebugTileKind::Resonators { .. } => tile_cache::resonator_debug_stats(file_idx, ideal_lod, first_tile, last_tile),
+        DebugTileKind::Magnitude { .. } => tile_cache::magnitude_debug_stats(file_idx, ideal_lod, first_tile, last_tile),
     };
 
     ctx.save();
@@ -1193,9 +1221,10 @@ pub fn draw_tile_debug_overlay(
         let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / ratio;
 
         // Determine which LOD is actually rendered for this tile
-        let has_tile = |fi, lod, ti| {
-            if flow_on { tile_cache::get_flow_tile(fi, lod, ti).is_some() }
-            else { tile_cache::get_tile(fi, lod, ti).is_some() }
+        let has_tile = |fi, lod, ti| match kind {
+            DebugTileKind::Flow { .. } => tile_cache::get_flow_tile(fi, lod, ti).is_some(),
+            DebugTileKind::Resonators { .. } => tile_cache::get_resonator_tile(fi, lod, ti).is_some(),
+            DebugTileKind::Magnitude { .. } => tile_cache::get_tile(fi, lod, ti).is_some(),
         };
         let (displayed_lod, displayed_tile, lod_label, color) = if has_tile(file_idx, ideal_lod, tile_idx) {
             let label = format!("L{ideal_lod}");
@@ -1209,10 +1238,10 @@ pub fn draw_tile_debug_overlay(
                 _ => "#fff",
             };
             (ideal_lod, tile_idx, label, c)
-        } else if if flow_on {
-            tile_cache::flow_tile_active(file_idx, ideal_lod, tile_idx)
-        } else {
-            tile_cache::magnitude_tile_active(file_idx, ideal_lod, tile_idx)
+        } else if match kind {
+            DebugTileKind::Flow { .. } => tile_cache::flow_tile_active(file_idx, ideal_lod, tile_idx),
+            DebugTileKind::Resonators { .. } => tile_cache::resonator_tile_active(file_idx, ideal_lod, tile_idx),
+            DebugTileKind::Magnitude { .. } => tile_cache::magnitude_tile_active(file_idx, ideal_lod, tile_idx),
         } {
             (ideal_lod, tile_idx, "..".to_string(), "#fa0")
         } else {
@@ -1253,20 +1282,25 @@ pub fn draw_tile_debug_overlay(
         ctx.set_stroke_style_str(color);
         ctx.stroke_rect(dx + 0.5, 0.5, dw - 1.0, ch - 1.0);
 
-        // Actual FFT used for this LOD (same logic as schedule_tile_lod)
+        // Actual per-LOD fft / hop for the current tile source.
         let (res_line, tex_line) = if displayed_lod < tile_cache::NUM_LODS as u8 {
             let cfg = &tile_cache::LOD_CONFIGS[displayed_lod as usize];
-            let actual_fft = fft_mode.fft_for_lod(displayed_lod);
+            let actual_fft = kind.fft_for_lod(displayed_lod);
             let res = format!("fft={} hop={}", actual_fft, cfg.hop_size);
-            // Get tile texture dimensions
-            let tex = if flow_on {
-                tile_cache::borrow_flow_tile(file_idx, displayed_lod, displayed_tile, |t| {
-                    format!("{}x{}px", t.rendered.width, t.rendered.height)
-                })
-            } else {
-                tile_cache::borrow_tile(file_idx, displayed_lod, displayed_tile, |t| {
-                    format!("{}x{}px", t.rendered.width, t.rendered.height)
-                })
+            // Get tile texture dimensions from the matching cache.
+            let tex = match kind {
+                DebugTileKind::Flow { .. } => tile_cache::borrow_flow_tile(
+                    file_idx, displayed_lod, displayed_tile,
+                    |t| format!("{}x{}px", t.rendered.width, t.rendered.height),
+                ),
+                DebugTileKind::Resonators { .. } => tile_cache::borrow_resonator_tile(
+                    file_idx, displayed_lod, displayed_tile,
+                    |t| format!("{}x{}px", t.rendered.width, t.rendered.height),
+                ),
+                DebugTileKind::Magnitude { .. } => tile_cache::borrow_tile(
+                    file_idx, displayed_lod, displayed_tile,
+                    |t| format!("{}x{}px", t.rendered.width, t.rendered.height),
+                ),
             }.unwrap_or_else(|| "?".to_string());
             (res, tex)
         } else {
@@ -1293,7 +1327,8 @@ pub fn draw_tile_debug_overlay(
 
     // Draw telemetry panel in bottom-right so it doesn't overlap tile labels.
     let ideal_hop = tile_cache::LOD_CONFIGS[ideal_lod as usize].hop_size;
-    let actual_fft = fft_mode.fft_for_lod(ideal_lod);
+    let actual_fft = kind.fft_for_lod(ideal_lod);
+    let src_tag = kind.label();
     let used_mb = stats.used_bytes as f64 / 1_048_576.0;
     let max_mb = stats.max_bytes as f64 / 1_048_576.0;
     let headroom_mb = stats.max_bytes.saturating_sub(stats.used_bytes) as f64 / 1_048_576.0;
@@ -1311,7 +1346,7 @@ pub fn draw_tile_debug_overlay(
     } else {
         "OK"
     };
-    let panel_lines = [format!("z={zoom:.1} LOD{ideal_lod} fft={actual_fft} hop={ideal_hop}"),
+    let panel_lines = [format!("{src_tag} z={zoom:.1} LOD{ideal_lod} fft={actual_fft} hop={ideal_hop}"),
         format!("visible c:{} f:{} m:{}", stats.visible_cached, stats.visible_in_flight, stats.visible_missing),
         format!("cache {} / {} tiles", stats.total_cached, stats.total_in_flight),
         format!("mem {used_mb:.1} / {max_mb:.0} MB"),

@@ -2218,7 +2218,7 @@ pub fn schedule_resonator_tile(state: AppState, file_idx: usize, lod: u8, tile_i
     let gen = RESONATOR_CACHE_GENERATION.with(|g| *g.borrow());
 
     let config_hop = LOD_CONFIGS[lod as usize].hop_size;
-    let reson_fft = state.resonator_fft_size.get_untracked().max(16);
+    let reson_fft = state.resonator_fft_mode.get_untracked().fft_for_lod(lod).max(16);
     let bandwidth_hz = state.resonator_bandwidth_hz.get_untracked().max(1.0);
 
     spawn_local(async move {
