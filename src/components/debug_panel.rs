@@ -100,6 +100,14 @@ pub fn DebugPanel() -> impl IntoView {
                 }}
             </div>
             <hr style="border-color: #444; margin: 4px 0;" />
+            <div class="setting-row" style="padding: 4px 8px;">
+                <button
+                    class="setting-btn"
+                    title="Run a SIMD-vs-scalar A/B benchmark on the resonator hot loop. Results are logged below."
+                    on:click=move |_| crate::components::file_sidebar::run_resonator_bench(state)
+                >"Bench Resonators (SIMD vs scalar)"</button>
+            </div>
+            <hr style="border-color: #444; margin: 4px 0;" />
             <div class="debug-panel-toolbar">
                 <button class="setting-btn" on:click=on_copy>"Copy All"</button>
                 <button class="setting-btn" on:click=on_clear>"Clear"</button>

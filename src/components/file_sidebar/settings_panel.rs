@@ -32,17 +32,17 @@ fn format_hz(hz: f64) -> String {
 }
 
 /// Run a fixed SIMD-vs-scalar benchmark on the resonator hot loop and log
-/// the result to the browser console. Uses `performance.now()` for wall
-/// time. Yields to the browser between bin sizes so the main thread isn't
-/// blocked for the multi-second scalar passes — blocking that long
-/// starves queued reactive-graph work and has triggered "disposed value"
-/// panics downstream.
-pub(crate) fn run_resonator_bench() {
+/// the result to the in-app Debug panel (right sidebar). Uses
+/// `performance.now()` for wall time and yields to the browser between
+/// every iteration so the main thread isn't blocked for the multi-second
+/// scalar pass — that would starve queued reactive-graph work and can
+/// trigger disposed-value panics downstream.
+pub(crate) fn run_resonator_bench(state: AppState) {
     use crate::dsp::resonators::bench_simd_vs_scalar;
 
     wasm_bindgen_futures::spawn_local(async move {
         let Some(perf) = web_sys::window().and_then(|w| w.performance()) else {
-            log::warn!("bench: window.performance unavailable");
+            state.log_debug("warn", "bench: window.performance unavailable");
             return;
         };
         let now_ms = {
@@ -51,9 +51,12 @@ pub(crate) fn run_resonator_bench() {
         };
 
         let simd128 = cfg!(target_feature = "simd128");
-        log::info!(
-            "Resonators bench (target-feature simd128={}): 1s of 48 kHz audio, 10 iterations",
-            if simd128 { "on" } else { "off" },
+        state.log_debug(
+            "info",
+            format!(
+                "Resonators bench (target-feature simd128={}): 1s of 48 kHz audio, 10 iterations",
+                if simd128 { "on" } else { "off" },
+            ),
         );
 
         let sample_rate = 48_000u32;
@@ -86,12 +89,14 @@ pub(crate) fn run_resonator_bench() {
                 scalar_total += r.scalar_ms;
             }
             let speedup = if simd_total > 0.0 { scalar_total / simd_total } else { 0.0 };
-            log::info!(
-                "bins={:>4}: SIMD {:>7.2} ms,  scalar {:>7.2} ms,  speedup {:.2}x",
-                num_bins, simd_total, scalar_total, speedup,
+            state.log_debug(
+                "info",
+                format!(
+                    "bins={:>4}: SIMD {:>7.2} ms,  scalar {:>7.2} ms,  speedup {:.2}x",
+                    num_bins, simd_total, scalar_total, speedup,
+                ),
             );
         }
-        log::info!("(open DevTools Console to read these)");
     });
 }
 
@@ -456,17 +461,11 @@ pub(crate) fn SpectrogramSettingsPanel() -> impl IntoView {
                                     class="setting-button"
                                     on:click=move |_| {
                                         state.resonator_bandwidth_hz.set(20.0);
-                                        state.resonator_fft_mode.set(ResonatorFftMode::Single(256));
+                                        state.resonator_fft_mode.set(ResonatorFftMode::Single(512));
                                         state.resonator_layout.set(ResonatorLayout::Linear);
                                         state.resonator_viewport_bins.set(true);
                                     }
                                 >"Reset"</button>
-                                <button
-                                    class="setting-button"
-                                    style="margin-left:6px"
-                                    title="Run a SIMD-vs-scalar A/B benchmark on the resonator hot loop. Result is logged to the browser console."
-                                    on:click=move |_| run_resonator_bench()
-                                >"Bench"</button>
                             </div>
                             <div class="setting-row">
                                 <span class="setting-label" style="font-size:11px;color:#888;line-height:1.3">

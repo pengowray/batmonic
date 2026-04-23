@@ -1859,7 +1859,7 @@ impl AppState {
             chroma_gamma: RwSignal::new(1.0),
             chroma_range: RwSignal::new(ChromaRange::Full),
             resonator_bandwidth_hz: RwSignal::new(20.0),
-            resonator_fft_mode: RwSignal::new(ResonatorFftMode::Single(256)),
+            resonator_fft_mode: RwSignal::new(ResonatorFftMode::Single(512)),
             resonator_layout: RwSignal::new(ResonatorLayout::Linear),
             resonator_viewport_bins: RwSignal::new(true),
             resonator_viewport_range: RwSignal::new(None),
