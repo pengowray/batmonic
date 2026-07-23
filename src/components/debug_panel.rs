@@ -1,9 +1,9 @@
+use crate::audio::synthetic_mic::{self, SynthSignal};
 use crate::state::store_fields::*;
+use crate::state::AppState;
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::audio::synthetic_mic::{self, SynthSignal};
-use crate::state::AppState;
 
 #[component]
 pub fn DebugPanel() -> impl IntoView {
@@ -41,10 +41,14 @@ pub fn DebugPanel() -> impl IntoView {
 
     let on_copy = move |_| {
         let entries = state.status.debug_log().get_untracked();
-        let text: String = entries.iter().map(|(ts, level, msg)| {
-            let secs = (ts / 1000.0) % 100000.0;
-            format!("[{:.1}s] [{}] {}", secs, level, msg)
-        }).collect::<Vec<_>>().join("\n");
+        let text: String = entries
+            .iter()
+            .map(|(ts, level, msg)| {
+                let secs = (ts / 1000.0) % 100000.0;
+                format!("[{:.1}s] [{}] {}", secs, level, msg)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         if let Some(window) = web_sys::window() {
             if let Ok(nav) = js_sys::Reflect::get(&window, &JsValue::from_str("navigator")) {
                 if let Ok(clip) = js_sys::Reflect::get(&nav, &JsValue::from_str("clipboard")) {

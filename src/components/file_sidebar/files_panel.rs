@@ -1,19 +1,24 @@
-use crate::state::store_fields::*;
-use std::collections::HashMap;
-use leptos::prelude::*;
-use leptos::task::spawn_local;
-use wasm_bindgen::{Clamped, JsCast};
-use web_sys::{CanvasRenderingContext2d, DragEvent, HtmlCanvasElement, HtmlInputElement, ImageData, MouseEvent};
+use super::file_badges;
+use super::file_groups;
 use crate::audio::playback;
 use crate::audio::streaming_source;
 use crate::canvas::tile_cache;
+use crate::format_time::format_duration_compact;
+use crate::state::store_fields::*;
 use crate::state::{AppState, FileSortMode, LoadedFile};
 use crate::types::PreviewImage;
-use super::file_groups;
-use super::file_badges;
-use crate::format_time::format_duration_compact;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use std::collections::HashMap;
+use wasm_bindgen::{Clamped, JsCast};
+use web_sys::{
+    CanvasRenderingContext2d, DragEvent, HtmlCanvasElement, HtmlInputElement, ImageData, MouseEvent,
+};
 
-use super::loading::{read_and_load_file, load_native_file, DemoEntry, fetch_demo_index, find_open_demo, load_single_demo};
+use super::loading::{
+    fetch_demo_index, find_open_demo, load_native_file, load_single_demo, read_and_load_file,
+    DemoEntry,
+};
 use super::suggestions::BatsForYou;
 
 /// Reconcile the index-keyed state that `Vec::remove(removed)` invalidates,
@@ -38,14 +43,17 @@ pub(crate) fn reconcile_after_file_removed(state: &AppState, removed: usize) {
     state.timeline.selected_file_indices().update(|sel| {
         sel.retain(|&x| x != removed);
         for x in sel.iter_mut() {
-            if *x > removed { *x -= 1; }
+            if *x > removed {
+                *x -= 1;
+            }
         }
     });
     if state.timeline.active().get_untracked().is_some() {
         let sel = state.timeline.selected_file_indices().get_untracked();
-        let rebuilt = state.library.files().with_untracked(|files| {
-            crate::timeline::TimelineView::from_files(&sel, files)
-        });
+        let rebuilt = state
+            .library
+            .files()
+            .with_untracked(|files| crate::timeline::TimelineView::from_files(&sel, files));
         if rebuilt.is_none() {
             state.timeline.active_track().set(None);
         }
@@ -76,7 +84,9 @@ pub(crate) fn reconcile_after_file_removed(state: &AppState, removed: usize) {
 /// Used for the synchronous close-button path and for the post-stop close
 /// path that runs after an async stop_listening / stop_recording.
 fn remove_file_at(state: &AppState, i: usize) {
-    if state.playback.is_playing().get_untracked() && state.library.current_index().get_untracked() == Some(i) {
+    if state.playback.is_playing().get_untracked()
+        && state.library.current_index().get_untracked() == Some(i)
+    {
         playback::stop(state);
     }
     let was_current = state.library.current_index().get_untracked() == Some(i);
@@ -91,10 +101,14 @@ fn remove_file_at(state: &AppState, i: usize) {
     state.library.current_index().update(|idx| {
         *idx = match *idx {
             Some(cur) if cur == i => {
-                if new_len == 0 { None }
-                else if i > 0 { Some(i - 1) }
-                else { Some(0) }
-            },
+                if new_len == 0 {
+                    None
+                } else if i > 0 {
+                    Some(i - 1)
+                } else {
+                    Some(0)
+                }
+            }
             Some(cur) if cur > i => Some(cur - 1),
             other => other,
         };
@@ -117,7 +131,8 @@ fn remove_file_at(state: &AppState, i: usize) {
         let new_idx = state.library.current_index().get_untracked();
         let (min, max) = if let Some(n) = new_idx {
             state.library.files().with_untracked(|files| {
-                files.get(n)
+                files
+                    .get(n)
                     .map(|f| (f.min_display_freq, f.max_display_freq))
                     .unwrap_or((None, None))
             })
@@ -195,10 +210,14 @@ pub(super) fn FilesPanel() -> impl IntoView {
     let on_file_input_change = move |ev: web_sys::Event| {
         let target = ev.target().unwrap();
         let input: HtmlInputElement = target.unchecked_into();
-        let Some(file_list) = input.files() else { return };
+        let Some(file_list) = input.files() else {
+            return;
+        };
 
         for i in 0..file_list.length() {
-            let Some(file) = file_list.get(i) else { continue };
+            let Some(file) = file_list.get(i) else {
+                continue;
+            };
             let state = state_for_upload;
             let load_id = state.loading_start(&file.name());
             spawn_local(async move {
@@ -245,7 +264,6 @@ pub(super) fn FilesPanel() -> impl IntoView {
         });
     };
 
-
     let state_for_drop = state;
     let on_drop = move |ev: DragEvent| {
         ev.prevent_default();
@@ -263,7 +281,9 @@ pub(super) fn FilesPanel() -> impl IntoView {
         log::info!("Drop: {} file(s)", file_list.length());
 
         for i in 0..file_list.length() {
-            let Some(file) = file_list.get(i) else { continue };
+            let Some(file) = file_list.get(i) else {
+                continue;
+            };
             let state = state_for_drop;
             let file_name = file.name();
             let load_id = state.loading_start(&file_name);
@@ -902,19 +922,26 @@ fn SortBar(sort_mode: FileSortMode) -> impl IntoView {
     let state = expect_context::<AppState>();
     let sort_signal = state.library.sort_mode();
 
-    let options: Vec<_> = FileSortMode::ALL.iter().map(|&mode| {
-        let label = mode.label();
-        let is_selected = mode == sort_mode;
-        view! {
-            <option value=label selected=is_selected>{label}</option>
-        }
-    }).collect();
+    let options: Vec<_> = FileSortMode::ALL
+        .iter()
+        .map(|&mode| {
+            let label = mode.label();
+            let is_selected = mode == sort_mode;
+            view! {
+                <option value=label selected=is_selected>{label}</option>
+            }
+        })
+        .collect();
 
     let on_change = move |ev: web_sys::Event| {
         let target = ev.target().unwrap();
         let select: web_sys::HtmlSelectElement = target.unchecked_into();
         let val = select.value();
-        let mode = FileSortMode::ALL.iter().find(|m| m.label() == val).copied().unwrap_or_default();
+        let mode = FileSortMode::ALL
+            .iter()
+            .find(|m| m.label() == val)
+            .copied()
+            .unwrap_or_default();
         sort_signal.set(mode);
     };
 
@@ -943,7 +970,9 @@ fn SortBar(sort_mode: FileSortMode) -> impl IntoView {
 /// Extract a GUANO timestamp string from a file's metadata, if present.
 fn guano_timestamp(f: &LoadedFile) -> Option<String> {
     let guano = f.audio.metadata.guano.as_ref()?;
-    guano.fields.iter()
+    guano
+        .fields
+        .iter()
         .find(|(k, _)| k == "Timestamp")
         .map(|(_, v)| v.clone())
 }
@@ -972,9 +1001,7 @@ fn compute_sorted_indices(
             indices.sort_by_key(|&i| files[i].add_order);
         }
         FileSortMode::ByName => {
-            indices.sort_by(|&a, &b| {
-                names[a].to_lowercase().cmp(&names[b].to_lowercase())
-            });
+            indices.sort_by(|&a, &b| names[a].to_lowercase().cmp(&names[b].to_lowercase()));
         }
         FileSortMode::ByDate => {
             indices.sort_by(|&a, &b| {
@@ -992,8 +1019,14 @@ fn compute_sorted_indices(
         }
         FileSortMode::Grouped => {
             indices.sort_by(|&a, &b| {
-                let ga = groups[a].track.as_ref().map(|ti| (&ti.group_key, &ti.label));
-                let gb = groups[b].track.as_ref().map(|ti| (&ti.group_key, &ti.label));
+                let ga = groups[a]
+                    .track
+                    .as_ref()
+                    .map(|ti| (&ti.group_key, &ti.label));
+                let gb = groups[b]
+                    .track
+                    .as_ref()
+                    .map(|ti| (&ti.group_key, &ti.label));
                 match (ga, gb) {
                     (Some((gk_a, l_a)), Some((gk_b, l_b))) => {
                         gk_a.cmp(gk_b).then_with(|| l_a.cmp(l_b))
@@ -1012,7 +1045,10 @@ fn compute_sorted_indices(
             for (i, gi) in groups.iter().enumerate() {
                 if let Some((key, _)) = combined_group_key(gi) {
                     let order = files[i].add_order;
-                    group_min_order.entry(key).and_modify(|m| *m = (*m).min(order)).or_insert(order);
+                    group_min_order
+                        .entry(key)
+                        .and_modify(|m| *m = (*m).min(order))
+                        .or_insert(order);
                 }
             }
             indices.sort_by(|&a, &b| {
@@ -1022,11 +1058,20 @@ fn compute_sorted_indices(
                     (Some((key_a, _)), Some((key_b, _))) => {
                         let order_a = group_min_order.get(key_a).copied().unwrap_or(usize::MAX);
                         let order_b = group_min_order.get(key_b).copied().unwrap_or(usize::MAX);
-                        order_a.cmp(&order_b)
+                        order_a
+                            .cmp(&order_b)
                             .then_with(|| key_a.cmp(key_b))
                             .then_with(|| {
-                                let seq_a = groups[a].sequence.as_ref().map(|s| s.sequence_number).unwrap_or(0);
-                                let seq_b = groups[b].sequence.as_ref().map(|s| s.sequence_number).unwrap_or(0);
+                                let seq_a = groups[a]
+                                    .sequence
+                                    .as_ref()
+                                    .map(|s| s.sequence_number)
+                                    .unwrap_or(0);
+                                let seq_b = groups[b]
+                                    .sequence
+                                    .as_ref()
+                                    .map(|s| s.sequence_number)
+                                    .unwrap_or(0);
                                 seq_a.cmp(&seq_b)
                             })
                             .then_with(|| {
@@ -1048,7 +1093,10 @@ fn compute_sorted_indices(
             for (i, gi) in groups.iter().enumerate() {
                 if let Some((key, _)) = combined_group_key(gi) {
                     let t = files[i].recording_start_epoch_ms().unwrap_or(f64::MAX);
-                    group_min_time.entry(key).and_modify(|m| *m = m.min(t)).or_insert(t);
+                    group_min_time
+                        .entry(key)
+                        .and_modify(|m| *m = m.min(t))
+                        .or_insert(t);
                 }
             }
             indices.sort_by(|&a, &b| {
@@ -1062,11 +1110,20 @@ fn compute_sorted_indices(
                     Some((key, _)) => *group_min_time.get(key).unwrap_or(&f64::MAX),
                     None => files[b].recording_start_epoch_ms().unwrap_or(f64::MAX),
                 };
-                time_a.partial_cmp(&time_b)
+                time_a
+                    .partial_cmp(&time_b)
                     .unwrap_or(std::cmp::Ordering::Equal)
                     .then_with(|| {
-                        let seq_a = groups[a].sequence.as_ref().map(|s| s.sequence_number).unwrap_or(0);
-                        let seq_b = groups[b].sequence.as_ref().map(|s| s.sequence_number).unwrap_or(0);
+                        let seq_a = groups[a]
+                            .sequence
+                            .as_ref()
+                            .map(|s| s.sequence_number)
+                            .unwrap_or(0);
+                        let seq_b = groups[b]
+                            .sequence
+                            .as_ref()
+                            .map(|s| s.sequence_number)
+                            .unwrap_or(0);
                         seq_a.cmp(&seq_b)
                     })
                     .then_with(|| {

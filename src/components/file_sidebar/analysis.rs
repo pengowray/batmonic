@@ -1,20 +1,20 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
 use crate::audio::source::{ChannelView, DEFAULT_ANALYSIS_WINDOW_SECS};
-use crate::state::{AppState, RightSidebarTab};
 use crate::dsp::bit_analysis::{self, BitAnalysis, BitCaution};
 use crate::dsp::lsb_autocorr::{self, LsbAutocorrResult, LsbVerdict};
 use crate::dsp::pipistrelle::{self, PipistrelleResult, PipistrelleVerdict};
 use crate::dsp::wsnr;
-use oversample_core::dsp::audiomoth::{self, AudioMothResult};
-use oversample_core::dsp::effective_nyquist::{self, EffectiveNyquistResult};
+use crate::state::store_fields::*;
+use crate::state::{AppState, RightSidebarTab};
+use leptos::prelude::*;
+use oversample_core::bit_depth_certainty::{self, BitDepthCertainty, CertaintyLevel};
 use oversample_core::device_hint::{
     self, DeviceHint, HintConfidence, MetadataMatch, PIPISTRELLE_FAMILY,
 };
-use oversample_core::bit_depth_certainty::{self, BitDepthCertainty, CertaintyLevel};
+use oversample_core::dsp::audiomoth::{self, AudioMothResult};
+use oversample_core::dsp::effective_nyquist::{self, EffectiveNyquistResult};
 use std::sync::Arc;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 #[component]
 pub(crate) fn AnalysisPanel() -> impl IntoView {
@@ -40,7 +40,9 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked();
         let file = idx.and_then(|i| files.get(i).cloned());
-        let Some(file) = file else { return; };
+        let Some(file) = file else {
+            return;
+        };
 
         analysis.set(None);
         wsnr_result.set(None);
@@ -79,63 +81,96 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
 
         let samples: Arc<Vec<f32>> = if full_file || !is_long {
             analysis_is_full.set(true);
-            Arc::new(file.audio.source.read_region(ChannelView::MonoMix, 0, total))
+            Arc::new(
+                file.audio
+                    .source
+                    .read_region(ChannelView::MonoMix, 0, total),
+            )
         } else {
-            Arc::new(file.audio.source.read_region(ChannelView::MonoMix, 0, max_samples))
+            Arc::new(
+                file.audio
+                    .source
+                    .read_region(ChannelView::MonoMix, 0, max_samples),
+            )
         };
         let duration_secs = samples.len() as f64 / sample_rate as f64;
 
         spawn_local(async move {
             yield_to_browser().await;
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
 
-            let bits_result = bit_analysis::analyze_bits(
-                &samples, bits_per_sample, is_float, duration_secs,
-            );
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            let bits_result =
+                bit_analysis::analyze_bits(&samples, bits_per_sample, is_float, duration_secs);
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
             analysis.set(Some(bits_result));
 
             yield_to_browser().await;
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
 
             let wsnr_res = wsnr::analyze_wsnr(&samples, sample_rate);
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
             wsnr_result.set(Some(wsnr_res));
 
             yield_to_browser().await;
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
 
-            let lsb_res = lsb_autocorr::analyze_lsb_autocorr(
-                &samples, bits_per_sample, is_float,
-            );
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            let lsb_res = lsb_autocorr::analyze_lsb_autocorr(&samples, bits_per_sample, is_float);
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
             lsb_result.set(Some(lsb_res));
 
             yield_to_browser().await;
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
 
             let pipi_res = pipistrelle::detect(&samples, sample_rate, bits_per_sample, is_float);
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
             pipistrelle_result.set(Some(pipi_res));
 
             yield_to_browser().await;
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
 
             let nyq_res = effective_nyquist::detect(&samples, sample_rate);
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
             nyquist_result.set(Some(nyq_res));
 
             yield_to_browser().await;
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
 
             let lsb_is_zero_padded = matches!(
                 lsb_result.get_untracked().as_ref().map(|l| &l.verdict),
                 Some(oversample_core::dsp::lsb_autocorr::LsbVerdict::ZeroPaddedNBit { .. }),
             );
             let am_res = audiomoth::detect(
-                &samples, sample_rate, bits_per_sample, is_float, lsb_is_zero_padded,
+                &samples,
+                sample_rate,
+                bits_per_sample,
+                is_float,
+                lsb_is_zero_padded,
             );
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
             audiomoth_result.set(Some(am_res));
 
             is_computing.set(false);
@@ -201,16 +236,25 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
                 let total = zc.times_s.len();
                 let on = zc.on_dot_count();
                 let off = total.saturating_sub(on);
-                let off_pct = if total > 0 { off as f64 * 100.0 / total as f64 } else { 0.0 };
-                let mut freqs: Vec<f64> = zc.freqs_hz.iter().zip(&zc.off_mask)
+                let off_pct = if total > 0 {
+                    off as f64 * 100.0 / total as f64
+                } else {
+                    0.0
+                };
+                let mut freqs: Vec<f64> = zc
+                    .freqs_hz
+                    .iter()
+                    .zip(&zc.off_mask)
                     .filter_map(|(&f, &of)| (!of && f > 0.0).then_some(f))
                     .collect();
                 freqs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 let dur_text = crate::format_time::format_duration(zc.duration_secs(), 3);
                 report.push_str("=== Anabat ZC Recording ===\n");
                 report.push_str(&format!("  File type: {}\n", md.file_type));
-                report.push_str(&format!("  Dots: {} total ({} ON, {} OFF — {:.1}%)\n",
-                    total, on, off, off_pct));
+                report.push_str(&format!(
+                    "  Dots: {} total ({} ON, {} OFF — {:.1}%)\n",
+                    total, on, off, off_pct
+                ));
                 if let (Some(&min), Some(&max)) = (freqs.first(), freqs.last()) {
                     let mean = freqs.iter().sum::<f64>() / freqs.len() as f64;
                     let median = freqs[freqs.len() / 2];
@@ -220,21 +264,49 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
                     ));
                 }
                 report.push_str(&format!("  Duration: {}\n", dur_text));
-                report.push_str(&format!("  divratio: {}, vres: {}, res1: {} Hz\n",
-                    md.divratio, md.vres, md.res1));
+                report.push_str(&format!(
+                    "  divratio: {}, vres: {}, res1: {} Hz\n",
+                    md.divratio, md.vres, md.res1
+                ));
                 if let Some(ts) = md.timestamp {
-                    report.push_str(&format!("  Recorded: {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}\n",
-                        ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.microseconds_total));
+                    report.push_str(&format!(
+                        "  Recorded: {:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}\n",
+                        ts.year,
+                        ts.month,
+                        ts.day,
+                        ts.hour,
+                        ts.minute,
+                        ts.second,
+                        ts.microseconds_total
+                    ));
                 }
-                if !md.location.is_empty() { report.push_str(&format!("  Location: {}\n", md.location)); }
-                if !md.species.is_empty()  { report.push_str(&format!("  Species:  {}\n", md.species)); }
-                if !md.tape.is_empty()     { report.push_str(&format!("  Tape:     {}\n", md.tape)); }
-                if !md.date.is_empty()     { report.push_str(&format!("  Date:     {}\n", md.date)); }
-                if !md.spec.is_empty()     { report.push_str(&format!("  Spec:     {}\n", md.spec)); }
-                if !md.note1.is_empty()    { report.push_str(&format!("  Note 1:   {}\n", md.note1)); }
-                if !md.note2.is_empty()    { report.push_str(&format!("  Note 2:   {}\n", md.note2)); }
-                if !md.id_code.is_empty()  { report.push_str(&format!("  ID:       {}\n", md.id_code)); }
-                if !md.gps.is_empty()      { report.push_str(&format!("  GPS:      {}\n", md.gps)); }
+                if !md.location.is_empty() {
+                    report.push_str(&format!("  Location: {}\n", md.location));
+                }
+                if !md.species.is_empty() {
+                    report.push_str(&format!("  Species:  {}\n", md.species));
+                }
+                if !md.tape.is_empty() {
+                    report.push_str(&format!("  Tape:     {}\n", md.tape));
+                }
+                if !md.date.is_empty() {
+                    report.push_str(&format!("  Date:     {}\n", md.date));
+                }
+                if !md.spec.is_empty() {
+                    report.push_str(&format!("  Spec:     {}\n", md.spec));
+                }
+                if !md.note1.is_empty() {
+                    report.push_str(&format!("  Note 1:   {}\n", md.note1));
+                }
+                if !md.note2.is_empty() {
+                    report.push_str(&format!("  Note 2:   {}\n", md.note2));
+                }
+                if !md.id_code.is_empty() {
+                    report.push_str(&format!("  ID:       {}\n", md.id_code));
+                }
+                if !md.gps.is_empty() {
+                    report.push_str(&format!("  GPS:      {}\n", md.gps));
+                }
                 if !md.guano.is_empty() {
                     report.push_str("\nGUANO metadata:\n");
                     for (k, v) in &md.guano {
@@ -273,7 +345,10 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
             // Signal stats — scan first 30s only for large files
             let max_scan = (DEFAULT_ANALYSIS_WINDOW_SECS * f.audio.sample_rate as f64) as usize;
             let scan_len = total_samples.min(max_scan);
-            let smp = f.audio.source.read_region(ChannelView::MonoMix, 0, scan_len);
+            let smp = f
+                .audio
+                .source
+                .read_region(ChannelView::MonoMix, 0, scan_len);
             let len = smp.len();
             if len > 0 {
                 let mut smin = f32::INFINITY;
@@ -281,17 +356,37 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
                 let mut sum = 0.0f64;
                 let mut sum_sq = 0.0f64;
                 for &s in smp.iter() {
-                    if s < smin { smin = s; }
-                    if s > smax { smax = s; }
+                    if s < smin {
+                        smin = s;
+                    }
+                    if s > smax {
+                        smax = s;
+                    }
                     sum += s as f64;
                     sum_sq += (s as f64) * (s as f64);
                 }
                 let dc_bias = sum / len as f64;
                 let rms = (sum_sq / len as f64).sqrt();
-                let min_db = if smin.abs() > 0.0 { format!("{:.1} dB", 20.0 * (smin.abs() as f64).log10()) } else { "-\u{221e} dB".into() };
-                let max_db = if smax.abs() > 0.0 { format!("{:.1} dB", 20.0 * (smax.abs() as f64).log10()) } else { "-\u{221e} dB".into() };
-                let rms_db = if rms > 0.0 { format!("{:.1} dB", 20.0 * rms.log10()) } else { "-\u{221e} dB".into() };
-                let dc_db = if dc_bias.abs() > 0.0 { format!("{:.1} dB", 20.0 * dc_bias.abs().log10()) } else { "-\u{221e} dB".into() };
+                let min_db = if smin.abs() > 0.0 {
+                    format!("{:.1} dB", 20.0 * (smin.abs() as f64).log10())
+                } else {
+                    "-\u{221e} dB".into()
+                };
+                let max_db = if smax.abs() > 0.0 {
+                    format!("{:.1} dB", 20.0 * (smax.abs() as f64).log10())
+                } else {
+                    "-\u{221e} dB".into()
+                };
+                let rms_db = if rms > 0.0 {
+                    format!("{:.1} dB", 20.0 * rms.log10())
+                } else {
+                    "-\u{221e} dB".into()
+                };
+                let dc_db = if dc_bias.abs() > 0.0 {
+                    format!("{:.1} dB", 20.0 * dc_bias.abs().log10())
+                } else {
+                    "-\u{221e} dB".into()
+                };
                 report.push_str(&format!(
                     "\nSignal\n  Min: {:.4} ({})\n  Max: {:.4} ({})\n  RMS: {}\n  DC bias: {}\n",
                     smin, min_db, smax, max_db, rms_db, dc_db
@@ -315,16 +410,19 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
         }
 
         // Tiered effective-bit-depth verdict (composed from bit / lsb / pip / am)
-        if let (Some(ref a), Some(ref lsb), Some(ref f)) = (
-            analysis.get(), lsb_result.get(), file.as_ref(),
-        ) {
+        if let (Some(ref a), Some(ref lsb), Some(ref f)) =
+            (analysis.get(), lsb_result.get(), file.as_ref())
+        {
             let pip = pipistrelle_result.get();
             let am = audiomoth_result.get();
             let bdc = bit_depth_certainty::compose(
                 f.audio.metadata.bits_per_sample,
                 f.audio.metadata.is_float,
                 f.audio.metadata.format,
-                a, lsb, pip.as_ref(), am.as_ref(),
+                a,
+                lsb,
+                pip.as_ref(),
+                am.as_ref(),
             );
             report.push_str("\nBit Depth\n");
             report.push_str(&format!("  {}\n", bdc.headline));
@@ -346,61 +444,111 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
             let neg_total = a.negative_total;
             let zero_total = a.zero_total;
             let non_silent = pos_total + neg_total;
-            let is_asymmetric = non_silent > 0 && a.bit_cautions.first()
-                .map(|c| c.iter().any(|x| matches!(x, BitCaution::SignBitSkewed)))
-                .unwrap_or(false);
+            let is_asymmetric = non_silent > 0
+                && a.bit_cautions
+                    .first()
+                    .map(|c| c.iter().any(|x| matches!(x, BitCaution::SignBitSkewed)))
+                    .unwrap_or(false);
 
-            let pos_pct = if total > 0 { format!("{:.0}%", pos_total as f64 / total as f64 * 100.0) } else { "0%".into() };
-            let neg_pct = if total > 0 { format!("{:.0}%", neg_total as f64 / total as f64 * 100.0) } else { "0%".into() };
-            let zero_pct = if total > 0 { format!("{:.0}%", zero_total as f64 / total as f64 * 100.0) } else { "0%".into() };
-            let split_label = if is_asymmetric { "Asymmetric" } else { "Sample split" };
-            let split_line = format!("  {}: {}+ {}− {}silence\n", split_label, pos_pct, neg_pct, zero_pct);
+            let pos_pct = if total > 0 {
+                format!("{:.0}%", pos_total as f64 / total as f64 * 100.0)
+            } else {
+                "0%".into()
+            };
+            let neg_pct = if total > 0 {
+                format!("{:.0}%", neg_total as f64 / total as f64 * 100.0)
+            } else {
+                "0%".into()
+            };
+            let zero_pct = if total > 0 {
+                format!("{:.0}%", zero_total as f64 / total as f64 * 100.0)
+            } else {
+                "0%".into()
+            };
+            let split_label = if is_asymmetric {
+                "Asymmetric"
+            } else {
+                "Sample split"
+            };
+            let split_line = format!(
+                "  {}: {}+ {}− {}silence\n",
+                split_label, pos_pct, neg_pct, zero_pct
+            );
 
             report.push_str("\nBit Usage\n");
 
             if !a.is_float {
                 let zero_padding = a.bits_per_sample - a.effective_bits;
-                let effective_depth = a.bits_per_sample.saturating_sub(a.headroom_bits).saturating_sub(zero_padding);
+                let effective_depth = a
+                    .bits_per_sample
+                    .saturating_sub(a.headroom_bits)
+                    .saturating_sub(zero_padding);
                 let headroom_db = a.headroom_bits as f64 * 20.0 * 2f64.log10();
-                report.push_str(&format!("  Effective bit depth: {} bits\n", effective_depth));
-                report.push_str(&format!("  Entropy estimate: ~{:.1} bits\n", a.effective_bits_f64));
+                report.push_str(&format!(
+                    "  Effective bit depth: {} bits\n",
+                    effective_depth
+                ));
+                report.push_str(&format!(
+                    "  Entropy estimate: ~{:.1} bits\n",
+                    a.effective_bits_f64
+                ));
                 if a.headroom_bits > 0 {
-                    report.push_str(&format!("  Headroom: {} bits ({:.1} dB)\n", a.headroom_bits, headroom_db));
+                    report.push_str(&format!(
+                        "  Headroom: {} bits ({:.1} dB)\n",
+                        a.headroom_bits, headroom_db
+                    ));
                 }
                 if zero_padding > 0 {
                     report.push_str(&format!("  Zero padding: {} bits\n", zero_padding));
                 }
                 report.push_str(&format!("  {}\n", a.summary));
                 if let Some(ref vc) = a.value_coverage {
-                    report.push_str(&format!("  Value coverage: {:.1}% ({} of {})\n",
-                        vc.coverage_pct, vc.unique_count, vc.value_space));
+                    report.push_str(&format!(
+                        "  Value coverage: {:.1}% ({} of {})\n",
+                        vc.coverage_pct, vc.unique_count, vc.value_space
+                    ));
                     let ceiled = vc.resolution_bits.ceil() as u16;
-                    report.push_str(&format!("  Value resolution: ~{:.1} bits ({}-bit)\n", vc.resolution_bits, ceiled));
+                    report.push_str(&format!(
+                        "  Value resolution: ~{:.1} bits ({}-bit)\n",
+                        vc.resolution_bits, ceiled
+                    ));
                 }
             } else {
                 report.push_str(&format!("  {}\n", a.summary));
-                report.push_str(&format!("  Entropy estimate: ~{:.1} bits\n", a.effective_bits_f64));
+                report.push_str(&format!(
+                    "  Entropy estimate: ~{:.1} bits\n",
+                    a.effective_bits_f64
+                ));
             }
             {
                 let nf_db = a.noise_floor_db;
                 let nf_bits = -nf_db / (20.0 * 2f64.log10());
-                report.push_str(&format!("  Noise floor: {:.1} dBFS (~{:.1} bits)\n", nf_db, nf_bits));
+                report.push_str(&format!(
+                    "  Noise floor: {:.1} dBFS (~{:.1} bits)\n",
+                    nf_db, nf_bits
+                ));
             }
             report.push_str(&split_line);
 
             for w in &a.warnings {
                 report.push_str(&format!("  ! {}\n", w));
             }
-            let caution_list: Vec<String> = a.bit_cautions.iter().enumerate()
+            let caution_list: Vec<String> = a
+                .bit_cautions
+                .iter()
+                .enumerate()
                 .filter(|(_, cs)| !cs.is_empty())
                 .map(|(i, cs)| {
                     let label = bit_analysis::bit_label(i, a.bits_per_sample, a.is_float);
-                    let names: Vec<&str> = cs.iter().map(|c| match c {
-                        BitCaution::SignBitSkewed => "asymmetric distribution",
-                        BitCaution::Always1 => "always 1",
-                        BitCaution::OnlyInFade => "only in fade",
-                        BitCaution::VeryLowUsage => "very low usage",
-                    }).collect();
+                    let names: Vec<&str> = cs
+                        .iter()
+                        .map(|c| match c {
+                            BitCaution::SignBitSkewed => "asymmetric distribution",
+                            BitCaution::Always1 => "always 1",
+                            BitCaution::OnlyInFade => "only in fade",
+                            BitCaution::VeryLowUsage => "very low usage",
+                        })
+                        .collect();
                     format!("{} ({})", label, names.join(", "))
                 })
                 .collect();
@@ -415,15 +563,19 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
             let verdict_text = match &l.verdict {
                 LsbVerdict::NotApplicable => "Not applicable",
                 LsbVerdict::ZeroPaddedNBit { .. } => "Zero-padded (whole file)",
-                LsbVerdict::QuietSectionZeroPadded { .. } => "Zero-padded in quiet sections only (noise-gated)",
+                LsbVerdict::QuietSectionZeroPadded { .. } => {
+                    "Zero-padded in quiet sections only (noise-gated)"
+                }
                 LsbVerdict::DspPaddedLowBitDepth { .. } => "DSP-padded / IIR residue",
                 LsbVerdict::ConsistentWithClaimedBitDepth => "Consistent with claimed bit depth",
                 LsbVerdict::Inconclusive => "Inconclusive (noise floor too high)",
             };
             report.push_str(&format!("  Verdict: {}\n", verdict_text));
             if !matches!(l.verdict, LsbVerdict::NotApplicable) {
-                report.push_str(&format!("  Quietest window: stdev {:.1} LSB at sample {}\n",
-                    l.quietest_window_stdev, l.quietest_window_idx));
+                report.push_str(&format!(
+                    "  Quietest window: stdev {:.1} LSB at sample {}\n",
+                    l.quietest_window_stdev, l.quietest_window_idx
+                ));
                 report.push_str(&format!(
                     "  Low {}-bit: chi\u{00B2}={:.0}, lag-1 ACF={:+.3}, lag-256 ACF={:+.3}, nonzero {:.1}%\n",
                     l.n_low, l.quiet_lsb_chi2, l.quiet_lsb_lag1_acf, l.quiet_lsb_lag256_acf,
@@ -452,11 +604,14 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
                 if let Some(db) = p.best_db_cut {
                     report.push_str(&format!(
                         "  Best preset: dBcut={}  residual={:.2}%  in-range={:.1}%\n",
-                        db, p.best_normalized_residual * 100.0, p.best_in_range_frac * 100.0,
+                        db,
+                        p.best_normalized_residual * 100.0,
+                        p.best_in_range_frac * 100.0,
                     ));
                     report.push_str(&format!(
                         "  Near-integer recovered samples: {}/{} = {:.1}% (uniform baseline 20%)\n",
-                        p.best_near_integer_match, p.best_near_integer_total,
+                        p.best_near_integer_match,
+                        p.best_near_integer_total,
                         p.best_near_integer_frac * 100.0,
                     ));
                     report.push_str(&format!(
@@ -464,10 +619,15 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
                         p.best_mean_abs_frac,
                     ));
                 }
-                let scores: Vec<String> = p.per_preset.iter().map(|s| {
-                    format!("dBcut={}: {:.2}%", s.db_cut, s.normalized_residual * 100.0)
-                }).collect();
-                report.push_str(&format!("  All presets (residual): {}\n", scores.join("; ")));
+                let scores: Vec<String> = p
+                    .per_preset
+                    .iter()
+                    .map(|s| format!("dBcut={}: {:.2}%", s.db_cut, s.normalized_residual * 100.0))
+                    .collect();
+                report.push_str(&format!(
+                    "  All presets (residual): {}\n",
+                    scores.join("; ")
+                ));
                 report.push_str(&format!(
                     "  Windows analyzed: {} (skipped {} as silent)\n",
                     p.windows_used, p.windows_skipped_silent,
@@ -480,7 +640,10 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
 
         // Device hints + metadata comparison
         if let (Some(ref f), Some(ref bit), Some(ref lsb), Some(ref pip)) = (
-            file.as_ref(), analysis.get(), lsb_result.get(), pipistrelle_result.get(),
+            file.as_ref(),
+            analysis.get(),
+            lsb_result.get(),
+            pipistrelle_result.get(),
         ) {
             let nyq = nyquist_result.get();
             let am = audiomoth_result.get();
@@ -488,7 +651,11 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
                 f.audio.sample_rate,
                 f.audio.metadata.bits_per_sample,
                 f.audio.metadata.is_float,
-                bit, lsb, pip, nyq.as_ref(), am.as_ref(),
+                bit,
+                lsb,
+                pip,
+                nyq.as_ref(),
+                am.as_ref(),
             );
             let guano = f.audio.metadata.guano.as_ref().map(|g| g.fields.clone());
             let xc = f.xc_metadata.clone();
@@ -503,22 +670,37 @@ pub(crate) fn AnalysisPanel() -> impl IntoView {
                     };
                     report.push_str(&format!("  [{}] {}\n", conf, h.label));
                     if !h.candidates.is_empty() {
-                        report.push_str(&format!(
-                            "       candidates: {}\n",
-                            h.candidates.join(", "),
-                        ));
+                        report
+                            .push_str(
+                                &format!("       candidates: {}\n", h.candidates.join(", "),),
+                            );
                     }
                 }
                 match m {
                     MetadataMatch::NoClaim => {}
                     MetadataMatch::ClaimNoAnalysis { claim } => {
-                        report.push_str(&format!("  metadata says: {} (no analysis hints to compare)\n", claim));
+                        report.push_str(&format!(
+                            "  metadata says: {} (no analysis hints to compare)\n",
+                            claim
+                        ));
                     }
-                    MetadataMatch::Match { claim, matched_candidate } => {
-                        report.push_str(&format!("  metadata: {} \u{2014} matches ({})\n", claim, matched_candidate));
+                    MetadataMatch::Match {
+                        claim,
+                        matched_candidate,
+                    } => {
+                        report.push_str(&format!(
+                            "  metadata: {} \u{2014} matches ({})\n",
+                            claim, matched_candidate
+                        ));
                     }
-                    MetadataMatch::Mismatch { claim, hint_summary } => {
-                        report.push_str(&format!("  ! metadata: {} \u{2014} does NOT match analysis ({})\n", claim, hint_summary));
+                    MetadataMatch::Mismatch {
+                        claim,
+                        hint_summary,
+                    } => {
+                        report.push_str(&format!(
+                            "  ! metadata: {} \u{2014} does NOT match analysis ({})\n",
+                            claim, hint_summary
+                        ));
                     }
                 }
             }
@@ -1128,7 +1310,10 @@ fn render_zc_file_info(f: &crate::state::LoadedFile) -> impl IntoView {
     let dur_text = crate::format_time::format_duration(duration, 3);
 
     // Compute frequency stats over ON dots with valid frequency.
-    let mut freqs: Vec<f64> = zc.freqs_hz.iter().zip(&zc.off_mask)
+    let mut freqs: Vec<f64> = zc
+        .freqs_hz
+        .iter()
+        .zip(&zc.off_mask)
         .filter_map(|(&f, &off)| (!off && f > 0.0).then_some(f))
         .collect();
     freqs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
@@ -1145,22 +1330,28 @@ fn render_zc_file_info(f: &crate::state::LoadedFile) -> impl IntoView {
     // (Header-metadata rows moved to the Info/Metadata tab —
     // see `zc_header_section()` in metadata_panel.rs.)
 
-    let guano_views: Vec<_> = md.guano.iter().map(|(k, v)| {
-        view! {
-            <div class="bit-depth-stat" style="margin-left: 1em;">
-                {format!("{} = {}", k, v)}
-            </div>
-        }
-    }).collect();
+    let guano_views: Vec<_> = md
+        .guano
+        .iter()
+        .map(|(k, v)| {
+            view! {
+                <div class="bit-depth-stat" style="margin-left: 1em;">
+                    {format!("{} = {}", k, v)}
+                </div>
+            }
+        })
+        .collect();
     let has_guano = !md.guano.is_empty();
 
-    let off_pct = if total > 0 { off as f64 * 100.0 / total as f64 } else { 0.0 };
-    let dot_summary = format!(
-        "{} dots ({} ON, {} OFF — {:.1}%)",
-        total, on, off, off_pct,
-    );
-    let freq_lines: Vec<_> = freq_range.map(|(min, max, mean, median)| {
-        vec![
+    let off_pct = if total > 0 {
+        off as f64 * 100.0 / total as f64
+    } else {
+        0.0
+    };
+    let dot_summary = format!("{} dots ({} ON, {} OFF — {:.1}%)", total, on, off, off_pct,);
+    let freq_lines: Vec<_> = freq_range
+        .map(|(min, max, mean, median)| {
+            vec![
             view! {
                 <div class="bit-depth-stat bit-depth-primary">
                     {format!("Frequency range: {:.1} – {:.1} kHz (mean {:.1} kHz)",
@@ -1174,7 +1365,8 @@ fn render_zc_file_info(f: &crate::state::LoadedFile) -> impl IntoView {
                 </div>
             }.into_any(),
         ]
-    }).unwrap_or_default();
+        })
+        .unwrap_or_default();
 
     let divratio = md.divratio;
     let divratio_explanation = format!(
@@ -1185,8 +1377,11 @@ fn render_zc_file_info(f: &crate::state::LoadedFile) -> impl IntoView {
     let file_type_text = format!(
         "ZC file type {} \u{2014} {}",
         md.file_type,
-        if md.file_type >= 132 { "modern (v132+) with embedded timestamp and GUANO" }
-        else { "legacy (pre-v132) without embedded timestamp" },
+        if md.file_type >= 132 {
+            "modern (v132+) with embedded timestamp and GUANO"
+        } else {
+            "legacy (pre-v132) without embedded timestamp"
+        },
     );
 
     view! {
@@ -1224,14 +1419,22 @@ fn render_zc_file_info(f: &crate::state::LoadedFile) -> impl IntoView {
 fn render_lsb_section(l: &LsbAutocorrResult) -> impl IntoView {
     // Human-readable lead line per verdict.
     let (verdict_text, verdict_class) = match &l.verdict {
-        LsbVerdict::ZeroPaddedNBit { effective_bits, padding_bits } => (
+        LsbVerdict::ZeroPaddedNBit {
+            effective_bits,
+            padding_bits,
+        } => (
             format!(
                 "Effective {}-bit \u{2014} low {} bit{} of every sample are literally zero",
-                effective_bits, padding_bits, if *padding_bits == 1 { "" } else { "s" },
+                effective_bits,
+                padding_bits,
+                if *padding_bits == 1 { "" } else { "s" },
             ),
             "bit-depth-stat bit-depth-primary",
         ),
-        LsbVerdict::QuietSectionZeroPadded { effective_bits_in_quiet, padding_bits } => (
+        LsbVerdict::QuietSectionZeroPadded {
+            effective_bits_in_quiet,
+            padding_bits,
+        } => (
             format!(
                 "Quiet sections drop to {}-bit (low {} bits zeroed in silence; \
                  full depth elsewhere) \u{2014} typical of noise-gated firmware",
@@ -1239,11 +1442,14 @@ fn render_lsb_section(l: &LsbAutocorrResult) -> impl IntoView {
             ),
             "bit-warning",
         ),
-        LsbVerdict::DspPaddedLowBitDepth { effective_bits_guess } => (
+        LsbVerdict::DspPaddedLowBitDepth {
+            effective_bits_guess,
+        } => (
             format!(
                 "Low bits look deterministic \u{2014} probably a ~{}-bit ADC plus \
                  on-device DSP padded into the {}-bit container",
-                effective_bits_guess, l.n_low + 4,
+                effective_bits_guess,
+                l.n_low + 4,
             ),
             "bit-warning",
         ),
@@ -1271,7 +1477,9 @@ fn render_lsb_section(l: &LsbAutocorrResult) -> impl IntoView {
         }
         Some(format!(
             "Low bits repeat every {} sample{} ({:.0}% match)",
-            p, if p == 1 { "" } else { "s" }, l.low_bit_period_match * 100.0,
+            p,
+            if p == 1 { "" } else { "s" },
+            l.low_bit_period_match * 100.0,
         ))
     });
 
@@ -1290,14 +1498,20 @@ fn render_lsb_section(l: &LsbAutocorrResult) -> impl IntoView {
     );
     let nf_text = format!(
         "Quietest window stdev: {:.1} LSB, {:.1}% of samples have nonzero low bits",
-        l.quietest_window_stdev, l.quiet_lsb_nonzero_frac * 100.0,
+        l.quietest_window_stdev,
+        l.quiet_lsb_nonzero_frac * 100.0,
     );
     let nf_tooltip = "Stdev of the quietest 4096-sample window in raw integer LSB units. \
         Noise floor above ~16 LSB dithers out any DSP signature in the low bits, so we \
         can't tell DSP-padded from true full-bit-depth above that.";
     let gcd_line = if l.gcd_nonzero > 1 {
-        Some(format!("All nonzero samples are multiples of {}", l.gcd_nonzero))
-    } else { None };
+        Some(format!(
+            "All nonzero samples are multiples of {}",
+            l.gcd_nonzero
+        ))
+    } else {
+        None
+    };
     let explanation = l.explanation.clone();
 
     view! {
@@ -1359,14 +1573,16 @@ fn render_pipistrelle_section(p: &PipistrelleResult) -> impl IntoView {
     // is not conclusive.
     let caveat = matches!(p.verdict, PipistrelleVerdict::Possible).then(|| {
         "Note: many bandlimited 16-bit ultrasonic recordings give similarly-low \
-         reconstruction errors, so a 'possible' verdict is far from conclusive.".to_string()
+         reconstruction errors, so a 'possible' verdict is far from conclusive."
+            .to_string()
     });
 
     // Detail lines.
     let near_int_text = format!(
         "Recovered ADC samples landing within \u{00B1}0.1 of an integer: {}/{} = {:.1}% \
          (uniform baseline 20%)",
-        p.best_near_integer_match, p.best_near_integer_total,
+        p.best_near_integer_match,
+        p.best_near_integer_total,
         p.best_near_integer_frac * 100.0,
     );
     let near_int_tooltip = "After inverse-filtering the firmware's DSP chain in float, \
@@ -1382,19 +1598,24 @@ fn render_pipistrelle_section(p: &PipistrelleResult) -> impl IntoView {
     );
     let windows_text = format!(
         "{} window{} analysed, {} skipped (below silence gate)",
-        p.windows_used, if p.windows_used == 1 { "" } else { "s" },
+        p.windows_used,
+        if p.windows_used == 1 { "" } else { "s" },
         p.windows_skipped_silent,
     );
-    let preset_lines: Vec<_> = p.per_preset.iter().map(|s| {
-        let line = format!(
-            "dBcut={}: residual {:.2}%, near-integer {:.1}%, in-range {:.1}%",
-            s.db_cut,
-            s.normalized_residual * 100.0,
-            s.near_integer_frac * 100.0,
-            s.in_range_frac * 100.0,
-        );
-        view! { <div class="bit-depth-stat">{line}</div> }
-    }).collect();
+    let preset_lines: Vec<_> = p
+        .per_preset
+        .iter()
+        .map(|s| {
+            let line = format!(
+                "dBcut={}: residual {:.2}%, near-integer {:.1}%, in-range {:.1}%",
+                s.db_cut,
+                s.normalized_residual * 100.0,
+                s.near_integer_frac * 100.0,
+                s.in_range_frac * 100.0,
+            );
+            view! { <div class="bit-depth-stat">{line}</div> }
+        })
+        .collect();
 
     view! {
         <div class="setting-group">
@@ -1423,45 +1644,52 @@ fn render_device_hints_section(
     metadata_match: MetadataMatch,
 ) -> impl IntoView {
     // Skip the section entirely if there's literally nothing to show.
-    let any_strong_or_likely_hint = hints.iter().any(|h| matches!(
-        h.confidence, HintConfidence::Strong | HintConfidence::Likely
-    ));
-    let show_section = any_strong_or_likely_hint
-        || !matches!(metadata_match, MetadataMatch::NoClaim);
+    let any_strong_or_likely_hint = hints.iter().any(|h| {
+        matches!(
+            h.confidence,
+            HintConfidence::Strong | HintConfidence::Likely
+        )
+    });
+    let show_section =
+        any_strong_or_likely_hint || !matches!(metadata_match, MetadataMatch::NoClaim);
 
     if !show_section {
         return view! { <span></span> }.into_any();
     }
 
-    let hint_rows: Vec<_> = hints.iter().map(|h| {
-        let class = match h.confidence {
-            HintConfidence::Strong => "bit-depth-stat bit-depth-primary",
-            HintConfidence::Likely => "bit-warning",
-            HintConfidence::Possible => "wsnr-detail",
-        };
-        let candidates = if h.candidates.is_empty() {
-            String::new()
-        } else {
-            h.candidates.join(", ")
-        };
-        let detail = h.detail.clone();
-        let label = h.label.clone();
-        let candidates_view = if !candidates.is_empty() {
+    let hint_rows: Vec<_> = hints
+        .iter()
+        .map(|h| {
+            let class = match h.confidence {
+                HintConfidence::Strong => "bit-depth-stat bit-depth-primary",
+                HintConfidence::Likely => "bit-warning",
+                HintConfidence::Possible => "wsnr-detail",
+            };
+            let candidates = if h.candidates.is_empty() {
+                String::new()
+            } else {
+                h.candidates.join(", ")
+            };
+            let detail = h.detail.clone();
+            let label = h.label.clone();
+            let candidates_view = if !candidates.is_empty() {
+                view! {
+                    <div class="wsnr-detail" style="margin-left: 1em;">
+                        {format!("Candidates: {}", candidates)}
+                    </div>
+                }
+                .into_any()
+            } else {
+                view! { <span></span> }.into_any()
+            };
             view! {
-                <div class="wsnr-detail" style="margin-left: 1em;">
-                    {format!("Candidates: {}", candidates)}
+                <div>
+                    <div class=class title=detail>{label}</div>
+                    {candidates_view}
                 </div>
-            }.into_any()
-        } else {
-            view! { <span></span> }.into_any()
-        };
-        view! {
-            <div>
-                <div class=class title=detail>{label}</div>
-                {candidates_view}
-            </div>
-        }
-    }).collect();
+            }
+        })
+        .collect();
 
     let metadata_view = match metadata_match {
         MetadataMatch::NoClaim => view! { <span></span> }.into_any(),
@@ -1508,9 +1736,7 @@ async fn yield_to_browser() {
         let cb = Closure::once_into_js(move || {
             let _ = resolve.call0(&JsValue::NULL);
         });
-        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
-            cb.unchecked_ref(), 0,
-        );
+        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), 0);
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }

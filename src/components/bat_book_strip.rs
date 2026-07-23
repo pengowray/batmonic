@@ -1,9 +1,9 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use crate::state::AppState;
-use crate::bat_book::data::get_manifest;
-use crate::bat_book::types::{BatBookRegion, BatBookEntry, BatBookMode};
 use crate::bat_book::auto_resolve;
+use crate::bat_book::data::get_manifest;
+use crate::bat_book::types::{BatBookEntry, BatBookMode, BatBookRegion};
+use crate::state::store_fields::*;
+use crate::state::AppState;
+use leptos::prelude::*;
 
 /// Persist bat book mode to localStorage.
 fn persist_mode(mode: &BatBookMode) {
@@ -12,7 +12,11 @@ fn persist_mode(mode: &BatBookMode) {
 
 /// Persist favourites to localStorage.
 fn persist_favourites(favs: &[BatBookRegion]) {
-    let val: String = favs.iter().map(|r| r.storage_key()).collect::<Vec<_>>().join(",");
+    let val: String = favs
+        .iter()
+        .map(|r| r.storage_key())
+        .collect::<Vec<_>>()
+        .join(",");
     crate::settings::set_raw(crate::settings::keys::BAT_BOOK_FAVOURITES, &val);
 }
 
@@ -89,11 +93,17 @@ pub fn BatBookStrip() -> impl IntoView {
 
         let Some(idx) = file_idx else { return };
         let Some(ref res) = resolved else { return };
-        let Some(ref species_id) = res.matched_species_id else { return };
+        let Some(ref species_id) = res.matched_species_id else {
+            return;
+        };
 
         // Only auto-select when the book is open and in Auto mode
-        if !is_open { return; }
-        if state.bat_book.mode().get_untracked() != BatBookMode::Auto { return; }
+        if !is_open {
+            return;
+        }
+        if state.bat_book.mode().get_untracked() != BatBookMode::Auto {
+            return;
+        }
 
         // Don't re-select if we already did for this file+species
         if auto_selected_for.get_untracked() == Some((idx, species_id.clone())) {
@@ -103,7 +113,10 @@ pub fn BatBookStrip() -> impl IntoView {
 
         // Select the species
         state.bat_book.selected_ids().set(vec![species_id.clone()]);
-        state.bat_book.last_clicked_id().set(Some(species_id.clone()));
+        state
+            .bat_book
+            .last_clicked_id()
+            .set(Some(species_id.clone()));
         state.bat_book.ref_open().set(true);
         if state.bat_book.auto_focus().get_untracked() {
             apply_bat_book_ff(&state);
@@ -273,7 +286,10 @@ fn RegionOption(
             BatBookMode::Manual(mr) => mr == r,
             BatBookMode::Auto => {
                 // In auto mode, highlight the resolved region
-                state.bat_book.auto_resolved().get()
+                state
+                    .bat_book
+                    .auto_resolved()
+                    .get()
                     .map(|res| res.region == r)
                     .unwrap_or(false)
             }
@@ -335,7 +351,10 @@ fn combined_band_ff_range(state: &AppState) -> Option<(f64, f64)> {
     let manifest = get_manifest(region);
 
     // Also check auto-matched entry (may be from a different book)
-    let auto_entry = state.bat_book.auto_resolved().get_untracked()
+    let auto_entry = state
+        .bat_book
+        .auto_resolved()
+        .get_untracked()
         .and_then(|res| res.matched_species_id)
         .and_then(|id| auto_resolve::find_entry_any_book(&id));
 
@@ -354,7 +373,11 @@ fn combined_band_ff_range(state: &AppState) -> Option<(f64, f64)> {
             hi = hi.max(entry.freq_hi_hz);
         }
     }
-    if lo < hi { Some((lo, hi)) } else { None }
+    if lo < hi {
+        Some((lo, hi))
+    } else {
+        None
+    }
 }
 
 /// Apply the combined BandFF range from selected bat book entries.
@@ -367,7 +390,9 @@ fn apply_bat_book_ff(state: &AppState) {
     };
 
     let files = state.library.files().get_untracked();
-    let Some(idx) = state.library.current_index().get_untracked() else { return };
+    let Some(idx) = state.library.current_index().get_untracked() else {
+        return;
+    };
     let Some(file) = files.get(idx) else { return };
     let nyquist = file.audio.sample_rate as f64 / 2.0;
 
@@ -411,7 +436,12 @@ fn BatBookChip(
     let is_selected = {
         let eid = entry_id.clone();
         move || {
-            state.bat_book.selected_ids().get().iter().any(|id| id == &eid)
+            state
+                .bat_book
+                .selected_ids()
+                .get()
+                .iter()
+                .any(|id| id == &eid)
         }
     };
 
@@ -421,7 +451,12 @@ fn BatBookChip(
         let shift = ev.shift_key();
         let eid = entry_id_for_click.clone();
 
-        let was_selected = state.bat_book.selected_ids().get_untracked().iter().any(|id| id == &eid);
+        let was_selected = state
+            .bat_book
+            .selected_ids()
+            .get_untracked()
+            .iter()
+            .any(|id| id == &eid);
 
         if was_selected && !ctrl && !shift {
             // Click selected bat again: deselect and restore previous BandFF
@@ -433,7 +468,10 @@ fn BatBookChip(
         }
 
         if ctrl && was_selected {
-            state.bat_book.selected_ids().update(|ids| ids.retain(|id| id != &eid));
+            state
+                .bat_book
+                .selected_ids()
+                .update(|ids| ids.retain(|id| id != &eid));
             if state.bat_book.selected_ids().get_untracked().is_empty() {
                 state.bat_book.ref_open().set(false);
                 state.bat_book.last_clicked_id().set(None);
@@ -494,7 +532,12 @@ fn BatBookChip(
     let class = move || {
         let mut cls = if is_selected() {
             use crate::focus_stack::FocusSource;
-            if state.viewmode.focus_stack().get().is_adopted(FocusSource::BatBook) {
+            if state
+                .viewmode
+                .focus_stack()
+                .get()
+                .is_adopted(FocusSource::BatBook)
+            {
                 "bat-book-chip selected adopted".to_string()
             } else {
                 "bat-book-chip selected".to_string()

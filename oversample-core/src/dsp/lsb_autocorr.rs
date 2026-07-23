@@ -19,7 +19,10 @@ pub enum LsbVerdict {
     /// Low N bits are literally zero across the *whole* file — N bits of
     /// zero-padding from a lower bit depth source (e.g. 12-bit ADC
     /// zero-extended into 16-bit container).
-    ZeroPaddedNBit { effective_bits: u16, padding_bits: u16 },
+    ZeroPaddedNBit {
+        effective_bits: u16,
+        padding_bits: u16,
+    },
     /// Low N bits are zero in *quiet* sections but used elsewhere — the
     /// recorder still has its full claimed bit depth, but its DSP /
     /// noise-gate / AGC chain stops feeding analog noise into the LSBs
@@ -115,7 +118,13 @@ pub fn analyze_lsb_autocorr(
     bits_per_sample: u16,
     is_float: bool,
 ) -> LsbAutocorrResult {
-    analyze_lsb_autocorr_opts(samples, bits_per_sample, is_float, DEFAULT_N_LOW, DEFAULT_WINDOW)
+    analyze_lsb_autocorr_opts(
+        samples,
+        bits_per_sample,
+        is_float,
+        DEFAULT_N_LOW,
+        DEFAULT_WINDOW,
+    )
 }
 
 pub fn analyze_lsb_autocorr_opts(
@@ -146,7 +155,10 @@ pub fn analyze_lsb_autocorr_opts(
             explanation: if is_float {
                 "Float format — LSB tests only meaningful for integer audio".into()
             } else if bits_per_sample < n_low + 4 {
-                format!("Bit depth {} too low for {}-bit LSB analysis", bits_per_sample, n_low)
+                format!(
+                    "Bit depth {} too low for {}-bit LSB analysis",
+                    bits_per_sample, n_low
+                )
             } else {
                 format!("Need at least {} samples", window * 2)
             },
@@ -157,7 +169,11 @@ pub fn analyze_lsb_autocorr_opts(
     let scale = (1u32 << (bits_per_sample - 1)) as f64;
     let ints: Vec<i32> = samples
         .iter()
-        .map(|&s| (s as f64 * scale).round().clamp(i32::MIN as f64, i32::MAX as f64) as i32)
+        .map(|&s| {
+            (s as f64 * scale)
+                .round()
+                .clamp(i32::MIN as f64, i32::MAX as f64) as i32
+        })
         .collect();
 
     let g = stride_gcd(&ints);
@@ -166,10 +182,15 @@ pub fn analyze_lsb_autocorr_opts(
         let pad = pad.min(bits_per_sample - 1);
         let eff = bits_per_sample.saturating_sub(pad);
         return LsbAutocorrResult {
-            verdict: LsbVerdict::ZeroPaddedNBit { effective_bits: eff, padding_bits: pad },
+            verdict: LsbVerdict::ZeroPaddedNBit {
+                effective_bits: eff,
+                padding_bits: pad,
+            },
             explanation: format!(
                 "All nonzero samples are multiples of {} \u{2014} low {} bit{} literally zero",
-                g, pad, if pad == 1 { "" } else { "s" }
+                g,
+                pad,
+                if pad == 1 { "" } else { "s" }
             ),
             gcd_nonzero: g,
             // Period 1 = "all the same value" (zero, in this case).
@@ -194,7 +215,9 @@ pub fn analyze_lsb_autocorr_opts(
     for &v in seg {
         let lb = (v & mask) as usize;
         hist[lb] += 1;
-        if lb != 0 { nonzero += 1; }
+        if lb != 0 {
+            nonzero += 1;
+        }
     }
     let nonzero_frac = nonzero as f64 / seg.len() as f64;
     let expected = seg.len() as f64 / bins as f64;
@@ -207,7 +230,11 @@ pub fn analyze_lsb_autocorr_opts(
         .sum();
 
     let r1 = low_bit_acf(seg, 1, n_low);
-    let r256 = if seg.len() > 512 { low_bit_acf(seg, 256, n_low) } else { 0.0 };
+    let r256 = if seg.len() > 512 {
+        low_bit_acf(seg, 256, n_low)
+    } else {
+        0.0
+    };
     let (period, period_match) = find_lsb_period(seg, n_low);
 
     let result = LsbAutocorrResult {
@@ -260,9 +287,8 @@ pub fn analyze_lsb_autocorr_opts(
     // through the dither, so we should report it. Only fall back to
     // "Inconclusive" when LSBs *look* like noise but the floor is too high
     // for us to be sure they aren't deterministic.
-    let dsp_signature = chi2 > CHI2_THRESHOLD
-        || r1.abs() > ACF_THRESHOLD
-        || r256.abs() > ACF_THRESHOLD;
+    let dsp_signature =
+        chi2 > CHI2_THRESHOLD || r1.abs() > ACF_THRESHOLD || r256.abs() > ACF_THRESHOLD;
 
     if dsp_signature {
         return LsbAutocorrResult {
@@ -273,7 +299,11 @@ pub fn analyze_lsb_autocorr_opts(
                 "Low {} bits show structure (chi\u{00B2}={:.0}, r\u{2081}={:+.3}, \
                  r\u{2082}\u{2085}\u{2086}={:+.3}) \u{2014} consistent with deterministic \
                  DSP residue on top of a ~{}-bit ADC",
-                n_low, chi2, r1, r256, bits_per_sample - n_low
+                n_low,
+                chi2,
+                r1,
+                r256,
+                bits_per_sample - n_low
             ),
             ..result
         };
@@ -314,11 +344,19 @@ fn stride_gcd(samples: &[i32]) -> u32 {
             }
         }
     }
-    if g == 0 { 1 } else { g }
+    if g == 0 {
+        1
+    } else {
+        g
+    }
 }
 
 fn gcd_u32(a: u32, b: u32) -> u32 {
-    if b == 0 { a } else { gcd_u32(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd_u32(b, a % b)
+    }
 }
 
 fn find_quietest_window(samples: &[i32], window: usize) -> (usize, f64) {
@@ -357,7 +395,9 @@ fn find_quietest_window(samples: &[i32], window: usize) -> (usize, f64) {
 fn find_lsb_period(seg: &[i32], n_low: u16) -> (Option<usize>, f64) {
     let mask = (1i32 << n_low) - 1;
     let n = seg.len();
-    if n < 4 { return (None, 0.0); }
+    if n < 4 {
+        return (None, 0.0);
+    }
     let max_p = MAX_PATTERN_PERIOD.min(n / 2);
     let mut best_period: Option<usize> = None;
     let mut best_match = 0.0f64;
@@ -424,11 +464,16 @@ mod tests {
     #[test]
     fn zero_padded_12_in_16_detected() {
         // Synthesize: every sample is a multiple of 16
-        let ints: Vec<i32> = (0..16384).map(|i| ((i as i32 * 37) & 0x7F0) - 1024).collect();
+        let ints: Vec<i32> = (0..16384)
+            .map(|i| ((i as i32 * 37) & 0x7F0) - 1024)
+            .collect();
         let samples = to_f32(&ints, 16);
         let r = analyze_lsb_autocorr(&samples, 16, false);
         match r.verdict {
-            LsbVerdict::ZeroPaddedNBit { effective_bits, padding_bits } => {
+            LsbVerdict::ZeroPaddedNBit {
+                effective_bits,
+                padding_bits,
+            } => {
                 assert_eq!(padding_bits, 4);
                 assert_eq!(effective_bits, 12);
             }
@@ -467,8 +512,8 @@ mod tests {
             .map(|i| {
                 // Tiny ramp signal in upper bits, IIR drip in low bits
                 acc = acc.wrapping_add(1);
-                let sig = (i as i32 / 1024) - 8;            // upper-bit signal
-                let lsb = (acc * 37) & 0xF;                  // deterministic low bits
+                let sig = (i as i32 / 1024) - 8; // upper-bit signal
+                let lsb = (acc * 37) & 0xF; // deterministic low bits
                 (sig << 4) | lsb
             })
             .collect();

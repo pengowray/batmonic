@@ -130,9 +130,13 @@ impl ZcData {
 
 /// Detect whether `bytes` looks like an Anabat ZC file.
 pub fn is_zc(bytes: &[u8]) -> bool {
-    if bytes.len() < HEADER_LEN { return false; }
+    if bytes.len() < HEADER_LEN {
+        return false;
+    }
     let file_type = bytes[3];
-    if !(129..=132).contains(&file_type) { return false; }
+    if !(129..=132).contains(&file_type) {
+        return false;
+    }
     let data_info_pointer = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;
     // data_info_pointer is typically 0x11a (282) but a few rare older
     // files might use 0x120; either way it must point inside the file
@@ -142,15 +146,25 @@ pub fn is_zc(bytes: &[u8]) -> bool {
 
 pub fn parse_zc(bytes: &[u8]) -> Result<ZcData, String> {
     if bytes.len() < HEADER_LEN {
-        return Err(format!("File too small for Anabat header ({} < {})", bytes.len(), HEADER_LEN));
+        return Err(format!(
+            "File too small for Anabat header ({} < {})",
+            bytes.len(),
+            HEADER_LEN
+        ));
     }
     let data_info_pointer = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;
     let file_type = bytes[3];
     if !(129..=132).contains(&file_type) {
-        return Err(format!("Unsupported Anabat file_type {} (expected 129..=132)", file_type));
+        return Err(format!(
+            "Unsupported Anabat file_type {} (expected 129..=132)",
+            file_type
+        ));
     }
     if data_info_pointer < HEADER_LEN || data_info_pointer + 6 > bytes.len() {
-        return Err(format!("data_info_pointer 0x{:x} out of range", data_info_pointer));
+        return Err(format!(
+            "data_info_pointer 0x{:x} out of range",
+            data_info_pointer
+        ));
     }
 
     // Parse the header text fields.
@@ -167,16 +181,23 @@ pub fn parse_zc(bytes: &[u8]) -> Result<ZcData, String> {
 
     // Parse the data_info block.
     let data_pointer = u16::from_le_bytes(
-        bytes[data_info_pointer..data_info_pointer + 2].try_into().unwrap(),
+        bytes[data_info_pointer..data_info_pointer + 2]
+            .try_into()
+            .unwrap(),
     ) as usize;
     let res1 = u16::from_le_bytes(
-        bytes[data_info_pointer + 2..data_info_pointer + 4].try_into().unwrap(),
+        bytes[data_info_pointer + 2..data_info_pointer + 4]
+            .try_into()
+            .unwrap(),
     ) as u32;
     let divratio = bytes[data_info_pointer + 4];
     let vres = bytes[data_info_pointer + 5];
 
     if !(10_000..=60_000).contains(&res1) {
-        return Err(format!("Implausible res1 = {} (expected 10000..=60000)", res1));
+        return Err(format!(
+            "Implausible res1 = {} (expected 10000..=60000)",
+            res1
+        ));
     }
     if divratio == 0 {
         return Err("divratio of 0 would divide by zero".into());
@@ -261,9 +282,16 @@ pub fn parse_zc(bytes: &[u8]) -> Result<ZcData, String> {
 
 /// Strip null/whitespace padding from an ASCII metadata field.
 fn ascii_field(bytes: &[u8]) -> String {
-    let s: String = bytes.iter()
+    let s: String = bytes
+        .iter()
         .take_while(|&&b| b != 0)
-        .map(|&b| if b.is_ascii() && !b.is_ascii_control() { b as char } else { '?' })
+        .map(|&b| {
+            if b.is_ascii() && !b.is_ascii_control() {
+                b as char
+            } else {
+                '?'
+            }
+        })
         .collect();
     s.trim().to_string()
 }
@@ -271,13 +299,20 @@ fn ascii_field(bytes: &[u8]) -> String {
 /// Parse a GUANO metadata text block into `(key, value)` pairs.
 fn parse_guano_text(bytes: &[u8]) -> Vec<(String, String)> {
     // Trim trailing nulls.
-    let end = bytes.iter().rposition(|&b| b != 0).map(|i| i + 1).unwrap_or(0);
+    let end = bytes
+        .iter()
+        .rposition(|&b| b != 0)
+        .map(|i| i + 1)
+        .unwrap_or(0);
     let text = std::str::from_utf8(&bytes[..end]).unwrap_or("");
     text.lines()
         .filter_map(|line| {
             let line = line.trim();
-            if line.is_empty() { return None; }
-            line.split_once(':').map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
+            if line.is_empty() {
+                return None;
+            }
+            line.split_once(':')
+                .map(|(k, v)| (k.trim().to_string(), v.trim().to_string()))
         })
         .collect()
 }
@@ -296,9 +331,13 @@ fn decode_intervals(data: &[u8]) -> Result<(Vec<u32>, Vec<bool>), String> {
             0x00..=0x7F => {
                 // 7-bit signed delta from current `last_diff`.
                 let mut offset = b as i64;
-                if offset > 63 { offset -= 128; }
+                if offset > 63 {
+                    offset -= 128;
+                }
                 last_diff = last_diff.saturating_add(offset);
-                if last_diff < 0 { last_diff = 0; }
+                if last_diff < 0 {
+                    last_diff = 0;
+                }
                 intervals.push(last_diff as u32);
                 i += 1;
             }
@@ -312,16 +351,19 @@ fn decode_intervals(data: &[u8]) -> Result<(Vec<u32>, Vec<bool>), String> {
                 i += 2;
             }
             0xA0..=0xBF => {
-                if i + 2 >= data.len() { break; }
-                let acc = (((b & 0x1F) as u32) << 16)
-                    | ((data[i + 1] as u32) << 8)
-                    | data[i + 2] as u32;
+                if i + 2 >= data.len() {
+                    break;
+                }
+                let acc =
+                    (((b & 0x1F) as u32) << 16) | ((data[i + 1] as u32) << 8) | data[i + 2] as u32;
                 last_diff = acc as i64;
                 intervals.push(acc);
                 i += 3;
             }
             0xC0..=0xDF => {
-                if i + 3 >= data.len() { break; }
+                if i + 3 >= data.len() {
+                    break;
+                }
                 let acc = (((b & 0x1F) as u32) << 24)
                     | ((data[i + 1] as u32) << 16)
                     | ((data[i + 2] as u32) << 8)
@@ -333,7 +375,9 @@ fn decode_intervals(data: &[u8]) -> Result<(Vec<u32>, Vec<bool>), String> {
             0xE0..=0xFF => {
                 // Status byte + dotcount.
                 let status = b & 0x1F;
-                if i + 1 >= data.len() { break; }
+                if i + 1 >= data.len() {
+                    break;
+                }
                 let dotcount = data[i + 1];
                 if status == STATUS_OFF {
                     off_intervals.push((intervals.len(), dotcount));
@@ -456,7 +500,8 @@ pub fn synthesise_waveform(zc: &ZcData, output_sample_rate: u32) -> Vec<f32> {
                 if s >= look {
                     let t_behind = (s - look) as f64 * dt;
                     let dot_behind = match zc.times_s.binary_search_by(|v| {
-                        v.partial_cmp(&t_behind).unwrap_or(std::cmp::Ordering::Equal)
+                        v.partial_cmp(&t_behind)
+                            .unwrap_or(std::cmp::Ordering::Equal)
                     }) {
                         Ok(k) => k,
                         Err(k) => k.saturating_sub(1),
@@ -490,7 +535,7 @@ mod tests {
     /// absolute interval + two 7-bit deltas.
     fn synth_zc_minimal() -> Vec<u8> {
         let mut buf = vec![0u8; 0x120]; // header + small data_info area + small data area
-        // u16le data_info_pointer = 0x11a
+                                        // u16le data_info_pointer = 0x11a
         buf[0] = 0x1a;
         buf[1] = 0x01;
         buf[3] = 129;
@@ -499,14 +544,16 @@ mod tests {
         let data_pointer: u16 = 0x120;
         buf[0x11a] = data_pointer as u8;
         buf[0x11a + 1] = (data_pointer >> 8) as u8;
-        buf[0x11a + 2] = 0xa8; buf[0x11a + 3] = 0x61; // 25000 = 0x61a8
+        buf[0x11a + 2] = 0xa8;
+        buf[0x11a + 3] = 0x61; // 25000 = 0x61a8
         buf[0x11a + 4] = 8; // divratio
         buf[0x11a + 5] = 0; // vres
-        // data starting at 0x120:
-        //   0x80 0x32 -> 13-bit absolute = 0x0032 = 50 µs
-        //   0x10      -> +16 delta -> last_diff = 66 µs
-        //   0x10      -> +16 delta -> last_diff = 82 µs
-        buf.push(0x80); buf.push(0x32);
+                            // data starting at 0x120:
+                            //   0x80 0x32 -> 13-bit absolute = 0x0032 = 50 µs
+                            //   0x10      -> +16 delta -> last_diff = 66 µs
+                            //   0x10      -> +16 delta -> last_diff = 82 µs
+        buf.push(0x80);
+        buf.push(0x32);
         buf.push(0x10);
         buf.push(0x10);
         buf
@@ -521,9 +568,21 @@ mod tests {
         assert_eq!(r.metadata.divratio, 8);
         assert_eq!(r.metadata.res1, 25_000);
         assert_eq!(r.times_s.len(), 3);
-        assert!((r.times_s[0] - 50e-6).abs() < 1e-9, "first time: {}", r.times_s[0]);
-        assert!((r.times_s[1] - (50.0 + 66.0) * 1e-6).abs() < 1e-9, "second time: {}", r.times_s[1]);
-        assert!((r.times_s[2] - (50.0 + 66.0 + 82.0) * 1e-6).abs() < 1e-9, "third time: {}", r.times_s[2]);
+        assert!(
+            (r.times_s[0] - 50e-6).abs() < 1e-9,
+            "first time: {}",
+            r.times_s[0]
+        );
+        assert!(
+            (r.times_s[1] - (50.0 + 66.0) * 1e-6).abs() < 1e-9,
+            "second time: {}",
+            r.times_s[1]
+        );
+        assert!(
+            (r.times_s[2] - (50.0 + 66.0 + 82.0) * 1e-6).abs() < 1e-9,
+            "third time: {}",
+            r.times_s[2]
+        );
     }
 
     #[test]
@@ -555,7 +614,12 @@ mod tests {
         buf.truncate(abs_end);
         buf.extend_from_slice(&[0xE1, 0x02, 0x10, 0x10, 0x10]);
         let r = parse_zc(&buf).unwrap();
-        assert_eq!(r.times_s.len(), 4, "expected 4 dots, got {}", r.times_s.len());
+        assert_eq!(
+            r.times_s.len(),
+            4,
+            "expected 4 dots, got {}",
+            r.times_s.len()
+        );
         assert!(!r.off_mask[0], "dot 0 should be ON");
         assert!(r.off_mask[1], "dot 1 should be OFF (status start)");
         assert!(r.off_mask[2], "dot 2 should be OFF (status count)");
@@ -575,10 +639,14 @@ mod tests {
         // Just sanity-check we got non-empty output with finite values
         // and at least one non-zero sample in the middle of the run.
         assert!(!out.is_empty(), "synthesis returned empty");
-        assert!(out.iter().any(|&s| s.abs() > 0.01),
-                "synthesis is silent throughout");
-        assert!(out.iter().all(|&s| s.is_finite() && s.abs() <= 1.0),
-                "synthesis produced non-finite or out-of-range samples");
+        assert!(
+            out.iter().any(|&s| s.abs() > 0.01),
+            "synthesis is silent throughout"
+        );
+        assert!(
+            out.iter().all(|&s| s.is_finite() && s.abs() <= 1.0),
+            "synthesis produced non-finite or out-of-range samples"
+        );
     }
 
     #[test]
@@ -592,8 +660,10 @@ mod tests {
         buf.extend_from_slice(&[0xE1, 0xFF, 0x10, 0x10]);
         let zc = parse_zc(&buf).unwrap();
         let out = synthesise_waveform(&zc, 384_000);
-        assert!(out.iter().all(|&s| s == 0.0),
-                "OFF-only stream should synthesise to silence");
+        assert!(
+            out.iter().all(|&s| s == 0.0),
+            "OFF-only stream should synthesise to silence"
+        );
     }
 
     #[test]
@@ -605,7 +675,11 @@ mod tests {
         // freq[1] = 8 * 1e6 / 148e-6_µs = 8e6 / 148 = 54054 Hz
         assert!(r.freqs_hz[0] == 0.0, "freq[0] must be 0 (edge)");
         assert!(r.freqs_hz[2] == 0.0, "freq[end] must be 0 (edge)");
-        assert!((r.freqs_hz[1] - 8e6 / 148.0).abs() < 1.0,
-                "expected ~{}, got {}", 8e6 / 148.0, r.freqs_hz[1]);
+        assert!(
+            (r.freqs_hz[1] - 8e6 / 148.0).abs() < 1.0,
+            "expected ~{}, got {}",
+            8e6 / 148.0,
+            r.freqs_hz[1]
+        );
     }
 }

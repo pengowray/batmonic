@@ -1,14 +1,17 @@
 use crate::state::store_fields::*;
-use leptos::prelude::*;
-use leptos::task::spawn_local;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
-use wasm_bindgen::closure::Closure;
 use crate::state::AppState;
 use crate::tauri_bridge::{tauri_invoke, tauri_invoke_typed_no_args};
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 
 fn persist_home_wifi(state: &AppState) {
-    let val = state.recording_meta.home_wifi_ssids().with_untracked(|list| list.join("\n"));
+    let val = state
+        .recording_meta
+        .home_wifi_ssids()
+        .with_untracked(|list| list.join("\n"));
     crate::settings::set_raw(crate::settings::keys::HOME_WIFI, &val);
 }
 
@@ -26,7 +29,9 @@ fn check_zone_status(state: AppState, status: RwSignal<ZoneStatus>) {
     spawn_local(async move {
         let ssid = match tauri_invoke_typed_no_args::<oversample_ipc::plugins::WifiSsidResult>(
             "plugin:geolocation|getWifiSsid",
-        ).await {
+        )
+        .await
+        {
             Ok(r) => r.ssid,
             Err(_) => {
                 status.set(ZoneStatus::NoWifi);
@@ -35,8 +40,15 @@ fn check_zone_status(state: AppState, status: RwSignal<ZoneStatus>) {
         };
         match ssid {
             Some(ssid) => {
-                let on_zone = state.recording_meta.home_wifi_ssids().with_untracked(|list| list.contains(&ssid));
-                status.set(if on_zone { ZoneStatus::Active } else { ZoneStatus::NotOnZone });
+                let on_zone = state
+                    .recording_meta
+                    .home_wifi_ssids()
+                    .with_untracked(|list| list.contains(&ssid));
+                status.set(if on_zone {
+                    ZoneStatus::Active
+                } else {
+                    ZoneStatus::NotOnZone
+                });
             }
             None => status.set(ZoneStatus::NoWifi),
         }
@@ -73,16 +85,20 @@ pub fn PrivacySettingsModal() -> impl IntoView {
             let perm_ok = tauri_invoke(
                 "plugin:geolocation|getCurrentLocation",
                 &JsValue::from(js_sys::Object::new()),
-            ).await.is_ok();
+            )
+            .await
+            .is_ok();
             if !perm_ok {
                 state.show_info_toast("Location permission is needed to detect WiFi network");
                 adding.set(false);
                 return;
             }
             // Read WiFi SSID
-            let ssid_result = tauri_invoke_typed_no_args::<oversample_ipc::plugins::WifiSsidResult>(
-                "plugin:geolocation|getWifiSsid",
-            ).await;
+            let ssid_result =
+                tauri_invoke_typed_no_args::<oversample_ipc::plugins::WifiSsidResult>(
+                    "plugin:geolocation|getWifiSsid",
+                )
+                .await;
             adding.set(false);
             let ssid = match ssid_result {
                 Ok(r) => r.ssid,
@@ -92,9 +108,15 @@ pub fn PrivacySettingsModal() -> impl IntoView {
                 }
             };
             if let Some(ssid) = ssid {
-                let already = state.recording_meta.home_wifi_ssids().with_untracked(|list| list.contains(&ssid));
+                let already = state
+                    .recording_meta
+                    .home_wifi_ssids()
+                    .with_untracked(|list| list.contains(&ssid));
                 if !already {
-                    state.recording_meta.home_wifi_ssids().update(|list| list.push(ssid));
+                    state
+                        .recording_meta
+                        .home_wifi_ssids()
+                        .update(|list| list.push(ssid));
                     persist_home_wifi(&state);
                     state.show_info_toast("Privacy zone added");
                 } else {

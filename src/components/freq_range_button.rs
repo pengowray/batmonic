@@ -1,10 +1,14 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::components::popup::{Align, PopupPanel, Side};
+use crate::state::store_fields::*;
 use crate::state::{AppState, LayerPanel};
+use leptos::prelude::*;
 
 fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
+    if active {
+        "layer-panel-opt sel"
+    } else {
+        "layer-panel-opt"
+    }
 }
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {
@@ -28,8 +32,9 @@ fn range_label(min_f: Option<f64>, max_f: Option<f64>, file_max: f64) -> &'stati
 #[component]
 pub fn FreqRangeButton() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let is_open: Signal<bool> =
-        Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::FreqRange));
+    let is_open: Signal<bool> = Signal::derive(move || {
+        state.panels.layer_panel_open().get() == Some(LayerPanel::FreqRange)
+    });
     let anchor = NodeRef::<leptos::html::Div>::new();
 
     let file_max = move || {
@@ -49,9 +54,7 @@ pub fn FreqRangeButton() -> impl IntoView {
         let fm = file_max();
         let is_full = match (min_f, max_f) {
             (None, None) | (Some(0.0), None) => true,
-            (_, Some(m)) if (m - fm).abs() < 100.0 => {
-                min_f.is_none() || min_f == Some(0.0)
-            }
+            (_, Some(m)) if (m - fm).abs() < 100.0 => min_f.is_none() || min_f == Some(0.0),
             _ => false,
         };
         !is_full

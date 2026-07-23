@@ -51,11 +51,7 @@ pub fn hsl_to_rgb(h: f32, s: f32, l: f32) -> [u8; 3] {
 ///
 /// The `intensity_gate`, `flow_gate`, and `opacity` parameters control
 /// thresholds and color strength, matching the existing `flow_rgb` logic.
-pub fn build_flow_colormap(
-    intensity_gate: f32,
-    flow_gate: f32,
-    opacity: f32,
-) -> Colormap2D {
+pub fn build_flow_colormap(intensity_gate: f32, flow_gate: f32, opacity: f32) -> Colormap2D {
     let mut lut = vec![[0u8; 3]; 256 * 256];
 
     for sec in 0..256u16 {
@@ -132,13 +128,11 @@ fn build_chromagram_pitch_class_colormaps_inner() -> [Colormap2D; 12] {
     // Hues in degrees: C=50, C#=75, D=100, D#=130, E=160, F=190,
     // F#=215, G=260, G#=285, A=310, A#=335, B=40
     const HUES: [f32; 12] = [
-        50.0, 75.0, 100.0, 130.0, 160.0, 190.0,
-        215.0, 260.0, 285.0, 310.0, 335.0, 40.0,
+        50.0, 75.0, 100.0, 130.0, 160.0, 190.0, 215.0, 260.0, 285.0, 310.0, 335.0, 40.0,
     ];
     // Naturals: C(0), D(2), E(4), F(5), G(7), A(9), B(11)
     const IS_NATURAL: [bool; 12] = [
-        true, false, true, false, true, true,
-        false, true, false, true, false, true,
+        true, false, true, false, true, true, false, true, false, true, false, true,
     ];
 
     std::array::from_fn(|pc| {
@@ -176,12 +170,10 @@ pub fn build_chromagram_solid_colormaps() -> [Colormap2D; 12] {
 
 fn build_chromagram_solid_colormaps_inner() -> [Colormap2D; 12] {
     const HUES: [f32; 12] = [
-        50.0, 75.0, 100.0, 130.0, 160.0, 190.0,
-        215.0, 260.0, 285.0, 310.0, 335.0, 40.0,
+        50.0, 75.0, 100.0, 130.0, 160.0, 190.0, 215.0, 260.0, 285.0, 310.0, 335.0, 40.0,
     ];
     const IS_NATURAL: [bool; 12] = [
-        true, false, true, false, true, true,
-        false, true, false, true, false, true,
+        true, false, true, false, true, true, false, true, false, true, false, true,
     ];
 
     std::array::from_fn(|pc| {

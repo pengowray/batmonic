@@ -43,7 +43,8 @@ pub async fn decode_via_audio_context(
     let js = JsFuture::from(promise)
         .await
         .map_err(|e| format!("decodeAudioData failed: {e:?}"))?;
-    let buf: AudioBuffer = js.dyn_into()
+    let buf: AudioBuffer = js
+        .dyn_into()
         .map_err(|_| "decodeAudioData didn't return an AudioBuffer".to_string())?;
 
     let sample_rate = buf.sample_rate() as u32;
@@ -51,7 +52,8 @@ pub async fn decode_via_audio_context(
     let frames = buf.length() as usize;
 
     let all_samples: Vec<f32> = if channels == 1 {
-        buf.get_channel_data(0).map_err(|e| format!("get_channel_data: {e:?}"))?
+        buf.get_channel_data(0)
+            .map_err(|e| format!("get_channel_data: {e:?}"))?
     } else {
         // Interleave channels so the downstream pipeline can split them again.
         let mut per_channel: Vec<Vec<f32>> = Vec::with_capacity(channels as usize);
@@ -94,7 +96,11 @@ pub async fn decode_via_audio_context(
     })
 }
 
-fn build_source(all_samples: Vec<f32>, channels: u32, sample_rate: u32) -> (Arc<Vec<f32>>, Arc<InMemorySource>) {
+fn build_source(
+    all_samples: Vec<f32>,
+    channels: u32,
+    sample_rate: u32,
+) -> (Arc<Vec<f32>>, Arc<InMemorySource>) {
     if channels == 1 {
         let samples = Arc::new(all_samples);
         let source = Arc::new(InMemorySource {

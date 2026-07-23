@@ -1,10 +1,10 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::annotations::AnnotationKind;
-use crate::state::{ActiveFocus, AppState, GainMode, Selection, PlaybackMode};
-use crate::audio::streaming_playback::{self, PlaybackParams};
 use crate::audio::source::{AudioSource, TimelineAudioSource};
+use crate::audio::streaming_playback::{self, PlaybackParams};
+use crate::state::store_fields::*;
+use crate::state::{ActiveFocus, AppState, GainMode, PlaybackMode, Selection};
 use crate::viewport;
+use leptos::prelude::*;
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -147,7 +147,10 @@ fn is_playhead_visible(state: &AppState) -> bool {
     let scroll = state.view.scroll_offset().get_untracked();
     let zoom = state.view.zoom_level().get_untracked();
     let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-    let time_res = state.library.current_index().get_untracked()
+    let time_res = state
+        .library
+        .current_index()
+        .get_untracked()
         .and_then(|i| state.library.files().get_untracked().get(i).cloned())
         .map(|f| f.spectrogram.time_resolution)
         .unwrap_or(1.0);
@@ -161,7 +164,10 @@ pub fn is_selection_in_viewport(state: &AppState, sel: &Selection) -> bool {
     let scroll = state.view.scroll_offset().get_untracked();
     let zoom = state.view.zoom_level().get_untracked();
     let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-    let time_res = state.library.current_index().get_untracked()
+    let time_res = state
+        .library
+        .current_index()
+        .get_untracked()
         .and_then(|i| state.library.files().get_untracked().get(i).cloned())
         .map(|f| f.spectrogram.time_resolution)
         .unwrap_or(1.0);
@@ -180,15 +186,16 @@ pub fn stop(state: &AppState) {
     streaming_playback::stop_stream();
     state.playback.is_buffering().set(false);
     if was_playing {
-        if state.view.user_panned_during_playback().get_untracked()
-            && !is_playhead_visible(state)
-        {
+        if state.view.user_panned_during_playback().get_untracked() && !is_playhead_visible(state) {
             // User scrolled the playhead off-screen — don't snap back.
             // The pre-play position was pushed to nav history when playback
             // started, so the back button can still return there.
         } else {
             // Playhead is still on-screen (or user didn't pan) — snap back.
-            state.view.scroll_offset().set(state.view.pre_play_scroll().get_untracked());
+            state
+                .view
+                .scroll_offset()
+                .set(state.view.pre_play_scroll().get_untracked());
         }
     }
     state.playback.is_playing().set(false);
@@ -198,18 +205,24 @@ pub fn stop(state: &AppState) {
 /// Continue playback from the current playhead position with fresh parameters.
 /// Used for live parameter switching — mode, gain, filter, etc.
 pub fn replay_live(state: &AppState) {
-    if !state.playback.is_playing().get_untracked() { return; }
+    if !state.playback.is_playing().get_untracked() {
+        return;
+    }
 
     let current_time = state.playback.playhead_time().get_untracked();
     cancel_playhead();
     streaming_playback::stop_stream();
 
-    let Some(target) = playback_target(state) else { return; };
+    let Some(target) = playback_target(state) else {
+        return;
+    };
 
     let selection = state.playback.active_selection().get_untracked();
     let sr = target.sample_rate;
     let total = target.source.total_samples() as usize;
-    let sel_end = selection.map(|s| s.time_end).unwrap_or(target.duration_secs);
+    let sel_end = selection
+        .map(|s| s.time_end)
+        .unwrap_or(target.duration_secs);
     let start_sample = ((current_time * sr as f64) as usize).min(total);
     let end_sample = ((sel_end * sr as f64) as usize).min(total);
 
@@ -245,7 +258,13 @@ pub fn replay_live(state: &AppState) {
         _ => 1.0,
     };
 
-    start_playhead(*state, current_time, remaining_duration, playback_speed, play_to_eof);
+    start_playhead(
+        *state,
+        current_time,
+        remaining_duration,
+        playback_speed,
+        play_to_eof,
+    );
 }
 
 /// Debounced version of `replay_live()`. Coalesces rapid signal changes
@@ -260,10 +279,7 @@ pub fn schedule_replay_live(state: &AppState) {
     });
     let handle = web_sys::window()
         .unwrap()
-        .set_timeout_with_callback_and_timeout_and_arguments_0(
-            cb.as_ref().unchecked_ref(),
-            80,
-        )
+        .set_timeout_with_callback_and_timeout_and_arguments_0(cb.as_ref().unchecked_ref(), 80)
         .unwrap_or(0);
     cb.forget();
     REPLAY_TIMER.with(|t| {
@@ -303,7 +319,9 @@ fn current_play_from_here_time(state: &AppState) -> f64 {
     let scroll = state.view.scroll_offset().get_untracked();
     let time_res = if let Some(ref tl) = state.timeline.active().get_untracked() {
         let files = state.library.files().get_untracked();
-        tl.segments.first().and_then(|s| files.get(s.file_index))
+        tl.segments
+            .first()
+            .and_then(|s| files.get(s.file_index))
             .map(|f| f.spectrogram.time_resolution)
             .unwrap_or(1.0)
     } else {
@@ -331,18 +349,25 @@ pub fn play_from_time(state: &AppState, start_secs: f64) {
 
 /// Inner implementation: play from `start_secs` to `sel_end` (or end of file).
 fn play_from_time_inner(state: &AppState, start_secs: f64, selection: Option<Selection>) {
-    let Some(target) = playback_target(state) else { return; };
+    let Some(target) = playback_target(state) else {
+        return;
+    };
 
     let sr = target.sample_rate;
     let total = target.source.total_samples() as usize;
-    let end_secs = selection.map(|s| s.time_end).unwrap_or(target.duration_secs);
+    let end_secs = selection
+        .map(|s| s.time_end)
+        .unwrap_or(target.duration_secs);
     let start_secs = start_secs.max(0.0).min(end_secs);
     let start_sample = (start_secs * sr as f64) as usize;
     let end_sample = ((end_secs * sr as f64) as usize).min(total);
     if end_sample <= start_sample {
-        web_sys::console::warn_1(&format!(
+        web_sys::console::warn_1(
+            &format!(
             "Playback: nothing to play (start={start_secs:.3}s, end={end_secs:.3}s, total={total})"
-        ).into());
+        )
+            .into(),
+        );
         return;
     }
 
@@ -375,13 +400,21 @@ fn play_from_time_inner(state: &AppState, start_secs: f64, selection: Option<Sel
     state.playback.active_selection().set(selection);
     state.playback.is_playing().set(true);
     state.playback.playhead_time().set(start_secs);
-    start_playhead(*state, start_secs, play_duration, playback_speed, play_to_eof);
+    start_playhead(
+        *state,
+        start_secs,
+        play_duration,
+        playback_speed,
+        play_to_eof,
+    );
 }
 
 pub fn play(state: &AppState) {
     stop(state);
 
-    let Some(target) = playback_target(state) else { return; };
+    let Some(target) = playback_target(state) else {
+        return;
+    };
 
     let selection = if state.timeline.active().get_untracked().is_some() {
         timeline_selection(state)
@@ -398,8 +431,11 @@ pub fn play(state: &AppState) {
     };
     let sr = target.sample_rate;
 
-    let (start_sample, end_sample) = extract_selection_range(sr, target.source.total_samples() as usize, selection);
-    if end_sample <= start_sample { return; }
+    let (start_sample, end_sample) =
+        extract_selection_range(sr, target.source.total_samples() as usize, selection);
+    if end_sample <= start_sample {
+        return;
+    }
 
     let params = snapshot_params(state, selection, sr);
     let play_start_time = selection.map(|s| s.time_start).unwrap_or(0.0);
@@ -417,7 +453,9 @@ pub fn play(state: &AppState) {
         end_sample,
         params,
         play_to_eof,
-    ) else { return };
+    ) else {
+        return;
+    };
 
     let te_factor = state.transform.te_factor().get_untracked();
     let playback_speed = match state.playback.mode().get_untracked() {
@@ -426,16 +464,29 @@ pub fn play(state: &AppState) {
     };
 
     state.push_nav(); // save pre-play position so the back button can return here
-    state.view.pre_play_scroll().set(state.view.scroll_offset().get_untracked());
+    state
+        .view
+        .pre_play_scroll()
+        .set(state.view.scroll_offset().get_untracked());
     state.view.user_panned_during_playback().set(false);
     state.playback.active_selection().set(selection);
     state.playback.is_playing().set(true);
     state.playback.playhead_time().set(play_start_time);
-    start_playhead(*state, play_start_time, play_duration, playback_speed, play_to_eof);
+    start_playhead(
+        *state,
+        play_start_time,
+        play_duration,
+        playback_speed,
+        play_to_eof,
+    );
 }
 
 /// Returns (start_sample, end_sample) for the current selection or full file.
-fn extract_selection_range(sample_rate: u32, total: usize, selection: Option<Selection>) -> (usize, usize) {
+fn extract_selection_range(
+    sample_rate: u32,
+    total: usize,
+    selection: Option<Selection>,
+) -> (usize, usize) {
     let sr = sample_rate;
     if let Some(sel) = selection {
         let start = ((sel.time_start * sr as f64) as usize).min(total);
@@ -448,7 +499,11 @@ fn extract_selection_range(sample_rate: u32, total: usize, selection: Option<Sel
 }
 
 /// Build a PlaybackParams snapshot from current AppState.
-pub(crate) fn snapshot_params(state: &AppState, selection: Option<Selection>, sample_rate: u32) -> PlaybackParams {
+pub(crate) fn snapshot_params(
+    state: &AppState,
+    selection: Option<Selection>,
+    sample_rate: u32,
+) -> PlaybackParams {
     PlaybackParams {
         mode: state.playback.mode().get_untracked(),
         het_freq: state.transform.het_frequency().get_untracked(),
@@ -467,8 +522,12 @@ pub(crate) fn snapshot_params(state: &AppState, selection: Option<Selection>, sa
             let stored = state.transform.ps_shift_hz().get_untracked();
             let band_lo = state.filter.band_ff_freq_lo().get_untracked();
             let f = match state.playback.mode().get_untracked() {
-                crate::state::PlaybackMode::PitchShift => state.transform.ps_factor().get_untracked().signed(),
-                crate::state::PlaybackMode::PhaseVocoder => state.transform.pv_factor().get_untracked().signed(),
+                crate::state::PlaybackMode::PitchShift => {
+                    state.transform.ps_factor().get_untracked().signed()
+                }
+                crate::state::PlaybackMode::PhaseVocoder => {
+                    state.transform.pv_factor().get_untracked().signed()
+                }
                 _ => 1.0,
             };
             crate::components::output_range_button::effective_ps_shift(stored, band_lo, f)
@@ -505,7 +564,12 @@ pub(crate) fn snapshot_params(state: &AppState, selection: Option<Selection>, sa
     }
 }
 
-pub(crate) fn apply_bandpass(samples: &[f32], sample_rate: u32, freq_low: f64, freq_high: f64) -> Vec<f32> {
+pub(crate) fn apply_bandpass(
+    samples: &[f32],
+    sample_rate: u32,
+    freq_low: f64,
+    freq_high: f64,
+) -> Vec<f32> {
     let mut result = samples.to_vec();
     if freq_low > 0.0 {
         let lp = cascaded_lowpass(&result, freq_low, sample_rate, 4);
@@ -559,9 +623,9 @@ fn start_playhead(state: AppState, start_time: f64, duration: f64, speed: f64, p
     let anim_start = perf.now();
     let end_time = start_time + duration;
 
+    use crate::audio::streaming_playback::audio_buffer_ahead_secs;
     use std::rc::Rc;
     use wasm_bindgen::prelude::*;
-    use crate::audio::streaming_playback::audio_buffer_ahead_secs;
 
     let cb: Rc<RefCell<Option<wasm_bindgen::closure::Closure<dyn FnMut()>>>> =
         Rc::new(RefCell::new(None));
@@ -577,7 +641,7 @@ fn start_playhead(state: AppState, start_time: f64, duration: f64, speed: f64, p
     // drops near empty, exit once it's comfortably refilled. Tuned against
     // LOOKAHEAD_SECS (1.5s) in streaming_playback.
     const BUFFER_UNDERRUN_THRESHOLD: f64 = 0.05; // seconds of audio remaining
-    const BUFFER_RECOVER_THRESHOLD: f64 = 0.35;  // need this much ahead to resume
+    const BUFFER_RECOVER_THRESHOLD: f64 = 0.35; // need this much ahead to resume
 
     *cb.borrow_mut() = Some(wasm_bindgen::closure::Closure::new(move || {
         if !state.playback.is_playing().get_untracked() {
@@ -617,7 +681,10 @@ fn start_playhead(state: AppState, start_time: f64, duration: f64, speed: f64, p
 
         // Effective elapsed time excludes any wall-clock spent frozen.
         let freeze_so_far = *buffering_total.borrow()
-            + buffering_started_at.borrow().map(|s| now_ms - s).unwrap_or(0.0);
+            + buffering_started_at
+                .borrow()
+                .map(|s| now_ms - s)
+                .unwrap_or(0.0);
         let elapsed_ms = now_ms - anim_start - freeze_so_far;
         let elapsed_real = elapsed_ms.max(0.0) / 1000.0;
         let current = start_time + elapsed_real * speed;
@@ -631,12 +698,18 @@ fn start_playhead(state: AppState, start_time: f64, duration: f64, speed: f64, p
             current >= end_time
         };
         if reached_end {
-            state.playback.playhead_time().set(if play_to_eof { current } else { end_time });
+            state
+                .playback
+                .playhead_time()
+                .set(if play_to_eof { current } else { end_time });
             state.playback.is_buffering().set(false);
             if !(state.view.user_panned_during_playback().get_untracked()
                 && !is_playhead_visible(&state))
             {
-                state.view.scroll_offset().set(state.view.pre_play_scroll().get_untracked());
+                state
+                    .view
+                    .scroll_offset()
+                    .set(state.view.pre_play_scroll().get_untracked());
             }
             state.playback.is_playing().set(false);
             // Show bookmark popup briefly if any bookmarks were made during playback
@@ -660,9 +733,7 @@ fn start_playhead(state: AppState, start_time: f64, duration: f64, speed: f64, p
         state.playback.playhead_time().set(current);
 
         let handle = window
-            .request_animation_frame(
-                cb_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref(),
-            )
+            .request_animation_frame(cb_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref())
             .unwrap();
         PLAYHEAD_HANDLE.with(|h| {
             *h.borrow_mut() = Some(handle);

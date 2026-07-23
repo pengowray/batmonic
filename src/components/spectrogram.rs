@@ -1,21 +1,23 @@
-use leptos::prelude::*;
-use crate::state::store_fields::*;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
-use wasm_bindgen::closure::Closure;
-use js_sys;
-use std::cell::Cell;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::freq_adjustments::compute_freq_adjustments;
-use crate::canvas::spectrogram_renderer::{self, Colormap, ColormapMode, FreqMarkerState, FreqShiftMode, PreRendered, SpectDisplaySettings};
-use crate::components::spectrogram_events::{self, SpectInteraction, LABEL_AREA_WIDTH};
+use crate::canvas::spectrogram_renderer::{
+    self, Colormap, ColormapMode, FreqMarkerState, FreqShiftMode, PreRendered, SpectDisplaySettings,
+};
 use crate::components::gutter::{BandGutter, TimeGutter};
 use crate::components::playhead::Playhead;
-use crate::state::{AppState, CanvasTool, SpectrogramHandle, MainView, PlaybackMode};
+use crate::components::spectrogram_events::{self, SpectInteraction, LABEL_AREA_WIDTH};
+use crate::state::store_fields::*;
+use crate::state::{AppState, CanvasTool, MainView, PlaybackMode, SpectrogramHandle};
 use crate::viewport;
+use js_sys;
+use leptos::prelude::*;
+use std::cell::Cell;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 thread_local! {
     /// Diagnostic: (effect_runs, total_effect_ms) for the main spectrogram render
@@ -100,46 +102,57 @@ pub fn Spectrogram() -> impl IntoView {
     Effect::new({
         let disposed = disposed.clone();
         move || {
-        let target = label_hover_target.get();
-        let current = state.interaction.label_hover_opacity().get();
-        if (current - target).abs() < 0.01 {
-            // Close enough — schedule a final snap via rAF to avoid
-            // setting the signal inside this Effect (which would recurse).
-            if current != target {
-                let generation = anim_gen.get().wrapping_add(1);
-                anim_gen.set(generation);
-                let ag = anim_gen.clone();
-                let disposed_rc = disposed.clone();
-                let cb = Closure::once(move || {
-                    if disposed_rc.load(Ordering::Relaxed) || ag.get() != generation { return; }
-                    let Some(tgt) = label_hover_target.try_get_untracked() else { return; };
-                    state.interaction.label_hover_opacity().set(tgt);
-                });
-                let _ = web_sys::window().unwrap().request_animation_frame(
-                    cb.as_ref().unchecked_ref(),
-                );
-                cb.forget();
+            let target = label_hover_target.get();
+            let current = state.interaction.label_hover_opacity().get();
+            if (current - target).abs() < 0.01 {
+                // Close enough — schedule a final snap via rAF to avoid
+                // setting the signal inside this Effect (which would recurse).
+                if current != target {
+                    let generation = anim_gen.get().wrapping_add(1);
+                    anim_gen.set(generation);
+                    let ag = anim_gen.clone();
+                    let disposed_rc = disposed.clone();
+                    let cb = Closure::once(move || {
+                        if disposed_rc.load(Ordering::Relaxed) || ag.get() != generation {
+                            return;
+                        }
+                        let Some(tgt) = label_hover_target.try_get_untracked() else {
+                            return;
+                        };
+                        state.interaction.label_hover_opacity().set(tgt);
+                    });
+                    let _ = web_sys::window()
+                        .unwrap()
+                        .request_animation_frame(cb.as_ref().unchecked_ref());
+                    cb.forget();
+                }
+                return;
             }
-            return;
+            let generation = anim_gen.get().wrapping_add(1);
+            anim_gen.set(generation);
+            let ag = anim_gen.clone();
+            let disposed_rc = disposed.clone();
+            let cb = Closure::once(move || {
+                if disposed_rc.load(Ordering::Relaxed) || ag.get() != generation {
+                    return;
+                }
+                let Some(cur) = state.interaction.label_hover_opacity().try_get_untracked() else {
+                    return;
+                };
+                let Some(tgt) = label_hover_target.try_get_untracked() else {
+                    return;
+                };
+                let speed = if tgt > cur { 0.35 } else { 0.20 };
+                let next = cur + (tgt - cur) * speed;
+                let next = if (next - tgt).abs() < 0.01 { tgt } else { next };
+                state.interaction.label_hover_opacity().set(next);
+            });
+            let _ = web_sys::window()
+                .unwrap()
+                .request_animation_frame(cb.as_ref().unchecked_ref());
+            cb.forget();
         }
-        let generation = anim_gen.get().wrapping_add(1);
-        anim_gen.set(generation);
-        let ag = anim_gen.clone();
-        let disposed_rc = disposed.clone();
-        let cb = Closure::once(move || {
-            if disposed_rc.load(Ordering::Relaxed) || ag.get() != generation { return; }
-            let Some(cur) = state.interaction.label_hover_opacity().try_get_untracked() else { return; };
-            let Some(tgt) = label_hover_target.try_get_untracked() else { return; };
-            let speed = if tgt > cur { 0.35 } else { 0.20 };
-            let next = cur + (tgt - cur) * speed;
-            let next = if (next - tgt).abs() < 0.01 { tgt } else { next };
-            state.interaction.label_hover_opacity().set(next);
-        });
-        let _ = web_sys::window().unwrap().request_animation_frame(
-            cb.as_ref().unchecked_ref(),
-        );
-        cb.forget();
-    }});
+    });
 
     // Effect 1: keep legacy pre-render state cleared.
     // The active draw path is tile-based for normal spectrogram rendering, so
@@ -164,13 +177,17 @@ pub fn Spectrogram() -> impl IntoView {
     Effect::new(move || {
         let Some(el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = el.as_ref();
-        let Some(parent) = canvas.parent_element() else { return };
+        let Some(parent) = canvas.parent_element() else {
+            return;
+        };
         let parent_cb = parent.clone();
         let cb = Closure::<dyn Fn(js_sys::Array)>::new(move |_entries: js_sys::Array| {
             // Bail if the component (and this signal) was disposed between
             // the DOM mutation and the observer firing — otherwise
             // `get_untracked` on a disposed signal panics.
-            let Some(cur) = canvas_size_tick.try_get_untracked() else { return };
+            let Some(cur) = canvas_size_tick.try_get_untracked() else {
+                return;
+            };
             canvas_size_tick.set(cur.wrapping_add(1));
             // Keep canvas_width fresh on every layout change, independent of
             // whether a redraw has happened — so consumers (scroll-clamp,
@@ -184,11 +201,8 @@ pub fn Spectrogram() -> impl IntoView {
         if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
             observer.observe(&parent);
             // Keep the observer alive for the parent's lifetime.
-            let _ = js_sys::Reflect::set(
-                &parent,
-                &JsValue::from_str("__spec_resize_obs"),
-                &observer,
-            );
+            let _ =
+                js_sys::Reflect::set(&parent, &JsValue::from_str("__spec_resize_obs"), &observer);
         }
         cb.forget();
     });
@@ -221,845 +235,1023 @@ pub fn Spectrogram() -> impl IntoView {
             should_draw.set_value(true);
             redraw_gate.update(|n| *n = n.wrapping_add(1));
         }) as Box<dyn FnMut()>);
-        raf_fn.set_value(Some(cb.as_ref().unchecked_ref::<js_sys::Function>().clone()));
+        raf_fn.set_value(Some(
+            cb.as_ref().unchecked_ref::<js_sys::Function>().clone(),
+        ));
         cb.forget();
     }
     Effect::new({
         let disposed = disposed.clone();
         move || {
-        // Diagnostic: time the whole render Effect body (recorded at the end).
-        let _sperf = web_sys::window().and_then(|w| w.performance());
-        let _st0 = _sperf.as_ref().map(|p| p.now());
-        let _gate = redraw_gate.get(); // re-run when the coalesced rAF fires
-        let _tile_ready = state.viewmode.tile_ready_signal().get(); // trigger redraw when tiles arrive
-        let _size_tick = canvas_size_tick.get(); // trigger redraw when canvas resizes
-        let scroll = state.view.scroll_offset().get();
-        let zoom = state.view.zoom_level().get();
-        let bookmarks = state.viewmode.bookmarks().get();
-        let canvas_tool = state.interaction.canvas_tool().get();
-        let selection = state.interaction.selection().get();
-        let is_playing = state.playback.is_playing().get();
-        let het_interacting = state.transform.het_interacting().get();
-        let dragging = state.interaction.is_dragging().get();
-        let het_freq = state.transform.het_frequency().get();
-        let het_cutoff = state.transform.het_cutoff().get();
-        let het_comb_count = state.transform.het_comb_count().get();
-        let het_comb_spacing = state.transform.het_comb_spacing().get();
-        let te_factor = state.transform.te_factor().get();
-        let ps_factor = state.transform.ps_factor().get();
-        let pv_factor = state.transform.pv_factor().get();
-        let playback_mode = state.playback.mode().get();
-        let min_display_freq = state.view.min_display_freq().get();
-        let max_display_freq = state.view.max_display_freq().get();
-        let mouse_freq = state.interaction.mouse_freq().get();
-        let mouse_cx = state.interaction.mouse_canvas_x().get();
-        let label_opacity = state.interaction.label_hover_opacity().get();
-        let filter_hovering = state.filter.hovering_band().get();
-        let filter_enabled = state.filter.enabled().get();
-        let spec_hover = state.interaction.spec_hover_handle().get();
-        let spec_drag = state.interaction.spec_drag_handle().get();
-        let pointer_down = state.interaction.pointer_is_down().get();
-        let band_ff_lo = state.filter.band_ff_freq_lo().get();
-        let band_ff_hi = state.filter.band_ff_freq_hi().get();
-        let het_freq_auto = state.transform.het_freq_auto().get();
-        let het_cutoff_auto = state.transform.het_cutoff_auto().get();
-        let hfr_enabled = state.viewmode.hfr_enabled().get();
-        let output_freq_hl = state.viewmode.output_freq_highlight().get();
-        let flow_on = state.flow.enabled().get_untracked();
-        let _flow_ig = state.flow.intensity_gate().get(); // trigger redraw on flow setting change
-        let _flow_mg = state.flow.gate().get();
-        let _flow_sg = state.flow.shift_gain().get();
-        let _flow_cg = state.flow.color_gamma().get();
-        let _flow_scheme = state.flow.color_scheme().get(); // trigger redraw on color scheme change
-        let colormap_pref = state.spect.colormap_preference().get();
-        let hfr_colormap_pref = state.spect.hfr_colormap_preference().get();
-        let axis_drag_start = state.interaction.axis_drag_start_freq().get();
-        let axis_drag_current = state.interaction.axis_drag_current_freq().get();
-        let notch_bands = state.notch.bands().get();
-        let notch_enabled = state.notch.enabled().get();
-        let notch_hovering = state.notch.hovering_band().get();
-        let harmonic_suppression = state.notch.harmonic_suppression().get();
-        let detected_pulses = state.pulse.detected().get();
-        let pulse_overlay = state.pulse.overlay_enabled().get();
-        let selected_pulse = state.pulse.selected_index().get();
-        let main_view = state.viewmode.main_view().get();
-        // Intensity is always a spectrogram setting (shared by the XForm view) —
-        // the XForm toggle reuses the Spectrogram menu's intensity sliders.
-        let (spect_floor, spect_range, spect_gamma, spect_gain) =
-            (state.spect.floor_db().get(), state.spect.range_db().get(), state.spect.gamma().get(), state.spect.gain_db().get());
-        let debug_tiles = state.spect.debug_tiles().get();
-        let reassign_on = state.spect.reassign_enabled().get();
-        // Display-affecting checkbox subscriptions
-        let display_auto_gain = state.display.auto_gain().get();
-        let _display_eq = state.display.eq().get();
-        let _display_noise_filter = state.display.noise_filter().get();
-        let _f_freq_lo = state.filter.freq_low().get();
-        let _f_freq_hi = state.filter.freq_high().get();
-        let _f_db_below = state.filter.db_below().get();
-        let _f_db_selected = state.filter.db_selected().get();
-        let _f_db_harmonics = state.filter.db_harmonics().get();
-        let _f_db_above = state.filter.db_above().get();
-        let _f_band_mode = state.filter.band_mode().get();
-        let _nr_enabled = state.noise_reduce.enabled().get();
-        let _nr_strength = state.noise_reduce.strength().get();
-        let _nr_floor_v = state.noise_reduce.floor().get();
-        // Display DSP filter subscriptions
-        let _dsp_enabled = state.display.xform_enabled().get();
-        let _dsp_nr = state.display.filter_nr().get();
-        let _dsp_eq = state.display.filter_eq().get();
-        let _dsp_notch = state.display.filter_notch().get();
-        let _dsp_gain = state.display.filter_gain().get();
-        let _dsp_nr_strength = state.display.nr_strength().get();
-        let _dsp_auto_floor = state.display.auto_noise_floor().get();
-        let _dsp_transform = state.display.transform().get();
-        let _dsp_decimate = state.display.decimate_effective().get();
-        let annotation_store = state.annotations.store().get();
-        let selected_annotation_ids = state.annotations.selected_ids().get();
-        let annotation_hover_handle = state.annotations.hover_handle().get();
-        let annotations_visible = state.annotations.visible().get();
-        let active_focus = state.interaction.active_focus().get();
-        let _timeline = state.timeline.active().get(); // trigger redraw on timeline change
-        pre_rendered.track();
-        // Re-read canvas dimensions when sidebar layout changes
-        let _sidebar = state.panels.left_collapsed().get();
-        let _sidebar_width = state.panels.left_width().get();
-        let _rsidebar = state.panels.right_collapsed().get();
-        let _rsidebar_width = state.panels.right_width().get();
-        let clean_view = state.viewmode.clean_view().get();
+            // Diagnostic: time the whole render Effect body (recorded at the end).
+            let _sperf = web_sys::window().and_then(|w| w.performance());
+            let _st0 = _sperf.as_ref().map(|p| p.now());
+            let _gate = redraw_gate.get(); // re-run when the coalesced rAF fires
+            let _tile_ready = state.viewmode.tile_ready_signal().get(); // trigger redraw when tiles arrive
+            let _size_tick = canvas_size_tick.get(); // trigger redraw when canvas resizes
+            let scroll = state.view.scroll_offset().get();
+            let zoom = state.view.zoom_level().get();
+            let bookmarks = state.viewmode.bookmarks().get();
+            let canvas_tool = state.interaction.canvas_tool().get();
+            let selection = state.interaction.selection().get();
+            let is_playing = state.playback.is_playing().get();
+            let het_interacting = state.transform.het_interacting().get();
+            let dragging = state.interaction.is_dragging().get();
+            let het_freq = state.transform.het_frequency().get();
+            let het_cutoff = state.transform.het_cutoff().get();
+            let het_comb_count = state.transform.het_comb_count().get();
+            let het_comb_spacing = state.transform.het_comb_spacing().get();
+            let te_factor = state.transform.te_factor().get();
+            let ps_factor = state.transform.ps_factor().get();
+            let pv_factor = state.transform.pv_factor().get();
+            let playback_mode = state.playback.mode().get();
+            let min_display_freq = state.view.min_display_freq().get();
+            let max_display_freq = state.view.max_display_freq().get();
+            let mouse_freq = state.interaction.mouse_freq().get();
+            let mouse_cx = state.interaction.mouse_canvas_x().get();
+            let label_opacity = state.interaction.label_hover_opacity().get();
+            let filter_hovering = state.filter.hovering_band().get();
+            let filter_enabled = state.filter.enabled().get();
+            let spec_hover = state.interaction.spec_hover_handle().get();
+            let spec_drag = state.interaction.spec_drag_handle().get();
+            let pointer_down = state.interaction.pointer_is_down().get();
+            let band_ff_lo = state.filter.band_ff_freq_lo().get();
+            let band_ff_hi = state.filter.band_ff_freq_hi().get();
+            let het_freq_auto = state.transform.het_freq_auto().get();
+            let het_cutoff_auto = state.transform.het_cutoff_auto().get();
+            let hfr_enabled = state.viewmode.hfr_enabled().get();
+            let output_freq_hl = state.viewmode.output_freq_highlight().get();
+            let flow_on = state.flow.enabled().get_untracked();
+            let _flow_ig = state.flow.intensity_gate().get(); // trigger redraw on flow setting change
+            let _flow_mg = state.flow.gate().get();
+            let _flow_sg = state.flow.shift_gain().get();
+            let _flow_cg = state.flow.color_gamma().get();
+            let _flow_scheme = state.flow.color_scheme().get(); // trigger redraw on color scheme change
+            let colormap_pref = state.spect.colormap_preference().get();
+            let hfr_colormap_pref = state.spect.hfr_colormap_preference().get();
+            let axis_drag_start = state.interaction.axis_drag_start_freq().get();
+            let axis_drag_current = state.interaction.axis_drag_current_freq().get();
+            let notch_bands = state.notch.bands().get();
+            let notch_enabled = state.notch.enabled().get();
+            let notch_hovering = state.notch.hovering_band().get();
+            let harmonic_suppression = state.notch.harmonic_suppression().get();
+            let detected_pulses = state.pulse.detected().get();
+            let pulse_overlay = state.pulse.overlay_enabled().get();
+            let selected_pulse = state.pulse.selected_index().get();
+            let main_view = state.viewmode.main_view().get();
+            // Intensity is always a spectrogram setting (shared by the XForm view) —
+            // the XForm toggle reuses the Spectrogram menu's intensity sliders.
+            let (spect_floor, spect_range, spect_gamma, spect_gain) = (
+                state.spect.floor_db().get(),
+                state.spect.range_db().get(),
+                state.spect.gamma().get(),
+                state.spect.gain_db().get(),
+            );
+            let debug_tiles = state.spect.debug_tiles().get();
+            let reassign_on = state.spect.reassign_enabled().get();
+            // Display-affecting checkbox subscriptions
+            let display_auto_gain = state.display.auto_gain().get();
+            let _display_eq = state.display.eq().get();
+            let _display_noise_filter = state.display.noise_filter().get();
+            let _f_freq_lo = state.filter.freq_low().get();
+            let _f_freq_hi = state.filter.freq_high().get();
+            let _f_db_below = state.filter.db_below().get();
+            let _f_db_selected = state.filter.db_selected().get();
+            let _f_db_harmonics = state.filter.db_harmonics().get();
+            let _f_db_above = state.filter.db_above().get();
+            let _f_band_mode = state.filter.band_mode().get();
+            let _nr_enabled = state.noise_reduce.enabled().get();
+            let _nr_strength = state.noise_reduce.strength().get();
+            let _nr_floor_v = state.noise_reduce.floor().get();
+            // Display DSP filter subscriptions
+            let _dsp_enabled = state.display.xform_enabled().get();
+            let _dsp_nr = state.display.filter_nr().get();
+            let _dsp_eq = state.display.filter_eq().get();
+            let _dsp_notch = state.display.filter_notch().get();
+            let _dsp_gain = state.display.filter_gain().get();
+            let _dsp_nr_strength = state.display.nr_strength().get();
+            let _dsp_auto_floor = state.display.auto_noise_floor().get();
+            let _dsp_transform = state.display.transform().get();
+            let _dsp_decimate = state.display.decimate_effective().get();
+            let annotation_store = state.annotations.store().get();
+            let selected_annotation_ids = state.annotations.selected_ids().get();
+            let annotation_hover_handle = state.annotations.hover_handle().get();
+            let annotations_visible = state.annotations.visible().get();
+            let active_focus = state.interaction.active_focus().get();
+            let _timeline = state.timeline.active().get(); // trigger redraw on timeline change
+            pre_rendered.track();
+            // Re-read canvas dimensions when sidebar layout changes
+            let _sidebar = state.panels.left_collapsed().get();
+            let _sidebar_width = state.panels.left_width().get();
+            let _rsidebar = state.panels.right_collapsed().get();
+            let _rsidebar_width = state.panels.right_width().get();
+            let clean_view = state.viewmode.clean_view().get();
 
-        // Coalesce to one paint per animation frame. Every run above subscribed
-        // to its signals (cheap); only a gate-driven run falls through to draw.
-        // A real trigger schedules a single rAF (deduped by `raf_pending`) that
-        // sets `should_draw` and bumps `redraw_gate`, re-running this Effect to
-        // paint with the latest values. Multiple triggers between frames collapse
-        // into that one draw.
-        if should_draw.get_value() {
-            should_draw.set_value(false);
-        } else {
-            if !raf_pending.get_value() {
-                raf_pending.set_value(true);
-                if let (Some(f), Some(w)) = (raf_fn.get_value(), web_sys::window()) {
-                    let _ = w.request_animation_frame(&f);
+            // Coalesce to one paint per animation frame. Every run above subscribed
+            // to its signals (cheap); only a gate-driven run falls through to draw.
+            // A real trigger schedules a single rAF (deduped by `raf_pending`) that
+            // sets `should_draw` and bumps `redraw_gate`, re-running this Effect to
+            // paint with the latest values. Multiple triggers between frames collapse
+            // into that one draw.
+            if should_draw.get_value() {
+                should_draw.set_value(false);
+            } else {
+                if !raf_pending.get_value() {
+                    raf_pending.set_value(true);
+                    if let (Some(f), Some(w)) = (raf_fn.get_value(), web_sys::window()) {
+                        let _ = w.request_animation_frame(&f);
+                    }
                 }
+                return;
             }
-            return;
-        }
 
-        let Some(canvas_el) = canvas_ref.get() else { return };
-        let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+            let Some(canvas_el) = canvas_ref.get() else {
+                return;
+            };
+            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
 
-        // Measure the parent .chart-stage, not the canvas itself. In nested
-        // flex-column/flex-row layouts, `height: 100%` on the canvas can fail
-        // to resolve (the flex chain doesn't always provide a definite height
-        // for %-based children), in which case the canvas falls back to its
-        // intrinsic dimensions and produces a rect that's smaller than the
-        // visible container. The parent's box is flex-sized correctly.
-        let (display_w, display_h) = match canvas.parent_element() {
-            Some(parent) => {
-                let r = parent.get_bounding_client_rect();
-                (r.width() as u32, r.height() as u32)
+            // Measure the parent .chart-stage, not the canvas itself. In nested
+            // flex-column/flex-row layouts, `height: 100%` on the canvas can fail
+            // to resolve (the flex chain doesn't always provide a definite height
+            // for %-based children), in which case the canvas falls back to its
+            // intrinsic dimensions and produces a rect that's smaller than the
+            // visible container. The parent's box is flex-sized correctly.
+            let (display_w, display_h) = match canvas.parent_element() {
+                Some(parent) => {
+                    let r = parent.get_bounding_client_rect();
+                    (r.width() as u32, r.height() as u32)
+                }
+                None => {
+                    let r = canvas.get_bounding_client_rect();
+                    (r.width() as u32, r.height() as u32)
+                }
+            };
+            if display_w == 0 || display_h == 0 {
+                return;
             }
-            None => {
-                let r = canvas.get_bounding_client_rect();
-                (r.width() as u32, r.height() as u32)
+            if canvas.width() != display_w || canvas.height() != display_h {
+                canvas.set_width(display_w);
+                canvas.set_height(display_h);
             }
-        };
-        if display_w == 0 || display_h == 0 {
-            return;
-        }
-        if canvas.width() != display_w || canvas.height() != display_h {
-            canvas.set_width(display_w);
-            canvas.set_height(display_h);
-        }
-        // Keep overview in sync with actual canvas width — guarded so a redraw
-        // doesn't churn canvas_width subscribers every frame (the ResizeObserver
-        // above keeps it fresh on layout changes; this is just a fallback).
-        if state.viewmode.spectrogram_canvas_width().get_untracked() != display_w as f64 {
-            state.viewmode.spectrogram_canvas_width().set(display_w as f64);
-        }
+            // Keep overview in sync with actual canvas width — guarded so a redraw
+            // doesn't churn canvas_width subscribers every frame (the ResizeObserver
+            // above keeps it fresh on layout changes; this is just a fallback).
+            if state.viewmode.spectrogram_canvas_width().get_untracked() != display_w as f64 {
+                state
+                    .viewmode
+                    .spectrogram_canvas_width()
+                    .set(display_w as f64);
+            }
 
-        let ctx = canvas
-            .get_context("2d")
-            .unwrap()
-            .unwrap()
-            .dyn_into::<CanvasRenderingContext2d>()
-            .unwrap();
+            let ctx = canvas
+                .get_context("2d")
+                .unwrap()
+                .unwrap()
+                .dyn_into::<CanvasRenderingContext2d>()
+                .unwrap();
 
-        let files = state.library.files().get_untracked();
-        let timeline = state.timeline.active().get_untracked();
-        let idx = if timeline.is_some() { None } else { state.library.current_index().get_untracked() };
+            let files = state.library.files().get_untracked();
+            let timeline = state.timeline.active().get_untracked();
+            let idx = if timeline.is_some() {
+                None
+            } else {
+                state.library.current_index().get_untracked()
+            };
 
-        // In timeline mode, use the first segment's file for freq/resolution defaults
-        let primary_file_idx = if let Some(ref tl) = timeline {
-            tl.segments.first().map(|s| s.file_index)
-        } else {
-            idx
-        };
-        // Check for active waterfall early — when active, use waterfall
-        // parameters so listening/recording works identically with or without
-        // a file open.
-        let is_recording = state.mic.recording().get_untracked();
-        let is_listening = state.mic.listening().get_untracked();
-        let waterfall_active = (is_recording || is_listening) && crate::canvas::live_waterfall::is_active();
+            // In timeline mode, use the first segment's file for freq/resolution defaults
+            let primary_file_idx = if let Some(ref tl) = timeline {
+                tl.segments.first().map(|s| s.file_index)
+            } else {
+                idx
+            };
+            // Check for active waterfall early — when active, use waterfall
+            // parameters so listening/recording works identically with or without
+            // a file open.
+            let is_recording = state.mic.recording().get_untracked();
+            let is_listening = state.mic.listening().get_untracked();
+            let waterfall_active =
+                (is_recording || is_listening) && crate::canvas::live_waterfall::is_active();
 
-        let (time_res, original_max_freq) = if waterfall_active {
-            (crate::canvas::live_waterfall::time_resolution(),
-             crate::canvas::live_waterfall::max_freq())
-        } else {
-            let tr = primary_file_idx
+            let (time_res, original_max_freq) = if waterfall_active {
+                (
+                    crate::canvas::live_waterfall::time_resolution(),
+                    crate::canvas::live_waterfall::max_freq(),
+                )
+            } else {
+                let tr = primary_file_idx
+                    .and_then(|i| files.get(i))
+                    .map(|f| f.spectrogram.time_resolution)
+                    .unwrap_or(1.0);
+                let mf = primary_file_idx
+                    .and_then(|i| files.get(i))
+                    .map(|f| f.spectrogram.max_freq)
+                    .unwrap_or(96_000.0);
+                (tr, mf)
+            };
+            let scroll_col = scroll / time_res;
+            let decim_effective = state.display.decimate_effective().get_untracked();
+            let original_sample_rate = primary_file_idx
                 .and_then(|i| files.get(i))
-                .map(|f| f.spectrogram.time_resolution)
-                .unwrap_or(1.0);
-            let mf = primary_file_idx
-                .and_then(|i| files.get(i))
-                .map(|f| f.spectrogram.max_freq)
-                .unwrap_or(96_000.0);
-            (tr, mf)
-        };
-        let scroll_col = scroll / time_res;
-        let decim_effective = state.display.decimate_effective().get_untracked();
-        let original_sample_rate = primary_file_idx
-            .and_then(|i| files.get(i))
-            .map(|f| f.spectrogram.sample_rate)
-            .unwrap_or(192_000);
-        let file_max_freq = if waterfall_active {
-            original_max_freq
-        } else if decim_effective > 0 && decim_effective < original_sample_rate {
-            let effective_rate = crate::dsp::filters::decimated_rate(original_sample_rate, decim_effective);
-            effective_rate as f64 / 2.0
-        } else {
-            original_max_freq
-        };
-        let max_freq = max_display_freq.unwrap_or(file_max_freq).min(file_max_freq);
-        let min_freq = min_display_freq.unwrap_or(0.0);
-        let freq_crop_lo = min_freq / file_max_freq;
-        let freq_crop_hi = (max_freq / file_max_freq).min(1.0);
+                .map(|f| f.spectrogram.sample_rate)
+                .unwrap_or(192_000);
+            let file_max_freq = if waterfall_active {
+                original_max_freq
+            } else if decim_effective > 0 && decim_effective < original_sample_rate {
+                let effective_rate =
+                    crate::dsp::filters::decimated_rate(original_sample_rate, decim_effective);
+                effective_rate as f64 / 2.0
+            } else {
+                original_max_freq
+            };
+            let max_freq = max_display_freq.unwrap_or(file_max_freq).min(file_max_freq);
+            let min_freq = min_display_freq.unwrap_or(0.0);
+            let freq_crop_lo = min_freq / file_max_freq;
+            let freq_crop_hi = (max_freq / file_max_freq).min(1.0);
 
-        // In viewport-zoom Resonators mode, tiles don't cover [0, file_max_freq].
-        // Their frequency axis is the committed `resonator_viewport_range`,
-        // so blitting needs a different (fc_lo, fc_hi) — expressed as
-        // fractions of the tile's own range — to map tile rows to canvas y.
-        let resonator_tile_range = if main_view == MainView::Resonators {
-            state.resonator.viewport_range().get()
-        } else {
-            None
-        };
-        let (reson_freq_crop_lo, reson_freq_crop_hi) = if let Some((tlo, thi)) = resonator_tile_range {
-            let span = (thi - tlo).max(1.0);
-            let lo = ((min_freq - tlo) / span).clamp(-1.0, 2.0);
-            let hi = ((max_freq - tlo) / span).clamp(-1.0, 2.0);
-            (lo, hi)
-        } else {
-            (freq_crop_lo, freq_crop_hi)
-        };
+            // In viewport-zoom Resonators mode, tiles don't cover [0, file_max_freq].
+            // Their frequency axis is the committed `resonator_viewport_range`,
+            // so blitting needs a different (fc_lo, fc_hi) — expressed as
+            // fractions of the tile's own range — to map tile rows to canvas y.
+            let resonator_tile_range = if main_view == MainView::Resonators {
+                state.resonator.viewport_range().get()
+            } else {
+                None
+            };
+            let (reson_freq_crop_lo, reson_freq_crop_hi) =
+                if let Some((tlo, thi)) = resonator_tile_range {
+                    let span = (thi - tlo).max(1.0);
+                    let lo = ((min_freq - tlo) / span).clamp(-1.0, 2.0);
+                    let hi = ((max_freq - tlo) / span).clamp(-1.0, 2.0);
+                    (lo, hi)
+                } else {
+                    (freq_crop_lo, freq_crop_hi)
+                };
 
-        // --- Normal spectrogram mode ---
+            // --- Normal spectrogram mode ---
 
-        // Build colormap
-        let xform_or_decim = state.display.transform().get_untracked()
-            || state.display.xform_enabled().get_untracked()
-            || decim_effective > 0;
-        let colormap = if flow_on {
-            ColormapMode::Uniform(Colormap::Greyscale)
-        } else if hfr_enabled && band_ff_hi > band_ff_lo && !xform_or_decim {
-            ColormapMode::HfrFocus {
-                colormap: hfr_colormap_pref,
-                band_ff_lo_frac: band_ff_lo / file_max_freq,
-                band_ff_hi_frac: band_ff_hi / file_max_freq,
-            }
-        } else if hfr_enabled {
-            ColormapMode::Uniform(hfr_colormap_pref)
-        } else {
-            ColormapMode::Uniform(colormap_pref)
-        };
+            // Build colormap
+            let xform_or_decim = state.display.transform().get_untracked()
+                || state.display.xform_enabled().get_untracked()
+                || decim_effective > 0;
+            let colormap = if flow_on {
+                ColormapMode::Uniform(Colormap::Greyscale)
+            } else if hfr_enabled && band_ff_hi > band_ff_lo && !xform_or_decim {
+                ColormapMode::HfrFocus {
+                    colormap: hfr_colormap_pref,
+                    band_ff_lo_frac: band_ff_lo / file_max_freq,
+                    band_ff_hi_frac: band_ff_hi / file_max_freq,
+                }
+            } else if hfr_enabled {
+                ColormapMode::Uniform(hfr_colormap_pref)
+            } else {
+                ColormapMode::Uniform(colormap_pref)
+            };
 
-        // Timeline or single-file duration and rendering setup
-        let duration = if waterfall_active {
-            crate::canvas::live_waterfall::total_columns() as f64 * time_res
-        } else if let Some(ref tl) = timeline {
-            tl.total_duration_secs
-        } else {
-            idx.and_then(|i| files.get(i)).map(|f| f.audio.duration_secs).unwrap_or(0.0)
-        };
-        let visible_time = (display_w as f64 / zoom) * time_res;
+            // Timeline or single-file duration and rendering setup
+            let duration = if waterfall_active {
+                crate::canvas::live_waterfall::total_columns() as f64 * time_res
+            } else if let Some(ref tl) = timeline {
+                tl.total_duration_secs
+            } else {
+                idx.and_then(|i| files.get(i))
+                    .map(|f| f.audio.duration_secs)
+                    .unwrap_or(0.0)
+            };
+            let visible_time = (display_w as f64 / zoom) * time_res;
 
-        // In timeline mode, use primary segment for ref_db/auto-gain/debug;
-        // in single-file mode, use the current file index.
-        let effective_idx = if timeline.is_some() { primary_file_idx } else { idx };
-        let file = effective_idx.and_then(|i| files.get(i));
-        let total_cols = file.map(|f| {
-            let tc = f.spectrogram.total_columns;
-            if tc > 0 { tc } else { f.spectrogram.columns.len() }
-        }).unwrap_or(0);
-        let file_idx_val = effective_idx.unwrap_or(0);
+            // In timeline mode, use primary segment for ref_db/auto-gain/debug;
+            // in single-file mode, use the current file index.
+            let effective_idx = if timeline.is_some() {
+                primary_file_idx
+            } else {
+                idx
+            };
+            let file = effective_idx.and_then(|i| files.get(i));
+            let total_cols = file
+                .map(|f| {
+                    let tc = f.spectrogram.total_columns;
+                    if tc > 0 {
+                        tc
+                    } else {
+                        f.spectrogram.columns.len()
+                    }
+                })
+                .unwrap_or(0);
+            let file_idx_val = effective_idx.unwrap_or(0);
 
-        // Compute reference dB level for mapping absolute-dB tile data to display.
-        // When display_auto_gain is ON: peak-normalize using the file's running
-        // max magnitude (ref_db shifts 0 dB to the file's loudest point).
-        // When OFF: use a fixed reference based on FFT size so brightness is
-        // independent of file content and stable during progressive loading.
-        // Fixed ref ≈ 20*log10(fft_size/4) accounts for the Hann window's
-        // coherent gain (~0.5) on the one-sided spectrum, giving ~dBFS values.
-        let fft_size = state.spect.fft_mode().get_untracked().max_fft_size() as f32;
-        let fixed_ref_db = 20.0 * (fft_size / 4.0).log10();
+            // Compute reference dB level for mapping absolute-dB tile data to display.
+            // When display_auto_gain is ON: peak-normalize using the file's running
+            // max magnitude (ref_db shifts 0 dB to the file's loudest point).
+            // When OFF: use a fixed reference based on FFT size so brightness is
+            // independent of file content and stable during progressive loading.
+            // Fixed ref ≈ 20*log10(fft_size/4) accounts for the Hann window's
+            // coherent gain (~0.5) on the one-sided spectrum, giving ~dBFS values.
+            let fft_size = state.spect.fft_mode().get_untracked().max_fft_size() as f32;
+            let fixed_ref_db = 20.0 * (fft_size / 4.0).log10();
 
-        let ref_db = if display_auto_gain && total_cols > 0 {
-            use crate::canvas::spectral_store;
-            let max_mag = spectral_store::get_max_magnitude(file_idx_val);
-            if max_mag > 0.0 { 20.0 * max_mag.log10() } else { fixed_ref_db }
-        } else {
-            fixed_ref_db
-        };
-
-        // Extra dB boost from Auto/Same gain modes (computed in app.rs Effect)
-        let display_boost = state.display.gain_boost().get();
-
-        let display_settings = SpectDisplaySettings {
-            floor_db: spect_floor,
-            range_db: spect_range,
-            gamma: spect_gamma,
-            gain_db: spect_gain - ref_db + display_boost,
-        };
-
-        // ── Live waterfall rendering (recording / listening) ──
-        // When the waterfall is active, render directly from it and skip the
-        // tile-based pipeline entirely.
-        let live_data_cols = state.mic.live_data_cols().get_untracked();
-
-        let base_drawn = if waterfall_active {
-            // Use waterfall's own time_res and max_freq for correct viewport mapping
-            let wf_time_res = crate::canvas::live_waterfall::time_resolution();
-            let wf_max_freq = crate::canvas::live_waterfall::max_freq();
-            let wf_scroll_col = scroll / wf_time_res;
-            let wf_freq_crop_lo = min_freq / wf_max_freq;
-            let wf_freq_crop_hi = (max_display_freq.unwrap_or(wf_max_freq).min(wf_max_freq) / wf_max_freq).min(1.0);
-
-            // Auto-gain from waterfall's running max magnitude
-            let wf_ref_db = if display_auto_gain {
-                let max_mag = crate::canvas::live_waterfall::get_max_magnitude();
-                if max_mag > 0.0 { 20.0 * max_mag.log10() } else { fixed_ref_db }
+            let ref_db = if display_auto_gain && total_cols > 0 {
+                use crate::canvas::spectral_store;
+                let max_mag = spectral_store::get_max_magnitude(file_idx_val);
+                if max_mag > 0.0 {
+                    20.0 * max_mag.log10()
+                } else {
+                    fixed_ref_db
+                }
             } else {
                 fixed_ref_db
             };
-            let wf_display_settings = SpectDisplaySettings {
+
+            // Extra dB boost from Auto/Same gain modes (computed in app.rs Effect)
+            let display_boost = state.display.gain_boost().get();
+
+            let display_settings = SpectDisplaySettings {
                 floor_db: spect_floor,
                 range_db: spect_range,
                 gamma: spect_gamma,
-                gain_db: spect_gain - wf_ref_db + display_boost,
+                gain_db: spect_gain - ref_db + display_boost,
             };
 
-            {
-                let rendered = crate::canvas::live_waterfall::render_viewport(
-                    &ctx,
-                    display_w as f64,
-                    display_h as f64,
-                    wf_scroll_col,
-                    zoom,
-                    wf_freq_crop_lo,
-                    wf_freq_crop_hi,
-                    &wf_display_settings,
-                    colormap,
-                    live_data_cols,
-                );
-                if !rendered {
-                    // No waterfall data yet — clear to black so the old file's
-                    // spectrogram doesn't remain visible.
+            // ── Live waterfall rendering (recording / listening) ──
+            // When the waterfall is active, render directly from it and skip the
+            // tile-based pipeline entirely.
+            let live_data_cols = state.mic.live_data_cols().get_untracked();
+
+            let base_drawn = if waterfall_active {
+                // Use waterfall's own time_res and max_freq for correct viewport mapping
+                let wf_time_res = crate::canvas::live_waterfall::time_resolution();
+                let wf_max_freq = crate::canvas::live_waterfall::max_freq();
+                let wf_scroll_col = scroll / wf_time_res;
+                let wf_freq_crop_lo = min_freq / wf_max_freq;
+                let wf_freq_crop_hi = (max_display_freq.unwrap_or(wf_max_freq).min(wf_max_freq)
+                    / wf_max_freq)
+                    .min(1.0);
+
+                // Auto-gain from waterfall's running max magnitude
+                let wf_ref_db = if display_auto_gain {
+                    let max_mag = crate::canvas::live_waterfall::get_max_magnitude();
+                    if max_mag > 0.0 {
+                        20.0 * max_mag.log10()
+                    } else {
+                        fixed_ref_db
+                    }
+                } else {
+                    fixed_ref_db
+                };
+                let wf_display_settings = SpectDisplaySettings {
+                    floor_db: spect_floor,
+                    range_db: spect_range,
+                    gamma: spect_gamma,
+                    gain_db: spect_gain - wf_ref_db + display_boost,
+                };
+
+                {
+                    let rendered = crate::canvas::live_waterfall::render_viewport(
+                        &ctx,
+                        display_w as f64,
+                        display_h as f64,
+                        wf_scroll_col,
+                        zoom,
+                        wf_freq_crop_lo,
+                        wf_freq_crop_hi,
+                        &wf_display_settings,
+                        colormap,
+                        live_data_cols,
+                    );
+                    if !rendered {
+                        // No waterfall data yet — clear to black so the old file's
+                        // spectrogram doesn't remain visible.
+                        ctx.set_fill_style_str("#000");
+                        ctx.fill_rect(0.0, 0.0, display_w as f64, display_h as f64);
+                    }
+                    rendered
+                }
+            } else {
+                // Pre-compute per-frequency dB adjustments for display EQ / noise filter
+                let tile_height = state.spect.fft_mode().get_untracked().max_fft_size() / 2 + 1;
+                let freq_adjustments = compute_freq_adjustments(&state, file_max_freq, tile_height);
+
+                // Render base spectrogram.
+                // Priority: timeline | flow tiles | normal tiles > pre_rendered > preview > black
+                if let Some(tl) = timeline.as_ref() {
+                    // ── Timeline mode: render each visible segment ──
+                    let px_per_sec = zoom / time_res;
+                    let visible_start = scroll;
+                    let visible_end = scroll + visible_time;
+
+                    // Fill entire canvas with black first (covers gaps)
                     ctx.set_fill_style_str("#000");
                     ctx.fill_rect(0.0, 0.0, display_w as f64, display_h as f64);
-                }
-                rendered
-            }
-        } else {
 
-        // Pre-compute per-frequency dB adjustments for display EQ / noise filter
-        let tile_height = state.spect.fft_mode().get_untracked().max_fft_size() / 2 + 1;
-        let freq_adjustments = compute_freq_adjustments(&state, file_max_freq, tile_height);
+                    let mut any_drawn = false;
+                    for seg in tl.segments_in_range(visible_start, visible_end) {
+                        let seg_file = match files.get(seg.file_index) {
+                            Some(f) => f,
+                            None => continue,
+                        };
+                        let seg_time_res = seg_file.spectrogram.time_resolution;
+                        let seg_total_cols = {
+                            let tc = seg_file.spectrogram.total_columns;
+                            if tc > 0 {
+                                tc
+                            } else {
+                                seg_file.spectrogram.columns.len()
+                            }
+                        };
+                        if seg_total_cols == 0 {
+                            continue;
+                        }
 
-        // Render base spectrogram.
-        // Priority: timeline | flow tiles | normal tiles > pre_rendered > preview > black
-        if let Some(tl) = timeline.as_ref() {
-            // ── Timeline mode: render each visible segment ──
-            let px_per_sec = zoom / time_res;
-            let visible_start = scroll;
-            let visible_end = scroll + visible_time;
+                        // Canvas pixel range for this segment
+                        let seg_canvas_start = (seg.timeline_offset_secs - scroll) * px_per_sec;
+                        let seg_canvas_end =
+                            ((seg.timeline_offset_secs + seg.duration_secs) - scroll) * px_per_sec;
+                        let clip_left = seg_canvas_start.max(0.0);
+                        let clip_right = seg_canvas_end.min(display_w as f64);
+                        if clip_left >= clip_right {
+                            continue;
+                        }
 
-            // Fill entire canvas with black first (covers gaps)
-            ctx.set_fill_style_str("#000");
-            ctx.fill_rect(0.0, 0.0, display_w as f64, display_h as f64);
+                        // Scroll offset within this file
+                        let file_scroll = (scroll - seg.timeline_offset_secs).max(0.0);
+                        let file_scroll_col = file_scroll / seg_time_res;
 
-            let mut any_drawn = false;
-            for seg in tl.segments_in_range(visible_start, visible_end) {
-                let seg_file = match files.get(seg.file_index) {
-                    Some(f) => f,
-                    None => continue,
-                };
-                let seg_time_res = seg_file.spectrogram.time_resolution;
-                let seg_total_cols = {
-                    let tc = seg_file.spectrogram.total_columns;
-                    if tc > 0 { tc } else { seg_file.spectrogram.columns.len() }
-                };
-                if seg_total_cols == 0 { continue; }
-
-                // Canvas pixel range for this segment
-                let seg_canvas_start = (seg.timeline_offset_secs - scroll) * px_per_sec;
-                let seg_canvas_end = ((seg.timeline_offset_secs + seg.duration_secs) - scroll) * px_per_sec;
-                let clip_left = seg_canvas_start.max(0.0);
-                let clip_right = seg_canvas_end.min(display_w as f64);
-                if clip_left >= clip_right { continue; }
-
-                // Scroll offset within this file
-                let file_scroll = (scroll - seg.timeline_offset_secs).max(0.0);
-                let file_scroll_col = file_scroll / seg_time_res;
-
-                ctx.save();
-                ctx.begin_path();
-                ctx.rect(clip_left, 0.0, clip_right - clip_left, display_h as f64);
-                ctx.clip();
-
-                // Translate to the visible start of this segment so the helper
-                // can render against a segment-local viewport.
-                let translate_x = clip_left;
-                ctx.translate(translate_x, 0.0).unwrap_or(());
-
-                let seg_visible_time = (clip_right - clip_left) / px_per_sec;
-                let seg_px_per_sec = px_per_sec;
-                let seg_zoom = seg_px_per_sec * seg_time_res;
-
-                let resonators_on = main_view == MainView::Resonators;
-                let ideal_lod_for_source = crate::canvas::tile_cache::select_lod(seg_zoom);
-                let tile_source = if resonators_on {
-                    spectrogram_renderer::TileSource::Resonators
-                } else if reassign_on && ideal_lod_for_source > 1 {
-                    spectrogram_renderer::TileSource::Reassigned
-                } else {
-                    spectrogram_renderer::TileSource::Normal
-                };
-                let xform_on = state.display.transform().get_untracked();
-                let preview_ref = if xform_on || decim_effective > 0 || resonators_on {
-                    None
-                } else {
-                    seg_file.preview.as_ref()
-                };
-
-                let drawn = spectrogram_renderer::blit_tiles_viewport(
-                    &ctx, clip_right - clip_left, display_h as f64, seg.file_index, seg_total_cols,
-                    file_scroll_col, seg_zoom, freq_crop_lo, freq_crop_hi,
-                    spectrogram_renderer::TileRenderMode::Spectrogram(colormap),
-                    &display_settings,
-                    freq_adjustments.as_deref(),
-                    preview_ref,
-                    file_scroll, seg_visible_time, seg.duration_secs,
-                    tile_source,
-                );
-
-                // Schedule missing tiles for this segment
-                if resonators_on {
-                    crate::canvas::tile_scheduler::schedule_resonator_tiles(
-                        state, seg.file_index, seg_total_cols, file_scroll_col, seg_zoom,
-                        clip_right - clip_left,
-                    );
-                } else {
-                    crate::canvas::tile_scheduler::schedule_normal_tiles(
-                        state, seg.file_index, seg_total_cols, file_scroll_col, seg_zoom,
-                        clip_right - clip_left, seg_time_res, is_playing, reassign_on, &disposed,
-                    );
-                }
-
-                ctx.restore();
-                if drawn { any_drawn = true; }
-            }
-
-            // Draw gap indicators
-            let segments = &tl.segments;
-            for i in 0..segments.len() {
-                let seg_end = segments[i].timeline_offset_secs + segments[i].duration_secs;
-                let next_start = if i + 1 < segments.len() {
-                    segments[i + 1].timeline_offset_secs
-                } else {
-                    continue;
-                };
-                if next_start > seg_end + 0.001 {
-                    // There's a gap
-                    let gap_x1 = (seg_end - scroll) * px_per_sec;
-                    let gap_x2 = (next_start - scroll) * px_per_sec;
-                    if gap_x2 > 0.0 && gap_x1 < display_w as f64 {
-                        let x1 = gap_x1.max(0.0);
-                        let x2 = gap_x2.min(display_w as f64);
-                        // Draw subtle dashed line at gap center
-                        let mid = (x1 + x2) / 2.0;
-                        ctx.set_stroke_style_str("#333");
-                        ctx.set_line_width(1.0);
-                        let _ = ctx.set_line_dash(&js_sys::Array::of2(
-                            &JsValue::from_f64(3.0),
-                            &JsValue::from_f64(3.0),
-                        ));
+                        ctx.save();
                         ctx.begin_path();
-                        ctx.move_to(mid, 0.0);
-                        ctx.line_to(mid, display_h as f64);
-                        ctx.stroke();
-                        let _ = ctx.set_line_dash(&js_sys::Array::new());
+                        ctx.rect(clip_left, 0.0, clip_right - clip_left, display_h as f64);
+                        ctx.clip();
+
+                        // Translate to the visible start of this segment so the helper
+                        // can render against a segment-local viewport.
+                        let translate_x = clip_left;
+                        ctx.translate(translate_x, 0.0).unwrap_or(());
+
+                        let seg_visible_time = (clip_right - clip_left) / px_per_sec;
+                        let seg_px_per_sec = px_per_sec;
+                        let seg_zoom = seg_px_per_sec * seg_time_res;
+
+                        let resonators_on = main_view == MainView::Resonators;
+                        let ideal_lod_for_source = crate::canvas::tile_cache::select_lod(seg_zoom);
+                        let tile_source = if resonators_on {
+                            spectrogram_renderer::TileSource::Resonators
+                        } else if reassign_on && ideal_lod_for_source > 1 {
+                            spectrogram_renderer::TileSource::Reassigned
+                        } else {
+                            spectrogram_renderer::TileSource::Normal
+                        };
+                        let xform_on = state.display.transform().get_untracked();
+                        let preview_ref = if xform_on || decim_effective > 0 || resonators_on {
+                            None
+                        } else {
+                            seg_file.preview.as_ref()
+                        };
+
+                        let drawn = spectrogram_renderer::blit_tiles_viewport(
+                            &ctx,
+                            clip_right - clip_left,
+                            display_h as f64,
+                            seg.file_index,
+                            seg_total_cols,
+                            file_scroll_col,
+                            seg_zoom,
+                            freq_crop_lo,
+                            freq_crop_hi,
+                            spectrogram_renderer::TileRenderMode::Spectrogram(colormap),
+                            &display_settings,
+                            freq_adjustments.as_deref(),
+                            preview_ref,
+                            file_scroll,
+                            seg_visible_time,
+                            seg.duration_secs,
+                            tile_source,
+                        );
+
+                        // Schedule missing tiles for this segment
+                        if resonators_on {
+                            crate::canvas::tile_scheduler::schedule_resonator_tiles(
+                                state,
+                                seg.file_index,
+                                seg_total_cols,
+                                file_scroll_col,
+                                seg_zoom,
+                                clip_right - clip_left,
+                            );
+                        } else {
+                            crate::canvas::tile_scheduler::schedule_normal_tiles(
+                                state,
+                                seg.file_index,
+                                seg_total_cols,
+                                file_scroll_col,
+                                seg_zoom,
+                                clip_right - clip_left,
+                                seg_time_res,
+                                is_playing,
+                                reassign_on,
+                                &disposed,
+                            );
+                        }
+
+                        ctx.restore();
+                        if drawn {
+                            any_drawn = true;
+                        }
                     }
-                }
-            }
 
-            any_drawn
-        } else if flow_on && total_cols > 0 {
-            // Flow mode (includes phase coherence): composite dB+shift tiles at render time
-            let ig = state.flow.intensity_gate().get_untracked();
-            let mg = state.flow.gate().get_untracked();
-            let op = 1.0_f32; // opacity consolidated into color gain
-            let sg = state.flow.shift_gain().get_untracked();
-            let cg = state.flow.color_gamma().get_untracked();
-            let algo = state.spect.display().get_untracked().flow_algo();
-            let flow_scheme = state.flow.color_scheme().get_untracked();
-            let flow_render_mode = spectrogram_renderer::TileRenderMode::Flow {
-                intensity_gate: ig,
-                flow_gate: mg,
-                opacity: op,
-                shift_gain: sg,
-                color_gamma: cg,
-                algo,
-                scheme: flow_scheme,
-            };
-            let drawn = spectrogram_renderer::blit_tiles_viewport(
-                &ctx, display_w as f64, display_h as f64, file_idx_val, total_cols,
-                scroll_col, zoom, freq_crop_lo, freq_crop_hi,
-                flow_render_mode, &display_settings, freq_adjustments.as_deref(),
-                file.and_then(|f| f.preview.as_ref()),
-                scroll, visible_time, duration,
-                spectrogram_renderer::TileSource::Flow,
-            );
+                    // Draw gap indicators
+                    let segments = &tl.segments;
+                    for i in 0..segments.len() {
+                        let seg_end = segments[i].timeline_offset_secs + segments[i].duration_secs;
+                        let next_start = if i + 1 < segments.len() {
+                            segments[i + 1].timeline_offset_secs
+                        } else {
+                            continue;
+                        };
+                        if next_start > seg_end + 0.001 {
+                            // There's a gap
+                            let gap_x1 = (seg_end - scroll) * px_per_sec;
+                            let gap_x2 = (next_start - scroll) * px_per_sec;
+                            if gap_x2 > 0.0 && gap_x1 < display_w as f64 {
+                                let x1 = gap_x1.max(0.0);
+                                let x2 = gap_x2.min(display_w as f64);
+                                // Draw subtle dashed line at gap center
+                                let mid = (x1 + x2) / 2.0;
+                                ctx.set_stroke_style_str("#333");
+                                ctx.set_line_width(1.0);
+                                let _ = ctx.set_line_dash(&js_sys::Array::of2(
+                                    &JsValue::from_f64(3.0),
+                                    &JsValue::from_f64(3.0),
+                                ));
+                                ctx.begin_path();
+                                ctx.move_to(mid, 0.0);
+                                ctx.line_to(mid, display_h as f64);
+                                ctx.stroke();
+                                let _ = ctx.set_line_dash(&js_sys::Array::new());
+                            }
+                        }
+                    }
 
-            // Schedule missing flow tiles
-            crate::canvas::tile_scheduler::schedule_flow_tiles(
-                state, file_idx_val, total_cols, scroll_col, zoom, display_w as f64, algo,
-            );
-
-            drawn
-        } else if !flow_on && total_cols > 0 {
-            // Normal / reassignment / resonator tile-based rendering.
-            let resonators_on = main_view == MainView::Resonators;
-            let ideal_lod_for_source = crate::canvas::tile_cache::select_lod(zoom);
-            let tile_source = if resonators_on {
-                spectrogram_renderer::TileSource::Resonators
-            } else if reassign_on && ideal_lod_for_source > 1 {
-                spectrogram_renderer::TileSource::Reassigned
-            } else {
-                spectrogram_renderer::TileSource::Normal
-            };
-            // Skip preview fallback when xform/decimation/resonators is active
-            // (preview shows the original untransformed FFT).
-            let xform_on = state.display.transform().get_untracked();
-            let preview_ref = if xform_on || decim_effective > 0 || resonators_on {
-                None
-            } else {
-                file.and_then(|f| f.preview.as_ref())
-            };
-            // Viewport-zoom resonator tiles cover [tile_lo, tile_hi] rather
-            // than [0, file_max_freq], so pass the tile-relative fractions.
-            let (blit_fc_lo, blit_fc_hi) = if resonators_on && resonator_tile_range.is_some() {
-                (reson_freq_crop_lo, reson_freq_crop_hi)
-            } else {
-                (freq_crop_lo, freq_crop_hi)
-            };
-            let drawn = spectrogram_renderer::blit_tiles_viewport(
-                &ctx, display_w as f64, display_h as f64, file_idx_val, total_cols,
-                scroll_col, zoom, blit_fc_lo, blit_fc_hi,
-                spectrogram_renderer::TileRenderMode::Spectrogram(colormap),
-                &display_settings,
-                freq_adjustments.as_deref(),
-                preview_ref,
-                scroll, visible_time, duration,
-                tile_source,
-            );
-
-            // Schedule missing tiles for the active source.
-            if resonators_on {
-                crate::canvas::tile_scheduler::schedule_resonator_tiles(
-                    state, file_idx_val, total_cols, scroll_col, zoom, display_w as f64,
-                );
-            } else {
-                crate::canvas::tile_scheduler::schedule_normal_tiles(
-                    state, file_idx_val, total_cols, scroll_col, zoom,
-                    display_w as f64, time_res, is_playing, reassign_on, &disposed,
-                );
-            }
-
-            drawn
-        } else if pre_rendered.with_untracked(|pr| pr.is_some()) {
-            // Small file with columns in memory — use monolithic pre_rendered
-            pre_rendered.with_untracked(|pr| {
-                if let Some(rendered) = pr {
-                    spectrogram_renderer::blit_viewport(
-                        &ctx, rendered, display_w as f64, display_h as f64, scroll_col, zoom,
-                        freq_crop_lo, freq_crop_hi, colormap,
+                    any_drawn
+                } else if flow_on && total_cols > 0 {
+                    // Flow mode (includes phase coherence): composite dB+shift tiles at render time
+                    let ig = state.flow.intensity_gate().get_untracked();
+                    let mg = state.flow.gate().get_untracked();
+                    let op = 1.0_f32; // opacity consolidated into color gain
+                    let sg = state.flow.shift_gain().get_untracked();
+                    let cg = state.flow.color_gamma().get_untracked();
+                    let algo = state.spect.display().get_untracked().flow_algo();
+                    let flow_scheme = state.flow.color_scheme().get_untracked();
+                    let flow_render_mode = spectrogram_renderer::TileRenderMode::Flow {
+                        intensity_gate: ig,
+                        flow_gate: mg,
+                        opacity: op,
+                        shift_gain: sg,
+                        color_gamma: cg,
+                        algo,
+                        scheme: flow_scheme,
+                    };
+                    let drawn = spectrogram_renderer::blit_tiles_viewport(
+                        &ctx,
+                        display_w as f64,
+                        display_h as f64,
+                        file_idx_val,
+                        total_cols,
+                        scroll_col,
+                        zoom,
+                        freq_crop_lo,
+                        freq_crop_hi,
+                        flow_render_mode,
+                        &display_settings,
+                        freq_adjustments.as_deref(),
+                        file.and_then(|f| f.preview.as_ref()),
+                        scroll,
+                        visible_time,
+                        duration,
+                        spectrogram_renderer::TileSource::Flow,
                     );
-                }
-            });
-            true
-        } else if let Some(pv) = file.and_then(|f| f.preview.as_ref()) {
-            spectrogram_renderer::blit_preview_as_background(
-                &ctx, pv, display_w as f64, display_h as f64,
-                scroll, visible_time, duration,
-                freq_crop_lo, freq_crop_hi,
-                colormap,
-            );
-            true
-        } else {
-            ctx.set_fill_style_str("#000");
-            ctx.fill_rect(0.0, 0.0, display_w as f64, display_h as f64);
-            false
-        }
-        }; // end of waterfall-or-tile if/else
 
-        // Tile debug overlay (drawn on top of tiles, under other overlays)
-        if debug_tiles {
-            if let Some(ref tl) = timeline {
-                // Timeline mode: draw debug overlay per segment
-                let px_per_sec = zoom / time_res;
-                let visible_start = scroll;
-                let visible_end = scroll + visible_time;
-                for seg in tl.segments_in_range(visible_start, visible_end) {
-                    let seg_file = match files.get(seg.file_index) {
-                        Some(f) => f,
-                        None => continue,
+                    // Schedule missing flow tiles
+                    crate::canvas::tile_scheduler::schedule_flow_tiles(
+                        state,
+                        file_idx_val,
+                        total_cols,
+                        scroll_col,
+                        zoom,
+                        display_w as f64,
+                        algo,
+                    );
+
+                    drawn
+                } else if !flow_on && total_cols > 0 {
+                    // Normal / reassignment / resonator tile-based rendering.
+                    let resonators_on = main_view == MainView::Resonators;
+                    let ideal_lod_for_source = crate::canvas::tile_cache::select_lod(zoom);
+                    let tile_source = if resonators_on {
+                        spectrogram_renderer::TileSource::Resonators
+                    } else if reassign_on && ideal_lod_for_source > 1 {
+                        spectrogram_renderer::TileSource::Reassigned
+                    } else {
+                        spectrogram_renderer::TileSource::Normal
                     };
-                    let seg_time_res = seg_file.spectrogram.time_resolution;
-                    let seg_tc = {
-                        let tc = seg_file.spectrogram.total_columns;
-                        if tc > 0 { tc } else { seg_file.spectrogram.columns.len() }
+                    // Skip preview fallback when xform/decimation/resonators is active
+                    // (preview shows the original untransformed FFT).
+                    let xform_on = state.display.transform().get_untracked();
+                    let preview_ref = if xform_on || decim_effective > 0 || resonators_on {
+                        None
+                    } else {
+                        file.and_then(|f| f.preview.as_ref())
                     };
-                    if seg_tc == 0 { continue; }
-                    let seg_canvas_start = (seg.timeline_offset_secs - scroll) * px_per_sec;
-                    let seg_canvas_end = ((seg.timeline_offset_secs + seg.duration_secs) - scroll) * px_per_sec;
-                    let clip_left = seg_canvas_start.max(0.0);
-                    let clip_right = seg_canvas_end.min(display_w as f64);
-                    if clip_left >= clip_right { continue; }
-                    let file_scroll = (scroll - seg.timeline_offset_secs).max(0.0);
-                    let file_scroll_col = file_scroll / seg_time_res;
-                    let seg_zoom = px_per_sec * seg_time_res;
-                    ctx.save();
-                    ctx.begin_path();
-                    ctx.rect(clip_left, 0.0, clip_right - clip_left, display_h as f64);
-                    ctx.clip();
-                    ctx.translate(clip_left, 0.0).unwrap_or(());
+                    // Viewport-zoom resonator tiles cover [tile_lo, tile_hi] rather
+                    // than [0, file_max_freq], so pass the tile-relative fractions.
+                    let (blit_fc_lo, blit_fc_hi) =
+                        if resonators_on && resonator_tile_range.is_some() {
+                            (reson_freq_crop_lo, reson_freq_crop_hi)
+                        } else {
+                            (freq_crop_lo, freq_crop_hi)
+                        };
+                    let drawn = spectrogram_renderer::blit_tiles_viewport(
+                        &ctx,
+                        display_w as f64,
+                        display_h as f64,
+                        file_idx_val,
+                        total_cols,
+                        scroll_col,
+                        zoom,
+                        blit_fc_lo,
+                        blit_fc_hi,
+                        spectrogram_renderer::TileRenderMode::Spectrogram(colormap),
+                        &display_settings,
+                        freq_adjustments.as_deref(),
+                        preview_ref,
+                        scroll,
+                        visible_time,
+                        duration,
+                        tile_source,
+                    );
+
+                    // Schedule missing tiles for the active source.
+                    if resonators_on {
+                        crate::canvas::tile_scheduler::schedule_resonator_tiles(
+                            state,
+                            file_idx_val,
+                            total_cols,
+                            scroll_col,
+                            zoom,
+                            display_w as f64,
+                        );
+                    } else {
+                        crate::canvas::tile_scheduler::schedule_normal_tiles(
+                            state,
+                            file_idx_val,
+                            total_cols,
+                            scroll_col,
+                            zoom,
+                            display_w as f64,
+                            time_res,
+                            is_playing,
+                            reassign_on,
+                            &disposed,
+                        );
+                    }
+
+                    drawn
+                } else if pre_rendered.with_untracked(|pr| pr.is_some()) {
+                    // Small file with columns in memory — use monolithic pre_rendered
+                    pre_rendered.with_untracked(|pr| {
+                        if let Some(rendered) = pr {
+                            spectrogram_renderer::blit_viewport(
+                                &ctx,
+                                rendered,
+                                display_w as f64,
+                                display_h as f64,
+                                scroll_col,
+                                zoom,
+                                freq_crop_lo,
+                                freq_crop_hi,
+                                colormap,
+                            );
+                        }
+                    });
+                    true
+                } else if let Some(pv) = file.and_then(|f| f.preview.as_ref()) {
+                    spectrogram_renderer::blit_preview_as_background(
+                        &ctx,
+                        pv,
+                        display_w as f64,
+                        display_h as f64,
+                        scroll,
+                        visible_time,
+                        duration,
+                        freq_crop_lo,
+                        freq_crop_hi,
+                        colormap,
+                    );
+                    true
+                } else {
+                    ctx.set_fill_style_str("#000");
+                    ctx.fill_rect(0.0, 0.0, display_w as f64, display_h as f64);
+                    false
+                }
+            }; // end of waterfall-or-tile if/else
+
+            // Tile debug overlay (drawn on top of tiles, under other overlays)
+            if debug_tiles {
+                if let Some(ref tl) = timeline {
+                    // Timeline mode: draw debug overlay per segment
+                    let px_per_sec = zoom / time_res;
+                    let visible_start = scroll;
+                    let visible_end = scroll + visible_time;
+                    for seg in tl.segments_in_range(visible_start, visible_end) {
+                        let seg_file = match files.get(seg.file_index) {
+                            Some(f) => f,
+                            None => continue,
+                        };
+                        let seg_time_res = seg_file.spectrogram.time_resolution;
+                        let seg_tc = {
+                            let tc = seg_file.spectrogram.total_columns;
+                            if tc > 0 {
+                                tc
+                            } else {
+                                seg_file.spectrogram.columns.len()
+                            }
+                        };
+                        if seg_tc == 0 {
+                            continue;
+                        }
+                        let seg_canvas_start = (seg.timeline_offset_secs - scroll) * px_per_sec;
+                        let seg_canvas_end =
+                            ((seg.timeline_offset_secs + seg.duration_secs) - scroll) * px_per_sec;
+                        let clip_left = seg_canvas_start.max(0.0);
+                        let clip_right = seg_canvas_end.min(display_w as f64);
+                        if clip_left >= clip_right {
+                            continue;
+                        }
+                        let file_scroll = (scroll - seg.timeline_offset_secs).max(0.0);
+                        let file_scroll_col = file_scroll / seg_time_res;
+                        let seg_zoom = px_per_sec * seg_time_res;
+                        ctx.save();
+                        ctx.begin_path();
+                        ctx.rect(clip_left, 0.0, clip_right - clip_left, display_h as f64);
+                        ctx.clip();
+                        ctx.translate(clip_left, 0.0).unwrap_or(());
+                        spectrogram_renderer::draw_tile_debug_overlay(
+                            &ctx,
+                            clip_right - clip_left,
+                            display_h as f64,
+                            seg.file_index,
+                            seg_tc,
+                            file_scroll_col,
+                            seg_zoom,
+                            debug_tile_kind(state, flow_on, main_view),
+                        );
+                        ctx.restore();
+                    }
+                } else if total_cols > 0 {
                     spectrogram_renderer::draw_tile_debug_overlay(
-                        &ctx, clip_right - clip_left, display_h as f64, seg.file_index, seg_tc, file_scroll_col, seg_zoom,
+                        &ctx,
+                        display_w as f64,
+                        display_h as f64,
+                        file_idx_val,
+                        total_cols,
+                        scroll_col,
+                        zoom,
                         debug_tile_kind(state, flow_on, main_view),
                     );
-                    ctx.restore();
                 }
-            } else if total_cols > 0 {
-                spectrogram_renderer::draw_tile_debug_overlay(
-                    &ctx, display_w as f64, display_h as f64, file_idx_val, total_cols, scroll_col, zoom,
-                    debug_tile_kind(state, flow_on, main_view),
-                );
-            }
-        }
-
-        // Step 2: Draw overlays on top of the base spectrogram
-        if base_drawn && !clean_view {
-            let show_het = het_interacting
-                || playback_mode == PlaybackMode::Heterodyne;
-            let shift_mode = if show_het {
-                FreqShiftMode::Heterodyne(het_freq)
-            } else {
-                match playback_mode {
-                    PlaybackMode::TimeExpansion if te_factor > 1.0 => FreqShiftMode::Divide(te_factor),
-                    PlaybackMode::TimeExpansion if te_factor < -1.0 => FreqShiftMode::Multiply(te_factor.abs()),
-                    PlaybackMode::PitchShift if !ps_factor.is_bypass() && !ps_factor.is_up() => FreqShiftMode::Divide(ps_factor.magnitude()),
-                    PlaybackMode::PitchShift if !ps_factor.is_bypass() && ps_factor.is_up() => FreqShiftMode::Multiply(ps_factor.magnitude()),
-                    PlaybackMode::PhaseVocoder if !pv_factor.is_bypass() && !pv_factor.is_up() => FreqShiftMode::Divide(pv_factor.magnitude()),
-                    PlaybackMode::PhaseVocoder if !pv_factor.is_bypass() && pv_factor.is_up() => FreqShiftMode::Multiply(pv_factor.magnitude()),
-                    PlaybackMode::ZeroCrossing => FreqShiftMode::Divide(state.transform.zc_factor().get()),
-                    _ => FreqShiftMode::None,
-                }
-            };
-
-            let (adl2, adh2) = match (axis_drag_start, axis_drag_current) {
-                (Some(a), Some(b)) => (Some(a.min(b)), Some(a.max(b))),
-                _ => (None, None),
-            };
-            let band_ff_drag_active2 = matches!(spec_drag, Some(SpectrogramHandle::BandFfUpper) | Some(SpectrogramHandle::BandFfLower) | Some(SpectrogramHandle::BandFfMiddle));
-            // Only pass BandFF range to markers when HFR is on (or during axis drag which is
-            // handled separately by axis_drag_lo/hi). This prevents color bands from showing
-            // for a hidden/inactive BandFF range.
-            let (marker_band_ff_lo, marker_band_ff_hi) = if hfr_enabled || band_ff_drag_active2 { (band_ff_lo, band_ff_hi) } else { (0.0, 0.0) };
-            let marker_state = FreqMarkerState {
-                mouse_freq,
-                mouse_in_label_area: mouse_freq.is_some() && mouse_cx < LABEL_AREA_WIDTH,
-                label_hover_opacity: label_opacity,
-                file_max_freq,
-                axis_drag_lo: adl2,
-                axis_drag_hi: adh2,
-                band_ff_drag_active: band_ff_drag_active2,
-                band_ff_lo: marker_band_ff_lo,
-                band_ff_hi: marker_band_ff_hi,
-                band_ff_handles_active: spec_hover.is_some() || spec_drag.is_some(),
-                shield_style: state.viewmode.shield_style().get_untracked(),
-            };
-
-            let xform_on = state.display.transform().get_untracked()
-                || state.display.xform_enabled().get_untracked();
-            // When xform/decim is on, adjust marker state: right-side labels, hide focus handles
-            let marker_state = if xform_on || decim_effective > 0 {
-                FreqMarkerState {
-                    mouse_in_label_area: mouse_freq.is_some() && mouse_cx > (display_w as f64 - LABEL_AREA_WIDTH),
-                    band_ff_lo: 0.0,
-                    band_ff_hi: 0.0,
-                    band_ff_drag_active: false,
-                    band_ff_handles_active: false,
-                    ..marker_state
-                }
-            } else {
-                marker_state
-            };
-            // Hide the y-axis when the spectrogram is showing its full
-            // [0, Nyquist] range — the sibling <BandGutter/> already
-            // provides the frequency scale there, and the axis just adds
-            // clutter over the data. Draw it only when vertically zoomed
-            // (so the user has a visible cue that a sub-range is active) or
-            // when the transform/decimation label column is in play.
-            // Note: hovering near the gutter no longer pops up the freq
-            // markers/values/het-conversions — that hover readout was removed
-            // as no longer needed (so `mouse_in_label_area` is not a trigger).
-            let vertically_zoomed = {
-                let nyq = file_max_freq;
-                let lo = min_display_freq.unwrap_or(0.0);
-                let hi = max_display_freq.unwrap_or(nyq);
-                lo > 1.0 || (nyq - hi).abs() > 1.0
-            };
-            let show_freq_axis = vertically_zoomed
-                || xform_on
-                || decim_effective > 0;
-            if show_freq_axis {
-                spectrogram_renderer::draw_freq_markers(
-                    &ctx,
-                    min_freq,
-                    max_freq,
-                    display_h as f64,
-                    display_w as f64,
-                    if xform_on { FreqShiftMode::None } else { shift_mode },
-                    &marker_state,
-                    het_cutoff,
-                    xform_on,
-                );
             }
 
-            // Time scale moved out of the canvas — it now lives in the
-            // <TimeGutter/> strip below, which keeps the bottom rows of
-            // the spectrogram readable for low frequencies.
+            // Step 2: Draw overlays on top of the base spectrogram
+            if base_drawn && !clean_view {
+                let show_het = het_interacting || playback_mode == PlaybackMode::Heterodyne;
+                let shift_mode = if show_het {
+                    FreqShiftMode::Heterodyne(het_freq)
+                } else {
+                    match playback_mode {
+                        PlaybackMode::TimeExpansion if te_factor > 1.0 => {
+                            FreqShiftMode::Divide(te_factor)
+                        }
+                        PlaybackMode::TimeExpansion if te_factor < -1.0 => {
+                            FreqShiftMode::Multiply(te_factor.abs())
+                        }
+                        PlaybackMode::PitchShift
+                            if !ps_factor.is_bypass() && !ps_factor.is_up() =>
+                        {
+                            FreqShiftMode::Divide(ps_factor.magnitude())
+                        }
+                        PlaybackMode::PitchShift if !ps_factor.is_bypass() && ps_factor.is_up() => {
+                            FreqShiftMode::Multiply(ps_factor.magnitude())
+                        }
+                        PlaybackMode::PhaseVocoder
+                            if !pv_factor.is_bypass() && !pv_factor.is_up() =>
+                        {
+                            FreqShiftMode::Divide(pv_factor.magnitude())
+                        }
+                        PlaybackMode::PhaseVocoder
+                            if !pv_factor.is_bypass() && pv_factor.is_up() =>
+                        {
+                            FreqShiftMode::Multiply(pv_factor.magnitude())
+                        }
+                        PlaybackMode::ZeroCrossing => {
+                            FreqShiftMode::Divide(state.transform.zc_factor().get())
+                        }
+                        _ => FreqShiftMode::None,
+                    }
+                };
 
-            // Pulse detection overlay
-            if pulse_overlay && !detected_pulses.is_empty() {
-                spectrogram_renderer::draw_pulses(
-                    &ctx,
-                    &detected_pulses,
-                    selected_pulse,
-                    scroll,
-                    time_res,
-                    zoom,
-                    display_w as f64,
-                    display_h as f64,
+                let (adl2, adh2) = match (axis_drag_start, axis_drag_current) {
+                    (Some(a), Some(b)) => (Some(a.min(b)), Some(a.max(b))),
+                    _ => (None, None),
+                };
+                let band_ff_drag_active2 = matches!(
+                    spec_drag,
+                    Some(SpectrogramHandle::BandFfUpper)
+                        | Some(SpectrogramHandle::BandFfLower)
+                        | Some(SpectrogramHandle::BandFfMiddle)
                 );
-            }
-
-            // Notch filter band markers
-            if !notch_bands.is_empty() {
-                spectrogram_renderer::draw_notch_bands(
-                    &ctx,
-                    min_freq, max_freq,
-                    display_h as f64, display_w as f64,
-                    &notch_bands, notch_enabled,
-                    notch_hovering,
-                    harmonic_suppression,
-                );
-            }
-
-            // BandFF overlay (dim outside focus range) — skip in xform view
-            // During axis drag with HFR off, show the overlay using the drag range
-            // so the user gets visual feedback of their selection
-            let (overlay_lo, overlay_hi) = if band_ff_hi > band_ff_lo {
-                (band_ff_lo, band_ff_hi)
-            } else if let (Some(a), Some(b)) = (axis_drag_start, axis_drag_current) {
-                let lo = a.min(b);
-                let hi = a.max(b);
-                if hi - lo > 500.0 { (lo, hi) } else { (0.0, 0.0) }
-            } else {
-                (0.0, 0.0)
-            };
-            if overlay_hi > overlay_lo && !xform_on {
-                spectrogram_renderer::draw_band_ff_overlay(
-                    &ctx,
-                    overlay_lo, overlay_hi,
-                    min_freq, max_freq,
-                    display_h as f64, display_w as f64,
-                    spec_hover, spec_drag,
-                    state.status.is_mobile().get_untracked(),
-                    active_focus == Some(crate::state::ActiveFocus::FrequencyFocus),
-                    pointer_down,
+                // Only pass BandFF range to markers when HFR is on (or during axis drag which is
+                // handled separately by axis_drag_lo/hi). This prevents color bands from showing
+                // for a hidden/inactive BandFF range.
+                let (marker_band_ff_lo, marker_band_ff_hi) = if hfr_enabled || band_ff_drag_active2
+                {
+                    (band_ff_lo, band_ff_hi)
+                } else {
+                    (0.0, 0.0)
+                };
+                let marker_state = FreqMarkerState {
                     mouse_freq,
-                );
-            }
+                    mouse_in_label_area: mouse_freq.is_some() && mouse_cx < LABEL_AREA_WIDTH,
+                    label_hover_opacity: label_opacity,
+                    file_max_freq,
+                    axis_drag_lo: adl2,
+                    axis_drag_hi: adh2,
+                    band_ff_drag_active: band_ff_drag_active2,
+                    band_ff_lo: marker_band_ff_lo,
+                    band_ff_hi: marker_band_ff_hi,
+                    band_ff_handles_active: spec_hover.is_some() || spec_drag.is_some(),
+                    shield_style: state.viewmode.shield_style().get_untracked(),
+                };
 
-            // Output frequency highlight (from HFR panel hover)
-            if let Some((hl_lo, hl_hi)) = output_freq_hl {
-                if hl_hi > hl_lo && !xform_on {
-                    let ch = display_h as f64;
-                    let freq_range = max_freq - min_freq;
-                    if freq_range > 0.0 {
-                        let y_top = ch * (1.0 - (hl_hi - min_freq) / freq_range);
-                        let y_bot = ch * (1.0 - (hl_lo - min_freq) / freq_range);
-                        // Semi-transparent blue band
-                        ctx.set_fill_style_str("rgba(100, 180, 255, 0.15)");
-                        ctx.fill_rect(0.0, y_top, display_w as f64, y_bot - y_top);
-                        // Edge lines
-                        ctx.set_stroke_style_str("rgba(100, 180, 255, 0.5)");
-                        ctx.set_line_width(1.0);
-                        ctx.begin_path();
-                        ctx.move_to(0.0, y_top);
-                        ctx.line_to(display_w as f64, y_top);
-                        ctx.move_to(0.0, y_bot);
-                        ctx.line_to(display_w as f64, y_bot);
-                        ctx.stroke();
+                let xform_on = state.display.transform().get_untracked()
+                    || state.display.xform_enabled().get_untracked();
+                // When xform/decim is on, adjust marker state: right-side labels, hide focus handles
+                let marker_state = if xform_on || decim_effective > 0 {
+                    FreqMarkerState {
+                        mouse_in_label_area: mouse_freq.is_some()
+                            && mouse_cx > (display_w as f64 - LABEL_AREA_WIDTH),
+                        band_ff_lo: 0.0,
+                        band_ff_hi: 0.0,
+                        band_ff_drag_active: false,
+                        band_ff_handles_active: false,
+                        ..marker_state
+                    }
+                } else {
+                    marker_state
+                };
+                // Hide the y-axis when the spectrogram is showing its full
+                // [0, Nyquist] range — the sibling <BandGutter/> already
+                // provides the frequency scale there, and the axis just adds
+                // clutter over the data. Draw it only when vertically zoomed
+                // (so the user has a visible cue that a sub-range is active) or
+                // when the transform/decimation label column is in play.
+                // Note: hovering near the gutter no longer pops up the freq
+                // markers/values/het-conversions — that hover readout was removed
+                // as no longer needed (so `mouse_in_label_area` is not a trigger).
+                let vertically_zoomed = {
+                    let nyq = file_max_freq;
+                    let lo = min_display_freq.unwrap_or(0.0);
+                    let hi = max_display_freq.unwrap_or(nyq);
+                    lo > 1.0 || (nyq - hi).abs() > 1.0
+                };
+                let show_freq_axis = vertically_zoomed || xform_on || decim_effective > 0;
+                if show_freq_axis {
+                    spectrogram_renderer::draw_freq_markers(
+                        &ctx,
+                        min_freq,
+                        max_freq,
+                        display_h as f64,
+                        display_w as f64,
+                        if xform_on {
+                            FreqShiftMode::None
+                        } else {
+                            shift_mode
+                        },
+                        &marker_state,
+                        het_cutoff,
+                        xform_on,
+                    );
+                }
+
+                // Time scale moved out of the canvas — it now lives in the
+                // <TimeGutter/> strip below, which keeps the bottom rows of
+                // the spectrogram readable for low frequencies.
+
+                // Pulse detection overlay
+                if pulse_overlay && !detected_pulses.is_empty() {
+                    spectrogram_renderer::draw_pulses(
+                        &ctx,
+                        &detected_pulses,
+                        selected_pulse,
+                        scroll,
+                        time_res,
+                        zoom,
+                        display_w as f64,
+                        display_h as f64,
+                    );
+                }
+
+                // Notch filter band markers
+                if !notch_bands.is_empty() {
+                    spectrogram_renderer::draw_notch_bands(
+                        &ctx,
+                        min_freq,
+                        max_freq,
+                        display_h as f64,
+                        display_w as f64,
+                        &notch_bands,
+                        notch_enabled,
+                        notch_hovering,
+                        harmonic_suppression,
+                    );
+                }
+
+                // BandFF overlay (dim outside focus range) — skip in xform view
+                // During axis drag with HFR off, show the overlay using the drag range
+                // so the user gets visual feedback of their selection
+                let (overlay_lo, overlay_hi) = if band_ff_hi > band_ff_lo {
+                    (band_ff_lo, band_ff_hi)
+                } else if let (Some(a), Some(b)) = (axis_drag_start, axis_drag_current) {
+                    let lo = a.min(b);
+                    let hi = a.max(b);
+                    if hi - lo > 500.0 {
+                        (lo, hi)
+                    } else {
+                        (0.0, 0.0)
+                    }
+                } else {
+                    (0.0, 0.0)
+                };
+                if overlay_hi > overlay_lo && !xform_on {
+                    spectrogram_renderer::draw_band_ff_overlay(
+                        &ctx,
+                        overlay_lo,
+                        overlay_hi,
+                        min_freq,
+                        max_freq,
+                        display_h as f64,
+                        display_w as f64,
+                        spec_hover,
+                        spec_drag,
+                        state.status.is_mobile().get_untracked(),
+                        active_focus == Some(crate::state::ActiveFocus::FrequencyFocus),
+                        pointer_down,
+                        mouse_freq,
+                    );
+                }
+
+                // Output frequency highlight (from HFR panel hover)
+                if let Some((hl_lo, hl_hi)) = output_freq_hl {
+                    if hl_hi > hl_lo && !xform_on {
+                        let ch = display_h as f64;
+                        let freq_range = max_freq - min_freq;
+                        if freq_range > 0.0 {
+                            let y_top = ch * (1.0 - (hl_hi - min_freq) / freq_range);
+                            let y_bot = ch * (1.0 - (hl_lo - min_freq) / freq_range);
+                            // Semi-transparent blue band
+                            ctx.set_fill_style_str("rgba(100, 180, 255, 0.15)");
+                            ctx.fill_rect(0.0, y_top, display_w as f64, y_bot - y_top);
+                            // Edge lines
+                            ctx.set_stroke_style_str("rgba(100, 180, 255, 0.5)");
+                            ctx.set_line_width(1.0);
+                            ctx.begin_path();
+                            ctx.move_to(0.0, y_top);
+                            ctx.line_to(display_w as f64, y_top);
+                            ctx.move_to(0.0, y_bot);
+                            ctx.line_to(display_w as f64, y_bot);
+                            ctx.stroke();
+                        }
                     }
                 }
-            }
 
-            // HET overlay (cyan lines on top, no dimming) — skip in xform view
-            if show_het && !xform_on {
-                let het_interactive = !het_freq_auto || !het_cutoff_auto;
-                spectrogram_renderer::draw_het_overlay(
-                    &ctx,
-                    het_freq,
-                    het_cutoff,
-                    het_comb_count,
-                    het_comb_spacing,
-                    min_freq,
-                    max_freq,
-                    display_h as f64,
-                    display_w as f64,
-                    spec_hover,
-                    spec_drag,
-                    het_interactive,
-                );
-            }
+                // HET overlay (cyan lines on top, no dimming) — skip in xform view
+                if show_het && !xform_on {
+                    let het_interactive = !het_freq_auto || !het_cutoff_auto;
+                    spectrogram_renderer::draw_het_overlay(
+                        &ctx,
+                        het_freq,
+                        het_cutoff,
+                        het_comb_count,
+                        het_comb_spacing,
+                        min_freq,
+                        max_freq,
+                        display_h as f64,
+                        display_w as f64,
+                        spec_hover,
+                        spec_drag,
+                        het_interactive,
+                    );
+                }
 
-            // Draw selection overlay
-            if let Some(sel) = selection {
-                spectrogram_renderer::draw_selection(
-                    &ctx,
-                    &sel,
-                    min_freq,
-                    max_freq,
-                    scroll,
-                    time_res,
-                    zoom,
-                    display_w as f64,
-                    display_h as f64,
-                );
-                if dragging {
-                    spectrogram_renderer::draw_harmonic_shadows(
+                // Draw selection overlay
+                if let Some(sel) = selection {
+                    spectrogram_renderer::draw_selection(
                         &ctx,
                         &sel,
                         min_freq,
@@ -1070,20 +1262,10 @@ pub fn Spectrogram() -> impl IntoView {
                         display_w as f64,
                         display_h as f64,
                     );
-                }
-            }
-
-            // Draw saved annotation selections (skip in xform view or when hidden via toolbar toggle)
-            if !xform_on && annotations_visible {
-                if let Some(file_idx_val) = idx {
-                    if let Some(set) = state.file_id_at(file_idx_val).and_then(|id| annotation_store.get(id)) {
-                        let hover_ref = annotation_hover_handle.as_ref()
-                            .map(|(id, pos)| (id, *pos));
-                        spectrogram_renderer::draw_annotations(
+                    if dragging {
+                        spectrogram_renderer::draw_harmonic_shadows(
                             &ctx,
-                            set,
-                            &selected_annotation_ids,
-                            hover_ref,
+                            &sel,
                             min_freq,
                             max_freq,
                             scroll,
@@ -1091,143 +1273,183 @@ pub fn Spectrogram() -> impl IntoView {
                             zoom,
                             display_w as f64,
                             display_h as f64,
-                            state.status.is_mobile().get_untracked(),
-                            active_focus == Some(crate::state::ActiveFocus::Annotations),
                         );
                     }
                 }
-            }
 
-            // File-embedded time markers (WAV cue points, M4A chapters).
-            // Rendered on top of annotations so a label on the line is visible.
-            if !xform_on && annotations_visible {
-                if let Some(file_idx_val) = idx {
-                    if let Some(file) = files.get(file_idx_val) {
-                        if !file.wav_markers.is_empty() {
-                            let sr = file.audio.sample_rate as f64;
-                            let markers: Vec<(f64, Option<String>)> = file.wav_markers.iter()
-                                .map(|m| (m.position as f64 / sr, m.label.clone()))
+                // Draw saved annotation selections (skip in xform view or when hidden via toolbar toggle)
+                if !xform_on && annotations_visible {
+                    if let Some(file_idx_val) = idx {
+                        if let Some(set) = state
+                            .file_id_at(file_idx_val)
+                            .and_then(|id| annotation_store.get(id))
+                        {
+                            let hover_ref =
+                                annotation_hover_handle.as_ref().map(|(id, pos)| (id, *pos));
+                            spectrogram_renderer::draw_annotations(
+                                &ctx,
+                                set,
+                                &selected_annotation_ids,
+                                hover_ref,
+                                min_freq,
+                                max_freq,
+                                scroll,
+                                time_res,
+                                zoom,
+                                display_w as f64,
+                                display_h as f64,
+                                state.status.is_mobile().get_untracked(),
+                                active_focus == Some(crate::state::ActiveFocus::Annotations),
+                            );
+                        }
+                    }
+                }
+
+                // File-embedded time markers (WAV cue points, M4A chapters).
+                // Rendered on top of annotations so a label on the line is visible.
+                if !xform_on && annotations_visible {
+                    if let Some(file_idx_val) = idx {
+                        if let Some(file) = files.get(file_idx_val) {
+                            if !file.wav_markers.is_empty() {
+                                let sr = file.audio.sample_rate as f64;
+                                let markers: Vec<(f64, Option<String>)> = file
+                                    .wav_markers
+                                    .iter()
+                                    .map(|m| (m.position as f64 / sr, m.label.clone()))
+                                    .collect();
+                                spectrogram_renderer::draw_time_marker_lines(
+                                    &ctx,
+                                    &markers,
+                                    spectrogram_renderer::TimeMarkerStyle::FileEmbedded,
+                                    scroll,
+                                    time_res,
+                                    zoom,
+                                    display_w as f64,
+                                    display_h as f64,
+                                );
+                            }
+                        }
+                        // User annotation markers (AnnotationKind::Marker).
+                        if let Some(set) = state
+                            .file_id_at(file_idx_val)
+                            .and_then(|id| annotation_store.get(id))
+                        {
+                            let ann_markers: Vec<(f64, Option<String>)> = set
+                                .annotations
+                                .iter()
+                                .filter_map(|a| match &a.kind {
+                                    crate::annotations::AnnotationKind::Marker(m) => {
+                                        Some((m.time, m.label.clone()))
+                                    }
+                                    _ => None,
+                                })
                                 .collect();
-                            spectrogram_renderer::draw_time_marker_lines(
-                                &ctx,
-                                &markers,
-                                spectrogram_renderer::TimeMarkerStyle::FileEmbedded,
-                                scroll,
-                                time_res,
-                                zoom,
-                                display_w as f64,
-                                display_h as f64,
-                            );
-                        }
-                    }
-                    // User annotation markers (AnnotationKind::Marker).
-                    if let Some(set) = state.file_id_at(file_idx_val).and_then(|id| annotation_store.get(id)) {
-                        let ann_markers: Vec<(f64, Option<String>)> = set.annotations.iter()
-                            .filter_map(|a| match &a.kind {
-                                crate::annotations::AnnotationKind::Marker(m) => {
-                                    Some((m.time, m.label.clone()))
-                                }
-                                _ => None,
-                            })
-                            .collect();
-                        if !ann_markers.is_empty() {
-                            spectrogram_renderer::draw_time_marker_lines(
-                                &ctx,
-                                &ann_markers,
-                                spectrogram_renderer::TimeMarkerStyle::Annotation,
-                                scroll,
-                                time_res,
-                                zoom,
-                                display_w as f64,
-                                display_h as f64,
-                            );
+                            if !ann_markers.is_empty() {
+                                spectrogram_renderer::draw_time_marker_lines(
+                                    &ctx,
+                                    &ann_markers,
+                                    spectrogram_renderer::TimeMarkerStyle::Annotation,
+                                    scroll,
+                                    time_res,
+                                    zoom,
+                                    display_w as f64,
+                                    display_h as f64,
+                                );
+                            }
                         }
                     }
                 }
-            }
 
-            // Draw filter band overlay when hovering a slider
-            if filter_enabled {
-                if let Some(band) = filter_hovering {
-                    spectrogram_renderer::draw_filter_overlay(
-                        &ctx,
-                        band,
-                        state.filter.freq_low().get_untracked(),
-                        state.filter.freq_high().get_untracked(),
-                        state.filter.band_mode().get_untracked(),
-                        min_freq,
-                        max_freq,
-                        display_w as f64,
-                        display_h as f64,
-                    );
-                }
-            }
-
-            // Draw PSD hover frequency overlays
-            {
-                let psd_hovers = state.psd.hover_freqs().get();
-                if !psd_hovers.is_empty() && max_freq > min_freq {
-                    let dh = display_h as f64;
-                    let dw = display_w as f64;
-                    for (freq, label, color) in &psd_hovers {
-                        if *freq < min_freq || *freq > max_freq { continue; }
-                        let y = dh * (1.0 - (freq - min_freq) / (max_freq - min_freq));
-                        // Horizontal line
-                        ctx.set_stroke_style_str(color);
-                        ctx.set_line_width(1.5);
-                        let _ = ctx.set_line_dash(&js_sys::Array::of2(
-                            &JsValue::from(4.0),
-                            &JsValue::from(3.0),
-                        ));
-                        ctx.begin_path();
-                        ctx.move_to(0.0, y);
-                        ctx.line_to(dw, y);
-                        ctx.stroke();
-                        let _ = ctx.set_line_dash(&js_sys::Array::new());
-                        // Label
-                        ctx.set_fill_style_str(color);
-                        ctx.set_font("10px monospace");
-                        let _ = ctx.fill_text(label, 4.0, y - 3.0);
+                // Draw filter band overlay when hovering a slider
+                if filter_enabled {
+                    if let Some(band) = filter_hovering {
+                        spectrogram_renderer::draw_filter_overlay(
+                            &ctx,
+                            band,
+                            state.filter.freq_low().get_untracked(),
+                            state.filter.freq_high().get_untracked(),
+                            state.filter.band_mode().get_untracked(),
+                            min_freq,
+                            max_freq,
+                            display_w as f64,
+                            display_h as f64,
+                        );
                     }
                 }
-            }
 
-            if visible_time <= 0.0 { return; }
-            let px_per_sec = display_w as f64 / visible_time;
+                // Draw PSD hover frequency overlays
+                {
+                    let psd_hovers = state.psd.hover_freqs().get();
+                    if !psd_hovers.is_empty() && max_freq > min_freq {
+                        let dh = display_h as f64;
+                        let dw = display_w as f64;
+                        for (freq, label, color) in &psd_hovers {
+                            if *freq < min_freq || *freq > max_freq {
+                                continue;
+                            }
+                            let y = dh * (1.0 - (freq - min_freq) / (max_freq - min_freq));
+                            // Horizontal line
+                            ctx.set_stroke_style_str(color);
+                            ctx.set_line_width(1.5);
+                            let _ = ctx.set_line_dash(&js_sys::Array::of2(
+                                &JsValue::from(4.0),
+                                &JsValue::from(3.0),
+                            ));
+                            ctx.begin_path();
+                            ctx.move_to(0.0, y);
+                            ctx.line_to(dw, y);
+                            ctx.stroke();
+                            let _ = ctx.set_line_dash(&js_sys::Array::new());
+                            // Label
+                            ctx.set_fill_style_str(color);
+                            ctx.set_font("10px monospace");
+                            let _ = ctx.fill_text(label, 4.0, y - 3.0);
+                        }
+                    }
+                }
 
-            // Draw static position marker when not playing in FromHere mode
-            if state.playback.start_mode().get() .uses_from_here() && !is_playing && canvas_tool == CanvasTool::Hand {
-                let here_x = display_w as f64 * viewport::PLAY_FROM_HERE_FRACTION;
-                let here_time = viewport::play_from_here_time(scroll, visible_time);
-                state.playback.from_here_time().set(here_time);
-                ctx.set_stroke_style_str("rgba(100, 160, 255, 0.35)");
-                ctx.set_line_width(1.5);
-                let _ = ctx.set_line_dash(&js_sys::Array::of2(
-                    &wasm_bindgen::JsValue::from_f64(4.0),
-                    &wasm_bindgen::JsValue::from_f64(3.0),
-                ));
-                ctx.begin_path();
-                ctx.move_to(here_x, 0.0);
-                ctx.line_to(here_x, display_h as f64);
-                ctx.stroke();
-                let _ = ctx.set_line_dash(&js_sys::Array::new());
-            }
+                if visible_time <= 0.0 {
+                    return;
+                }
+                let px_per_sec = display_w as f64 / visible_time;
 
-            // Draw bookmark dots (yellow circles at top edge)
-            ctx.set_fill_style_str("rgba(255, 200, 50, 0.9)");
-            for bm in &bookmarks {
-                let x = (bm.time - scroll) * px_per_sec;
-                if x >= 0.0 && x <= display_w as f64 {
+                // Draw static position marker when not playing in FromHere mode
+                if state.playback.start_mode().get().uses_from_here()
+                    && !is_playing
+                    && canvas_tool == CanvasTool::Hand
+                {
+                    let here_x = display_w as f64 * viewport::PLAY_FROM_HERE_FRACTION;
+                    let here_time = viewport::play_from_here_time(scroll, visible_time);
+                    state.playback.from_here_time().set(here_time);
+                    ctx.set_stroke_style_str("rgba(100, 160, 255, 0.35)");
+                    ctx.set_line_width(1.5);
+                    let _ = ctx.set_line_dash(&js_sys::Array::of2(
+                        &wasm_bindgen::JsValue::from_f64(4.0),
+                        &wasm_bindgen::JsValue::from_f64(3.0),
+                    ));
                     ctx.begin_path();
-                    let _ = ctx.arc(x, 6.0, 4.0, 0.0, std::f64::consts::TAU);
-                    ctx.fill();
+                    ctx.move_to(here_x, 0.0);
+                    ctx.line_to(here_x, display_h as f64);
+                    ctx.stroke();
+                    let _ = ctx.set_line_dash(&js_sys::Array::new());
+                }
+
+                // Draw bookmark dots (yellow circles at top edge)
+                ctx.set_fill_style_str("rgba(255, 200, 50, 0.9)");
+                for bm in &bookmarks {
+                    let x = (bm.time - scroll) * px_per_sec;
+                    if x >= 0.0 && x <= display_w as f64 {
+                        ctx.begin_path();
+                        let _ = ctx.arc(x, 6.0, 4.0, 0.0, std::f64::consts::TAU);
+                        ctx.fill();
+                    }
                 }
             }
+            if let (Some(p), Some(t0)) = (_sperf.as_ref(), _st0) {
+                spec_diag_record(p.now() - t0);
+            }
         }
-        if let (Some(p), Some(t0)) = (_sperf.as_ref(), _st0) {
-            spec_diag_record(p.now() - t0);
-        }
-    }});
+    });
 
     // Effect 4: auto-scroll to follow playhead during playback
     // Supports temporary suspension: when the user manually scrolls, following
@@ -1258,98 +1480,117 @@ pub fn Spectrogram() -> impl IntoView {
         Effect::new({
             let disposed = disposed.clone();
             move || {
-            // Subscribe to coarse-grained signals (NOT playhead_time)
-            let _scroll = state.view.scroll_offset().get();
-            let _zoom = state.view.zoom_level().get();
-            let _playing = state.playback.is_playing().get();
-            let _file_idx = state.library.current_index().get();
-            let _main_view = state.viewmode.main_view().get();
-            let _reassign = state.spect.reassign_enabled().get();
-            let _flow = state.flow.enabled().get();
-            // NOTE: intentionally NOT subscribing to tile_ready_signal here —
-            // that would create a feedback loop (tile completes -> prefetch fires -> schedules more).
-            // Scroll/zoom/playing changes are sufficient triggers for prefetch.
+                // Subscribe to coarse-grained signals (NOT playhead_time)
+                let _scroll = state.view.scroll_offset().get();
+                let _zoom = state.view.zoom_level().get();
+                let _playing = state.playback.is_playing().get();
+                let _file_idx = state.library.current_index().get();
+                let _main_view = state.viewmode.main_view().get();
+                let _reassign = state.spect.reassign_enabled().get();
+                let _flow = state.flow.enabled().get();
+                // NOTE: intentionally NOT subscribing to tile_ready_signal here —
+                // that would create a feedback loop (tile completes -> prefetch fires -> schedules more).
+                // Scroll/zoom/playing changes are sufficient triggers for prefetch.
 
-            // Cancel previous debounce timer
-            if let Some(h) = prefetch_handle.get_value() {
-                web_sys::window().unwrap().clear_timeout_with_handle(h);
-            }
-
-            let handle = prefetch_handle;
-            let disposed_rc = disposed.clone();
-            let cb = Closure::once(move || {
-                if disposed_rc.load(Ordering::Relaxed) { return; }
-                use crate::canvas::tile_cache;
-
-                handle.set_value(None);
-
-                let main_view = state.viewmode.main_view().get_untracked();
-                if matches!(main_view, MainView::Waveform | MainView::ZcChart) {
-                    return;
+                // Cancel previous debounce timer
+                if let Some(h) = prefetch_handle.get_value() {
+                    web_sys::window().unwrap().clear_timeout_with_handle(h);
                 }
 
-                let Some(file_idx) = state.library.current_index().get_untracked() else { return };
-                let (total_samples, sample_rate, time_res) = state.library.files().with_untracked(|files| {
-                    files.get(file_idx).map(|f| {
-                        (f.audio.source.total_samples() as usize, f.audio.sample_rate, f.spectrogram.time_resolution)
-                    })
-                }).unwrap_or((0, 44100, 0.01));
-                if total_samples == 0 { return; }
+                let handle = prefetch_handle;
+                let disposed_rc = disposed.clone();
+                let cb = Closure::once(move || {
+                    if disposed_rc.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    use crate::canvas::tile_cache;
 
-                let zoom = state.view.zoom_level().get_untracked();
-                let scroll = state.view.scroll_offset().get_untracked();
-                let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-                let visible_time = if zoom > 0.0 { (canvas_w / zoom) * time_res } else { 1.0 };
-                let viewport_right = scroll + visible_time;
+                    handle.set_value(None);
 
-                let is_playing = state.playback.is_playing().get_untracked();
-                let center = if is_playing {
-                    let playhead = state.playback.playhead_time().get_untracked();
-                    playhead.max(viewport_right)
-                } else {
-                    viewport_right
-                };
+                    let main_view = state.viewmode.main_view().get_untracked();
+                    if matches!(main_view, MainView::Waveform | MainView::ZcChart) {
+                        return;
+                    }
 
-                let flow_on = state.flow.enabled().get_untracked();
-                let flow_algo = if flow_on {
-                    Some(state.spect.display().get_untracked().flow_algo())
-                } else {
-                    None
-                };
+                    let Some(file_idx) = state.library.current_index().get_untracked() else {
+                        return;
+                    };
+                    let (total_samples, sample_rate, time_res) = state
+                        .library
+                        .files()
+                        .with_untracked(|files| {
+                            files.get(file_idx).map(|f| {
+                                (
+                                    f.audio.source.total_samples() as usize,
+                                    f.audio.sample_rate,
+                                    f.spectrogram.time_resolution,
+                                )
+                            })
+                        })
+                        .unwrap_or((0, 44100, 0.01));
+                    if total_samples == 0 {
+                        return;
+                    }
 
-                let reassign = state.spect.reassign_enabled().get_untracked();
+                    let zoom = state.view.zoom_level().get_untracked();
+                    let scroll = state.view.scroll_offset().get_untracked();
+                    let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
+                    let visible_time = if zoom > 0.0 {
+                        (canvas_w / zoom) * time_res
+                    } else {
+                        1.0
+                    };
+                    let viewport_right = scroll + visible_time;
 
-                let (ahead_secs, max_prefetch) = if is_playing {
-                    (15.0, 60)  // aggressive prefetch during playback
-                } else {
-                    (5.0, 30)
-                };
+                    let is_playing = state.playback.is_playing().get_untracked();
+                    let center = if is_playing {
+                        let playhead = state.playback.playhead_time().get_untracked();
+                        playhead.max(viewport_right)
+                    } else {
+                        viewport_right
+                    };
 
-                tile_cache::schedule_prefetch_tiles(
-                    state,
-                    file_idx,
-                    total_samples,
-                    sample_rate,
-                    center,
-                    ahead_secs,
-                    3.0,  // keep first 3 seconds ready
-                    zoom,
-                    flow_algo,
-                    reassign,
-                    max_prefetch,
-                );
-            });
+                    let flow_on = state.flow.enabled().get_untracked();
+                    let flow_algo = if flow_on {
+                        Some(state.spect.display().get_untracked().flow_algo())
+                    } else {
+                        None
+                    };
 
-            let h = web_sys::window()
-                .unwrap()
-                .set_timeout_with_callback_and_timeout_and_arguments_0(
-                    cb.as_ref().unchecked_ref(),
-                    200,
-                )
-                .unwrap_or(0);
-            cb.forget();
-            prefetch_handle.set_value(Some(h));
-        }});
+                    let reassign = state.spect.reassign_enabled().get_untracked();
+
+                    let (ahead_secs, max_prefetch) = if is_playing {
+                        (15.0, 60) // aggressive prefetch during playback
+                    } else {
+                        (5.0, 30)
+                    };
+
+                    tile_cache::schedule_prefetch_tiles(
+                        state,
+                        file_idx,
+                        total_samples,
+                        sample_rate,
+                        center,
+                        ahead_secs,
+                        3.0, // keep first 3 seconds ready
+                        zoom,
+                        flow_algo,
+                        reassign,
+                        max_prefetch,
+                    );
+                });
+
+                let h = web_sys::window()
+                    .unwrap()
+                    .set_timeout_with_callback_and_timeout_and_arguments_0(
+                        cb.as_ref().unchecked_ref(),
+                        200,
+                    )
+                    .unwrap_or(0);
+                cb.forget();
+                prefetch_handle.set_value(Some(h));
+            }
+        });
 
         // Note: pending prefetch timeout (200ms) is not explicitly cancelled on
         // disposal — the callback checks the `disposed` flag and exits early.
@@ -1377,7 +1618,10 @@ pub fn Spectrogram() -> impl IntoView {
         };
 
         let total_samples = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.audio.source.total_samples() as usize).unwrap_or(0)
+            files
+                .get(file_idx)
+                .map(|f| f.audio.source.total_samples() as usize)
+                .unwrap_or(0)
         });
         if total_samples == 0 {
             tile_cache::stop_background_preload();
@@ -1387,30 +1631,52 @@ pub fn Spectrogram() -> impl IntoView {
         let zoom = state.view.zoom_level().get_untracked();
         let lod = tile_cache::select_lod(zoom);
         let max_tiles = tile_cache::tile_count_for_samples(total_samples, lod);
-        if max_tiles == 0 { return; }
+        if max_tiles == 0 {
+            return;
+        }
 
         // Compute center tile from current viewport
         let scroll = state.view.scroll_offset().get_untracked();
         let time_res = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.spectrogram.time_resolution).unwrap_or(0.01)
+            files
+                .get(file_idx)
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(0.01)
         });
         let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-        let visible_time = if zoom > 0.0 { (canvas_w / zoom) * time_res } else { 1.0 };
+        let visible_time = if zoom > 0.0 {
+            (canvas_w / zoom) * time_res
+        } else {
+            1.0
+        };
         let center_time = scroll + visible_time / 2.0;
         let ratio = tile_cache::lod_ratio(lod);
         let center_col = (center_time / time_res) as f64 * ratio;
         let center_tile = (center_col / tile_cache::TILE_COLS as f64) as usize;
 
         // Bump generation to cancel any stale preload
-        state.viewmode.bg_preload_gen().update(|g| *g = g.wrapping_add(1));
+        state
+            .viewmode
+            .bg_preload_gen()
+            .update(|g| *g = g.wrapping_add(1));
         let generation = state.viewmode.bg_preload_gen().get_untracked();
 
-        tile_cache::start_background_preload(state, file_idx, lod, center_tile, max_tiles, generation);
+        tile_cache::start_background_preload(
+            state,
+            file_idx,
+            lod,
+            center_tile,
+            max_tiles,
+            generation,
+        );
     });
 
     // Stop background preload on component disposal
     on_cleanup(move || {
-        state.viewmode.bg_preload_gen().update(|g| *g = g.wrapping_add(1));
+        state
+            .viewmode
+            .bg_preload_gen()
+            .update(|g| *g = g.wrapping_add(1));
         crate::canvas::tile_cache::stop_background_preload();
     });
 
@@ -1517,4 +1783,3 @@ pub fn Spectrogram() -> impl IntoView {
         </div>
     }
 }
-

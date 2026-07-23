@@ -11,9 +11,9 @@ pub struct WavHeader {
     pub channels: u16,
     pub bits_per_sample: u16,
     pub is_float: bool,
-    pub data_offset: u64,       // byte offset of PCM "data" chunk body within file
-    pub data_size: u64,         // byte length of PCM data
-    pub total_frames: u64,      // data_size / (channels * bytes_per_sample / 8)
+    pub data_offset: u64,  // byte offset of PCM "data" chunk body within file
+    pub data_size: u64,    // byte length of PCM data
+    pub total_frames: u64, // data_size / (channels * bytes_per_sample / 8)
     pub guano: Option<GuanoMetadata>,
     /// Cue-point markers from `cue ` + `LIST`/`adtl` chunks, if present.
     pub wav_markers: Vec<WavMarker>,
@@ -33,7 +33,10 @@ pub fn parse_wav_header(header_bytes: &[u8]) -> Result<WavHeader, String> {
 
 /// Like `parse_wav_header`, but accepts an optional actual file size to correct
 /// u32 overflow in the `data` chunk size field for files >4 GB.
-pub fn parse_wav_header_with_file_size(header_bytes: &[u8], file_size: Option<u64>) -> Result<WavHeader, String> {
+pub fn parse_wav_header_with_file_size(
+    header_bytes: &[u8],
+    file_size: Option<u64>,
+) -> Result<WavHeader, String> {
     if header_bytes.len() < 12 {
         return Err("File too small for WAV header".into());
     }
@@ -51,8 +54,8 @@ pub fn parse_wav_header_with_file_size(header_bytes: &[u8], file_size: Option<u6
     let mut data_size: Option<u64> = None;
     let mut guano: Option<GuanoMetadata> = None;
     let mut cue_points: Vec<(u32, u64)> = Vec::new(); // (id, sample_position)
-    let mut labels: Vec<(u32, String)> = Vec::new();   // (cue_id, text)
-    let mut notes: Vec<(u32, String)> = Vec::new();    // (cue_id, text)
+    let mut labels: Vec<(u32, String)> = Vec::new(); // (cue_id, text)
+    let mut notes: Vec<(u32, String)> = Vec::new(); // (cue_id, text)
 
     // RF64: 64-bit sizes from the ds64 chunk (must appear before fmt/data)
     let mut ds64_data_size: Option<u64> = None;
@@ -60,7 +63,9 @@ pub fn parse_wav_header_with_file_size(header_bytes: &[u8], file_size: Option<u6
     while pos + 8 <= header_bytes.len() {
         let chunk_id = &header_bytes[pos..pos + 4];
         let chunk_size = u32::from_le_bytes(
-            header_bytes[pos + 4..pos + 8].try_into().map_err(|_| "Invalid chunk size")?,
+            header_bytes[pos + 4..pos + 8]
+                .try_into()
+                .map_err(|_| "Invalid chunk size")?,
         ) as u64;
         let body_start = pos + 8;
         // Use u64 to avoid usize overflow on 32-bit WASM for large chunks
@@ -120,13 +125,17 @@ pub fn parse_wav_header_with_file_size(header_bytes: &[u8], file_size: Option<u6
                 if chunk_fits && chunk_size >= 4 {
                     let body_end = body_end_u64 as usize;
                     let cue_data = &header_bytes[body_start..body_end];
-                    let num_points = u32::from_le_bytes([cue_data[0], cue_data[1], cue_data[2], cue_data[3]]);
+                    let num_points =
+                        u32::from_le_bytes([cue_data[0], cue_data[1], cue_data[2], cue_data[3]]);
                     let mut cp = 4usize;
                     for _ in 0..num_points {
-                        if cp + 24 > cue_data.len() { break; }
+                        if cp + 24 > cue_data.len() {
+                            break;
+                        }
                         let id = u32::from_le_bytes(cue_data[cp..cp + 4].try_into().unwrap());
                         // sample_offset is at offset 20 within the cue point struct
-                        let sample_offset = u32::from_le_bytes(cue_data[cp + 20..cp + 24].try_into().unwrap());
+                        let sample_offset =
+                            u32::from_le_bytes(cue_data[cp + 20..cp + 24].try_into().unwrap());
                         cue_points.push((id, sample_offset as u64));
                         cp += 24;
                     }
@@ -178,12 +187,15 @@ pub fn parse_wav_header_with_file_size(header_bytes: &[u8], file_size: Option<u6
         let expected_data = fs.saturating_sub(data_offset);
         // If the stored data_size is much smaller than what the file contains,
         // or if it's exactly 0xFFFFFFFF (sentinel used by some writers), fix it.
-        if data_size == 0xFFFFFFFF || (expected_data > data_size + 1024 && expected_data > 1_000_000) {
+        if data_size == 0xFFFFFFFF
+            || (expected_data > data_size + 1024 && expected_data > 1_000_000)
+        {
             // Align to whole frames
             let corrected = (expected_data / bytes_per_frame) * bytes_per_frame;
             log::info!(
                 "Correcting data_size: header says {} bytes, file suggests {} bytes",
-                data_size, corrected
+                data_size,
+                corrected
             );
             data_size = corrected;
         }
@@ -192,11 +204,25 @@ pub fn parse_wav_header_with_file_size(header_bytes: &[u8], file_size: Option<u6
     let total_frames = data_size / bytes_per_frame;
 
     // Build WAV markers from parsed cue points + labels/notes
-    let wav_markers: Vec<WavMarker> = cue_points.iter().map(|&(id, position)| {
-        let label = labels.iter().find(|(cid, _)| *cid == id).map(|(_, t)| t.clone());
-        let note = notes.iter().find(|(cid, _)| *cid == id).map(|(_, t)| t.clone());
-        WavMarker { id, position, label, note }
-    }).collect();
+    let wav_markers: Vec<WavMarker> = cue_points
+        .iter()
+        .map(|&(id, position)| {
+            let label = labels
+                .iter()
+                .find(|(cid, _)| *cid == id)
+                .map(|(_, t)| t.clone());
+            let note = notes
+                .iter()
+                .find(|(cid, _)| *cid == id)
+                .map(|(_, t)| t.clone());
+            WavMarker {
+                id,
+                position,
+                label,
+                note,
+            }
+        })
+        .collect();
 
     Ok(WavHeader {
         sample_rate,
@@ -212,7 +238,11 @@ pub fn parse_wav_header_with_file_size(header_bytes: &[u8], file_size: Option<u6
 }
 
 /// Parse `labl` and `note` sub-chunks from a LIST/adtl body.
-fn parse_adtl_subchunks(data: &[u8], labels: &mut Vec<(u32, String)>, notes: &mut Vec<(u32, String)>) {
+fn parse_adtl_subchunks(
+    data: &[u8],
+    labels: &mut Vec<(u32, String)>,
+    notes: &mut Vec<(u32, String)>,
+) {
     let mut pos = 0;
     while pos + 8 <= data.len() {
         let sub_id = &data[pos..pos + 4];
@@ -345,7 +375,12 @@ pub fn parse_mp3_header(header_bytes: &[u8], file_size: u64) -> Result<Mp3Header
     hint.with_extension("mp3");
 
     let format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| format!("MP3 probe error: {e}"))?;
 
     let track = format
@@ -402,7 +437,9 @@ pub fn parse_mp3_header(header_bytes: &[u8], file_size: u64) -> Result<Mp3Header
 /// Extract WAV markers from raw file bytes (for non-streaming loads).
 /// Returns an empty Vec for non-WAV files or files without cue markers.
 pub fn parse_wav_markers(bytes: &[u8]) -> Vec<WavMarker> {
-    if bytes.len() < 12 { return Vec::new(); }
+    if bytes.len() < 12 {
+        return Vec::new();
+    }
     match &bytes[0..4] {
         b"RIFF" | b"RF64" => {}
         _ => return Vec::new(),
@@ -452,7 +489,11 @@ fn load_zc(bytes: &[u8]) -> Result<AudioData, String> {
     let sample_rate: u32 = 384_000;
     let channels: u32 = 1;
     let synth = super::zc::synthesise_waveform(&zc, sample_rate);
-    let synth_samples = if synth.is_empty() { vec![0.0_f32] } else { synth };
+    let synth_samples = if synth.is_empty() {
+        vec![0.0_f32]
+    } else {
+        synth
+    };
     let (samples, source) = build_source(synth_samples, channels, sample_rate);
     let metadata = FileMetadata {
         file_size: bytes.len(),
@@ -527,9 +568,8 @@ pub fn is_w4v(bytes: &[u8]) -> bool {
     let mut pos = 12usize;
     while pos + 8 <= bytes.len() {
         let chunk_id = &bytes[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes(
-            bytes[pos + 4..pos + 8].try_into().unwrap_or([0; 4]),
-        ) as usize;
+        let chunk_size =
+            u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().unwrap_or([0; 4])) as usize;
         if chunk_id == b"fmt " && chunk_size >= 2 && pos + 10 <= bytes.len() {
             let format_tag = u16::from_le_bytes([bytes[pos + 8], bytes[pos + 9]]);
             return format_tag == W4V_FORMAT_TAG;
@@ -568,7 +608,9 @@ pub fn parse_w4v_header(bytes: &[u8]) -> Result<W4vHeader, String> {
     while pos + 8 <= bytes.len() {
         let chunk_id = &bytes[pos..pos + 4];
         let chunk_size = u32::from_le_bytes(
-            bytes[pos + 4..pos + 8].try_into().map_err(|_| "Invalid chunk size")?,
+            bytes[pos + 4..pos + 8]
+                .try_into()
+                .map_err(|_| "Invalid chunk size")?,
         ) as u64;
         let body_start = pos + 8;
         let body_end_u64 = body_start as u64 + chunk_size;
@@ -632,7 +674,10 @@ pub fn parse_w4v_header(bytes: &[u8]) -> Result<W4vHeader, String> {
     let data_bytes_per_block = block_align as usize - W4V_BLOCK_HEADER;
     let bits_per_coded_sample = (data_bytes_per_block * 8 / W4V_BLOCK_SAMPLES) as u8;
     if bits_per_coded_sample < 2 || bits_per_coded_sample > 16 {
-        return Err(format!("W4V: unexpected bits per coded sample: {}", bits_per_coded_sample));
+        return Err(format!(
+            "W4V: unexpected bits per coded sample: {}",
+            bits_per_coded_sample
+        ));
     }
 
     let total_frames = if let Some(n) = fact_samples {
@@ -747,7 +792,12 @@ pub fn parse_ogg_header(header_bytes: &[u8], file_size: u64) -> Result<OggHeader
     hint.with_extension("ogg");
 
     let format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| format!("OGG probe error: {e}"))?;
 
     let track = format
@@ -801,9 +851,7 @@ fn normalize_riff(bytes: &[u8]) -> Option<Vec<u8>> {
 
     while pos + 8 <= bytes.len() {
         let chunk_id = &bytes[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes(
-            bytes[pos + 4..pos + 8].try_into().ok()?,
-        ) as usize;
+        let chunk_size = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
         let data_start = pos + 8;
         let data_end = data_start + chunk_size;
         if data_end > bytes.len() {
@@ -831,17 +879,18 @@ fn normalize_riff(bytes: &[u8]) -> Option<Vec<u8>> {
     // tack non-standard text metadata onto the end of the fmt chunk; for
     // standard PCM (format tag 1) the first 16 bytes are well-formed and
     // the trailer is garbage. Strip it.
-    let fmt_normalized: &[u8] = if fmt.len() >= 16 && fmt.len() != 16 && fmt.len() != 18 && fmt.len() != 40 {
-        let format_tag = u16::from_le_bytes([fmt[0], fmt[1]]);
-        if format_tag == 1 || format_tag == 3 {
-            // PCM int / float — first 16 bytes are the standard header, rest is junk.
-            &fmt[..16]
+    let fmt_normalized: &[u8] =
+        if fmt.len() >= 16 && fmt.len() != 16 && fmt.len() != 18 && fmt.len() != 40 {
+            let format_tag = u16::from_le_bytes([fmt[0], fmt[1]]);
+            if format_tag == 1 || format_tag == 3 {
+                // PCM int / float — first 16 bytes are the standard header, rest is junk.
+                &fmt[..16]
+            } else {
+                fmt
+            }
         } else {
             fmt
-        }
-    } else {
-        fmt
-    };
+        };
 
     // WAVE + fmt chunk header + fmt body + data chunk header + data body
     let riff_body_len = 4 + 8 + fmt_normalized.len() + 8 + data.len();
@@ -888,13 +937,17 @@ fn load_w4v(bytes: &[u8]) -> Result<AudioData, String> {
 
 fn load_wav(bytes: &[u8]) -> Result<AudioData, String> {
     // Parse original header for data_offset/data_size before normalization
-    let (orig_data_offset, orig_data_size) = parse_wav_header_with_file_size(bytes, Some(bytes.len() as u64))
-        .map(|h| (Some(h.data_offset), Some(h.data_size)))
-        .unwrap_or((None, None));
+    let (orig_data_offset, orig_data_size) =
+        parse_wav_header_with_file_size(bytes, Some(bytes.len() as u64))
+            .map(|h| (Some(h.data_offset), Some(h.data_size)))
+            .unwrap_or((None, None));
 
     let normalized;
     let wav_bytes = match normalize_riff(bytes) {
-        Some(clean) => { normalized = clean; &normalized[..] }
+        Some(clean) => {
+            normalized = clean;
+            &normalized[..]
+        }
         None => bytes,
     };
     let cursor = Cursor::new(wav_bytes);
@@ -949,7 +1002,12 @@ fn load_wav(bytes: &[u8]) -> Result<AudioData, String> {
 fn load_flac(bytes: &[u8]) -> Result<AudioData, String> {
     // Parse header for data_offset before using claxon
     let (flac_data_offset, flac_data_size) = parse_flac_header(bytes)
-        .map(|h| (Some(h.first_frame_offset), Some((bytes.len() as u64).saturating_sub(h.first_frame_offset))))
+        .map(|h| {
+            (
+                Some(h.first_frame_offset),
+                Some((bytes.len() as u64).saturating_sub(h.first_frame_offset)),
+            )
+        })
         .unwrap_or((None, None));
 
     let cursor = Cursor::new(bytes);
@@ -1004,10 +1062,16 @@ pub fn mp3_trailer_size(bytes: &[u8]) -> u64 {
     }
     if end >= 32 && &bytes[end - 32..end - 24] == b"APETAGEX" {
         let tag_size = u32::from_le_bytes([
-            bytes[end - 20], bytes[end - 19], bytes[end - 18], bytes[end - 17],
+            bytes[end - 20],
+            bytes[end - 19],
+            bytes[end - 18],
+            bytes[end - 17],
         ]) as usize;
         let flags = u32::from_le_bytes([
-            bytes[end - 12], bytes[end - 11], bytes[end - 10], bytes[end - 9],
+            bytes[end - 12],
+            bytes[end - 11],
+            bytes[end - 10],
+            bytes[end - 9],
         ]);
         let has_header = (flags & 0x8000_0000) != 0;
         let total = if has_header { tag_size + 32 } else { tag_size };
@@ -1118,7 +1182,12 @@ fn load_mp3(bytes: &[u8]) -> Result<AudioData, String> {
 
     let hint = Hint::new();
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| format!("MP3 probe error: {e}"))?;
 
     let track = format
@@ -1198,7 +1267,11 @@ fn load_mp3(bytes: &[u8]) -> Result<AudioData, String> {
 
 /// Build mono-mixed samples and an InMemorySource from decoded interleaved samples.
 /// For mono files, raw_samples is None (saves memory by sharing the Arc).
-fn build_source(all_samples: Vec<f32>, channels: u32, sample_rate: u32) -> (Arc<Vec<f32>>, Arc<InMemorySource>) {
+fn build_source(
+    all_samples: Vec<f32>,
+    channels: u32,
+    sample_rate: u32,
+) -> (Arc<Vec<f32>>, Arc<InMemorySource>) {
     if channels == 1 {
         let samples = Arc::new(all_samples);
         let source = Arc::new(InMemorySource {
@@ -1337,7 +1410,8 @@ pub fn parse_m4a_audio_entry(bytes: &[u8]) -> Option<(u16, u32)> {
                             if let Some(stsd) = find_child_atom(stbl, *b"stsd") {
                                 // stsd: 1B version + 3B flags + 4B entry_count, then entries
                                 if stsd.len() >= 8 {
-                                    if let Some(entry) = parse_first_audio_sample_entry(&stsd[8..]) {
+                                    if let Some(entry) = parse_first_audio_sample_entry(&stsd[8..])
+                                    {
                                         return Some(entry);
                                     }
                                 }
@@ -1357,7 +1431,9 @@ pub fn parse_m4a_audio_entry(bytes: &[u8]) -> Option<(u16, u32)> {
 /// bits for rates <= 65535; higher rates live in esds/AudioSpecificConfig and
 /// this function may return 0 or a truncated value for those.
 fn parse_first_audio_sample_entry(entries_body: &[u8]) -> Option<(u16, u32)> {
-    if entries_body.len() < 8 { return None; }
+    if entries_body.len() < 8 {
+        return None;
+    }
     // First entry: 4B size + 4B type + body
     let size = u32::from_be_bytes(entries_body[0..4].try_into().ok()?) as u64;
     let type_code = &entries_body[4..8];
@@ -1369,7 +1445,9 @@ fn parse_first_audio_sample_entry(entries_body: &[u8]) -> Option<(u16, u32)> {
     // AudioSampleEntry layout (version 0):
     //   6B reserved + 2B data_ref_idx + 8B reserved(0) + 2B channel_count
     //   + 2B sample_size + 4B pre_defined/reserved + 4B sample_rate (upper 16 = integer)
-    if body.len() < 28 { return None; }
+    if body.len() < 28 {
+        return None;
+    }
     let channels = u16::from_be_bytes(body[16..18].try_into().ok()?);
     // sample_rate is at offset 24, upper 16 bits = integer part
     let sr_int = u16::from_be_bytes(body[24..26].try_into().ok()?);
@@ -1401,7 +1479,9 @@ pub fn parse_m4a_sample_rate(bytes: &[u8]) -> Option<u32> {
                             if mdhd.len() >= ts_off + 4 {
                                 let ts_bytes: [u8; 4] = mdhd[ts_off..ts_off + 4].try_into().ok()?;
                                 let ts = u32::from_be_bytes(ts_bytes);
-                                if ts > 0 { return Some(ts); }
+                                if ts > 0 {
+                                    return Some(ts);
+                                }
                             }
                         }
                     }
@@ -1418,13 +1498,23 @@ pub fn parse_m4a_sample_rate(bytes: &[u8]) -> Option<u32> {
 /// "©ART" for artist) rendered as UTF-8 where possible. Empty if nothing found.
 pub fn parse_m4a_tags(bytes: &[u8]) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    let Some(moov) = find_top_level_atom(bytes, *b"moov") else { return out; };
-    let Some(udta) = find_child_atom(moov, *b"udta") else { return out; };
-    let Some(meta) = find_child_atom(udta, *b"meta") else { return out; };
+    let Some(moov) = find_top_level_atom(bytes, *b"moov") else {
+        return out;
+    };
+    let Some(udta) = find_child_atom(moov, *b"udta") else {
+        return out;
+    };
+    let Some(meta) = find_child_atom(udta, *b"meta") else {
+        return out;
+    };
     // `meta` is a full box: 1 byte version + 3 bytes flags, then children.
-    if meta.len() < 4 { return out; }
+    if meta.len() < 4 {
+        return out;
+    }
     let meta_body = &meta[4..];
-    let Some(ilst) = find_child_atom(meta_body, *b"ilst") else { return out; };
+    let Some(ilst) = find_child_atom(meta_body, *b"ilst") else {
+        return out;
+    };
 
     // Walk ilst children: each child has a fourcc key + nested `data` atom.
     let mut pos = 0usize;
@@ -1435,15 +1525,21 @@ pub fn parse_m4a_tags(bytes: &[u8]) -> Vec<(String, String)> {
         };
         let size = u32::from_be_bytes(size_bytes) as u64;
         let key_bytes = &ilst[pos + 4..pos + 8];
-        let Some((body_start, body_end)) = mp4_box_body_range(ilst, pos, size) else { break; };
+        let Some((body_start, body_end)) = mp4_box_body_range(ilst, pos, size) else {
+            break;
+        };
         if let Some(data) = find_child_atom(&ilst[body_start..body_end], *b"data") {
             // `data` body: 1 byte version + 3 bytes type_indicator + 4 bytes locale + payload.
             if data.len() > 8 {
-                let type_indicator = u32::from_be_bytes(data[0..4].try_into().unwrap_or([0; 4])) & 0x00FF_FFFF;
+                let type_indicator =
+                    u32::from_be_bytes(data[0..4].try_into().unwrap_or([0; 4])) & 0x00FF_FFFF;
                 let payload = &data[8..];
                 let key_raw: [u8; 4] = key_bytes.try_into().unwrap_or([0; 4]);
                 // Skip binary blob tags (cover art, preview jpeg, etc.)
-                if matches!(&key_raw, b"covr" | b"----") { pos = body_end; continue; }
+                if matches!(&key_raw, b"covr" | b"----") {
+                    pos = body_end;
+                    continue;
+                }
                 let key = friendly_ilst_key(key_raw).unwrap_or_else(|| render_fourcc(key_bytes));
                 let value = render_ilst_value(type_indicator, key_raw, payload);
                 if !value.is_empty() {
@@ -1466,7 +1562,11 @@ fn render_ilst_value(type_indicator: u32, key: [u8; 4], payload: &[u8]) -> Strin
     if (&key == b"trkn" || &key == b"disk") && payload.len() >= 6 {
         let index = u16::from_be_bytes(payload[2..4].try_into().unwrap_or([0; 2]));
         let total = u16::from_be_bytes(payload[4..6].try_into().unwrap_or([0; 2]));
-        return if total > 0 { format!("{index}/{total}") } else { index.to_string() };
+        return if total > 0 {
+            format!("{index}/{total}")
+        } else {
+            index.to_string()
+        };
     }
     // `gnre` (legacy genre): 2-byte BE index into ID3 genre list.
     if &key == b"gnre" && payload.len() >= 2 {
@@ -1475,20 +1575,20 @@ fn render_ilst_value(type_indicator: u32, key: [u8; 4], payload: &[u8]) -> Strin
     }
     match type_indicator {
         1 => String::from_utf8_lossy(payload).into_owned(),
-        21 | 22 => {
-            match payload.len() {
-                1 => (payload[0] as i8).to_string(),
-                2 => i16::from_be_bytes(payload.try_into().unwrap_or([0; 2])).to_string(),
-                4 => i32::from_be_bytes(payload.try_into().unwrap_or([0; 4])).to_string(),
-                8 => i64::from_be_bytes(payload.try_into().unwrap_or([0; 8])).to_string(),
-                _ => String::new(),
-            }
-        }
+        21 | 22 => match payload.len() {
+            1 => (payload[0] as i8).to_string(),
+            2 => i16::from_be_bytes(payload.try_into().unwrap_or([0; 2])).to_string(),
+            4 => i32::from_be_bytes(payload.try_into().unwrap_or([0; 4])).to_string(),
+            8 => i64::from_be_bytes(payload.try_into().unwrap_or([0; 8])).to_string(),
+            _ => String::new(),
+        },
         _ => {
             // Implicit: only surface if it parses as valid UTF-8 and looks
             // text-like (no control bytes except common whitespace).
             if let Ok(s) = std::str::from_utf8(payload) {
-                if s.chars().all(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r')) {
+                if s.chars()
+                    .all(|c| !c.is_control() || matches!(c, '\t' | '\n' | '\r'))
+                {
                     return s.to_string();
                 }
             }
@@ -1503,31 +1603,31 @@ fn friendly_ilst_key(key: [u8; 4]) -> Option<String> {
     let name = match &key {
         b"\xA9nam" => "Title",
         b"\xA9ART" => "Artist",
-        b"aART"   => "Album Artist",
+        b"aART" => "Album Artist",
         b"\xA9alb" => "Album",
         b"\xA9day" => "Year",
         b"\xA9gen" => "Genre",
-        b"gnre"   => "Genre",
+        b"gnre" => "Genre",
         b"\xA9cmt" => "Comment",
         b"\xA9wrt" => "Composer",
         b"\xA9too" => "Encoder",
         b"\xA9grp" => "Grouping",
         b"\xA9lyr" => "Lyrics",
-        b"trkn"   => "Track",
-        b"disk"   => "Disc",
-        b"cprt"   => "Copyright",
-        b"desc"   => "Description",
-        b"ldes"   => "Long Description",
-        b"tvsh"   => "TV Show",
-        b"tven"   => "TV Episode ID",
-        b"tvsn"   => "TV Season",
-        b"tves"   => "TV Episode",
-        b"pcst"   => "Podcast",
-        b"catg"   => "Category",
-        b"keyw"   => "Keywords",
-        b"purd"   => "Purchase Date",
-        b"rtng"   => "Rating",
-        b"stik"   => "Media Kind",
+        b"trkn" => "Track",
+        b"disk" => "Disc",
+        b"cprt" => "Copyright",
+        b"desc" => "Description",
+        b"ldes" => "Long Description",
+        b"tvsh" => "TV Show",
+        b"tven" => "TV Episode ID",
+        b"tvsn" => "TV Season",
+        b"tves" => "TV Episode",
+        b"pcst" => "Podcast",
+        b"catg" => "Category",
+        b"keyw" => "Keywords",
+        b"purd" => "Purchase Date",
+        b"rtng" => "Rating",
+        b"stik" => "Media Kind",
         _ => return None,
     };
     Some(name.to_string())
@@ -1564,11 +1664,15 @@ fn find_chpl_chapters(bytes: &[u8]) -> Option<Vec<(f64, String)>> {
 /// - 1 byte chapter count (some writers use 4 bytes — accept both)
 /// - entries: u64 BE (100-ns units) + u8 title length + UTF-8 title
 fn parse_chpl_atom(body: &[u8]) -> Option<Vec<(f64, String)>> {
-    if body.len() < 5 { return None; }
+    if body.len() < 5 {
+        return None;
+    }
     let version = body[0];
     let mut pos = 4; // skip version + flags
     if version >= 1 {
-        if body.len() < pos + 4 { return None; }
+        if body.len() < pos + 4 {
+            return None;
+        }
         pos += 4; // reserved
     }
     // Count: try u8 first. If a u32 BE count makes more sense (when u8 count
@@ -1592,11 +1696,15 @@ fn parse_chpl_atom(body: &[u8]) -> Option<Vec<(f64, String)>> {
 
     let mut out = Vec::with_capacity(count.min(1024));
     for _ in 0..count {
-        if pos + 9 > body.len() { break; }
+        if pos + 9 > body.len() {
+            break;
+        }
         let time100ns = u64::from_be_bytes(body[pos..pos + 8].try_into().ok()?);
         let title_len = body[pos + 8] as usize;
         pos += 9;
-        if pos + title_len > body.len() { break; }
+        if pos + title_len > body.len() {
+            break;
+        }
         let title = String::from_utf8_lossy(&body[pos..pos + title_len]).into_owned();
         pos += title_len;
         let secs = time100ns as f64 / 10_000_000.0;
@@ -1642,7 +1750,9 @@ fn find_child_atom(parent: &[u8], fourcc: [u8; 4]) -> Option<&[u8]> {
 /// Handles size==1 (64-bit extended size) and size==0 (extends to end of container).
 fn mp4_box_body_range(container: &[u8], pos: usize, size: u64) -> Option<(usize, usize)> {
     let end = if size == 1 {
-        if pos + 16 > container.len() { return None; }
+        if pos + 16 > container.len() {
+            return None;
+        }
         let large = u64::from_be_bytes(container[pos + 8..pos + 16].try_into().ok()?);
         pos as u64 + large
     } else if size == 0 {
@@ -1652,7 +1762,9 @@ fn mp4_box_body_range(container: &[u8], pos: usize, size: u64) -> Option<(usize,
     };
     let body_start = if size == 1 { pos + 16 } else { pos + 8 };
     let end_usize = end.min(container.len() as u64) as usize;
-    if body_start > end_usize { return None; }
+    if body_start > end_usize {
+        return None;
+    }
     Some((body_start, end_usize))
 }
 
@@ -1671,7 +1783,12 @@ fn load_m4a(bytes: &[u8]) -> Result<AudioData, String> {
     hint.with_extension("m4a");
 
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| format!("M4A probe error: {e}"))?;
 
     let track = format
@@ -1731,10 +1848,15 @@ fn load_m4a(bytes: &[u8]) -> Result<AudioData, String> {
         let packet = match format.next_packet() {
             Ok(Some(p)) => p,
             Ok(None) => break,
-            Err(SymphoniaError::ResetRequired) => { decoder.reset(); continue; }
+            Err(SymphoniaError::ResetRequired) => {
+                decoder.reset();
+                continue;
+            }
             Err(e) => return Err(format!("M4A packet error: {e}")),
         };
-        if packet.track_id != track_id { continue; }
+        if packet.track_id != track_id {
+            continue;
+        }
         match decoder.decode(&packet) {
             Ok(decoded) => {
                 if actual_rate.is_none() {
@@ -1766,7 +1888,11 @@ fn load_m4a(bytes: &[u8]) -> Result<AudioData, String> {
             format: "M4A",
             bits_per_sample: 16,
             is_float: false,
-            guano: if tags.fields.is_empty() { None } else { Some(tags) },
+            guano: if tags.fields.is_empty() {
+                None
+            } else {
+                Some(tags)
+            },
             data_offset: None,
             data_size: None,
             zc_data: None,

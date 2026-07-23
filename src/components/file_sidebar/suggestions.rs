@@ -2,8 +2,10 @@ use crate::state::store_fields::*;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+use super::loading::{
+    fetch_demo_details, fetch_demo_index, find_open_demo, load_single_demo, DemoDetails, DemoEntry,
+};
 use crate::state::AppState;
-use super::loading::{DemoDetails, DemoEntry, fetch_demo_details, fetch_demo_index, find_open_demo, load_single_demo};
 
 const PICK_COUNT: usize = 3;
 
@@ -38,7 +40,8 @@ fn format_duration(secs: f64) -> String {
 
 fn display_name(entry: &DemoEntry) -> String {
     entry.en.clone().unwrap_or_else(|| {
-        entry.filename
+        entry
+            .filename
             .trim_end_matches(".wav")
             .trim_end_matches(".w4v")
             .trim_end_matches(".flac")
@@ -73,7 +76,9 @@ fn pick_suggestions(pool: &[DemoEntry], count: usize, seed: Option<u64>) -> Vec<
     let n = count.min(bats.len());
     let mut chosen_indices: Vec<usize> = Vec::with_capacity(n);
     let mut attempts = 0;
-    let mut state: u64 = seed.map(|s| s.wrapping_add(0x9E3779B97F4A7C15)).unwrap_or(0);
+    let mut state: u64 = seed
+        .map(|s| s.wrapping_add(0x9E3779B97F4A7C15))
+        .unwrap_or(0);
     while chosen_indices.len() < n && attempts < n * 20 {
         let r = match seed {
             Some(_) => seeded_f64(&mut state),
@@ -85,8 +90,15 @@ fn pick_suggestions(pool: &[DemoEntry], count: usize, seed: Option<u64>) -> Vec<
         }
         attempts += 1;
     }
-    let mut picked: Vec<DemoEntry> = chosen_indices.into_iter().map(|i| bats[i].clone()).collect();
-    picked.sort_by(|a, b| display_name(a).to_lowercase().cmp(&display_name(b).to_lowercase()));
+    let mut picked: Vec<DemoEntry> = chosen_indices
+        .into_iter()
+        .map(|i| bats[i].clone())
+        .collect();
+    picked.sort_by(|a, b| {
+        display_name(a)
+            .to_lowercase()
+            .cmp(&display_name(b).to_lowercase())
+    });
     picked
 }
 
@@ -146,7 +158,11 @@ pub(super) fn BatsForYou(
     Effect::new(move |_| {
         if !demo_entries.get_untracked().is_empty() {
             if suggestions.get_untracked().is_empty() {
-                refresh_suggestions(&demo_entries.get_untracked(), suggestions, Some(today_seed()));
+                refresh_suggestions(
+                    &demo_entries.get_untracked(),
+                    suggestions,
+                    Some(today_seed()),
+                );
             }
             return;
         }
@@ -252,7 +268,8 @@ pub(super) fn BatsForYou(
             <div class="bats-for-you-grid">
                 {cards}
             </div>
-        }.into_any()
+        }
+        .into_any()
     };
 
     view! {

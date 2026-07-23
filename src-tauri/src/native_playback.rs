@@ -51,10 +51,7 @@ const CHUNK_SAMPLES: usize = 96_000;
 const RING_CAPACITY: usize = 96_000 * 2;
 
 /// Start native audio playback.
-pub fn start(
-    params: NativePlayParams,
-    app: tauri::AppHandle,
-) -> Result<PlaybackState, String> {
+pub fn start(params: NativePlayParams, app: tauri::AppHandle) -> Result<PlaybackState, String> {
     // Decode the file via the shared oversample-core decoder (single source of
     // truth; the browser/WASM frontend uses the same path). `samples` is already
     // an `Arc<Vec<f32>>`, so no extra copy is needed here.
@@ -72,9 +69,7 @@ pub fn start(
 
     // Determine output sample rate
     let output_rate = match params.mode.as_str() {
-        "TimeExpansion" => {
-            ((source_rate as f64 / params.te_factor) as u32).max(8000)
-        }
+        "TimeExpansion" => ((source_rate as f64 / params.te_factor) as u32).max(8000),
         _ => source_rate,
     };
 
@@ -121,7 +116,9 @@ pub fn start(
         )
         .map_err(|e| format!("Failed to build output stream: {e}"))?;
 
-    stream.play().map_err(|e| format!("Failed to start playback: {e}"))?;
+    stream
+        .play()
+        .map_err(|e| format!("Failed to start playback: {e}"))?;
 
     // Producer thread: decode chunks, apply DSP, push to ring
     let ring_prod = ring.clone();
@@ -158,7 +155,12 @@ pub fn start(
 
             // Apply DSP
             let processed = match params_clone.mode.as_str() {
-                "Heterodyne" => heterodyne_mix(chunk, source_rate, params_clone.het_freq, params_clone.het_cutoff),
+                "Heterodyne" => heterodyne_mix(
+                    chunk,
+                    source_rate,
+                    params_clone.het_freq,
+                    params_clone.het_cutoff,
+                ),
                 "Normal" | "TimeExpansion" => chunk.to_vec(),
                 // PitchShift and ZeroCrossing: pass through for now (to be added)
                 _ => chunk.to_vec(),
@@ -186,8 +188,8 @@ pub fn start(
             }
 
             // Update playhead
-            let current_secs = start_time_secs
-                + (chunk_end - start_sample) as f64 / source_rate as f64;
+            let current_secs =
+                start_time_secs + (chunk_end - start_sample) as f64 / source_rate as f64;
             playhead_prod.store(current_secs.to_bits(), Ordering::Relaxed);
 
             pos = chunk_end;
@@ -214,8 +216,7 @@ pub fn start(
     let emitter_stop_flag = emitter_stop.clone();
 
     std::thread::spawn(move || {
-        while !emitter_stop_flag.load(Ordering::Relaxed)
-            && is_playing_emit.load(Ordering::Relaxed)
+        while !emitter_stop_flag.load(Ordering::Relaxed) && is_playing_emit.load(Ordering::Relaxed)
         {
             let secs = f64::from_bits(playhead_emit.load(Ordering::Relaxed));
             let _ = app.emit("playback-position", secs);

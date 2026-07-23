@@ -1,6 +1,6 @@
+use crate::types::{XcGroupTaxonomy, XcRecording};
 use std::fs;
 use std::path::{Path, PathBuf};
-use crate::types::{XcGroupTaxonomy, XcRecording};
 
 /// File hashes and size computed from audio bytes.
 #[derive(Clone, Debug)]
@@ -58,7 +58,16 @@ pub fn migrate_sidecar_json(json: &mut serde_json::Value) -> bool {
         None => return false,
     };
 
-    let hash_keys = ["blake3", "sha256", "file_size", "spot_hash", "spot_hash_b3", "content_hash", "data_offset", "data_size"];
+    let hash_keys = [
+        "blake3",
+        "sha256",
+        "file_size",
+        "spot_hash",
+        "spot_hash_b3",
+        "content_hash",
+        "data_offset",
+        "data_size",
+    ];
     let mut app_meta = serde_json::Map::new();
     let mut found_any = false;
 
@@ -95,15 +104,15 @@ pub fn sanitize_filename(name: &str) -> String {
 /// Build the base filename stem for a recording (no extension).
 /// e.g. "XC928094 - Pond Myotis - Myotis dasycneme"
 pub fn recording_stem(rec: &XcRecording) -> String {
-    sanitize_filename(&format!("XC{} - {} - {} {}", rec.id, rec.en, rec.genus, rec.sp))
+    sanitize_filename(&format!(
+        "XC{} - {} - {} {}",
+        rec.id, rec.en, rec.genus, rec.sp
+    ))
 }
 
 /// Determine audio file extension from the recording's original filename.
 pub fn audio_extension(rec: &XcRecording) -> &str {
-    rec.file_name
-        .rsplit('.')
-        .next()
-        .unwrap_or("wav")
+    rec.file_name.rsplit('.').next().unwrap_or("wav")
 }
 
 /// Path to the taxonomy cache file for a group.
@@ -117,27 +126,35 @@ pub fn taxonomy_path(root: &Path, group: &str, country: Option<&str>) -> PathBuf
 }
 
 /// Load cached taxonomy for a group, if it exists.
-pub fn load_taxonomy(root: &Path, group: &str, country: Option<&str>) -> Result<Option<XcGroupTaxonomy>, String> {
+pub fn load_taxonomy(
+    root: &Path,
+    group: &str,
+    country: Option<&str>,
+) -> Result<Option<XcGroupTaxonomy>, String> {
     let path = taxonomy_path(root, group, country);
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
     let taxonomy: XcGroupTaxonomy = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse {}: {e}", path.display()))?;
     Ok(Some(taxonomy))
 }
 
 /// Save taxonomy cache for a group.
-pub fn save_taxonomy(root: &Path, group: &str, country: Option<&str>, data: &XcGroupTaxonomy) -> Result<(), String> {
+pub fn save_taxonomy(
+    root: &Path,
+    group: &str,
+    country: Option<&str>,
+    data: &XcGroupTaxonomy,
+) -> Result<(), String> {
     let path = taxonomy_path(root, group, country);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create dir {}: {e}", parent.display()))?;
     }
-    let json = serde_json::to_string_pretty(data)
-        .map_err(|e| format!("Serialize error: {e}"))?;
+    let json = serde_json::to_string_pretty(data).map_err(|e| format!("Serialize error: {e}"))?;
     fs::write(&path, format!("{json}\n"))
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     Ok(())
@@ -154,10 +171,16 @@ pub fn taxonomy_age_string(root: &Path, group: &str, country: Option<&str>) -> O
     if hours < 1 {
         Some("just now".to_string())
     } else if hours < 24 {
-        Some(format!("{hours} hour{} ago", if hours == 1 { "" } else { "s" }))
+        Some(format!(
+            "{hours} hour{} ago",
+            if hours == 1 { "" } else { "s" }
+        ))
     } else {
         let days = duration.num_days();
-        Some(format!("{days} day{} ago", if days == 1 { "" } else { "s" }))
+        Some(format!(
+            "{days} day{} ago",
+            if days == 1 { "" } else { "s" }
+        ))
     }
 }
 
@@ -227,7 +250,7 @@ pub fn is_mp3(data: &[u8]) -> bool {
         && data[0] == 0xFF
         && (data[1] & 0xE0) == 0xE0
         && (data[1] & 0x18) != 0x08   // not reserved MPEG version
-        && (data[1] & 0x06) != 0x00   // not reserved layer
+        && (data[1] & 0x06) != 0x00 // not reserved layer
 }
 
 /// Size of the ID3v2 tag at `data[0..]`, or 0 if none.
@@ -270,10 +293,16 @@ pub fn detect_mp3_data_region(data: &[u8]) -> (Option<u64>, Option<u64>) {
     // indicates a 32-byte header precedes the tag body.
     if end >= 32 && &data[end - 32..end - 24] == b"APETAGEX" {
         let tag_size = u32::from_le_bytes([
-            data[end - 20], data[end - 19], data[end - 18], data[end - 17],
+            data[end - 20],
+            data[end - 19],
+            data[end - 18],
+            data[end - 17],
         ]) as u64;
         let flags = u32::from_le_bytes([
-            data[end - 12], data[end - 11], data[end - 10], data[end - 9],
+            data[end - 12],
+            data[end - 11],
+            data[end - 10],
+            data[end - 9],
         ]);
         let has_header = (flags & 0x8000_0000) != 0;
         let total = if has_header { tag_size + 32 } else { tag_size };
@@ -323,9 +352,8 @@ pub fn detect_wav_data_region(data: &[u8]) -> (Option<u64>, Option<u64>) {
     let mut pos = 12usize;
     while pos + 8 <= data.len() {
         let chunk_id = &data[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes([
-            data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7],
-        ]) as u64;
+        let chunk_size =
+            u32::from_le_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]]) as u64;
         if chunk_id == b"data" {
             let offset = (pos + 8) as u64;
             return (Some(offset), Some(chunk_size));
@@ -345,7 +373,11 @@ const NUM_SPOT_CHUNKS: u64 = 16;
 
 /// Compute BLAKE3 multi-point spot hash (16×1MB chunks across audio data region).
 /// Matches the algorithm in the main app's file_identity.rs.
-pub fn compute_spot_hash_b3(data: &[u8], data_offset: Option<u64>, data_size: Option<u64>) -> String {
+pub fn compute_spot_hash_b3(
+    data: &[u8],
+    data_offset: Option<u64>,
+    data_size: Option<u64>,
+) -> String {
     let file_size = data.len() as u64;
     let audio_start = data_offset.unwrap_or(0);
     let audio_len = data_size.unwrap_or(file_size.saturating_sub(audio_start));
@@ -377,7 +409,11 @@ pub fn compute_spot_hash_b3(data: &[u8], data_offset: Option<u64>, data_size: Op
 /// Compute content hash: BLAKE3 over just the audio samples
 /// (`file[data_offset..data_offset+data_size]`). Header and any trailing
 /// metadata (e.g. GUANO) are excluded, so metadata edits don't change it.
-pub fn compute_content_hash(data: &[u8], data_offset: Option<u64>, data_size: Option<u64>) -> String {
+pub fn compute_content_hash(
+    data: &[u8],
+    data_offset: Option<u64>,
+    data_size: Option<u64>,
+) -> String {
     let start = data_offset.unwrap_or(0) as usize;
     let end = match data_size {
         Some(sz) => (start + sz as usize).min(data.len()),
@@ -400,7 +436,11 @@ pub fn compute_file_hashes(data: &[u8]) -> FileHashes {
     let sha256 = {
         let mut hasher = sha2::Sha256::new();
         hasher.update(data);
-        hasher.finalize().iter().map(|b| format!("{b:02x}")).collect::<String>()
+        hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     };
 
     // BLAKE3 (full file)
@@ -412,7 +452,15 @@ pub fn compute_file_hashes(data: &[u8]) -> FileHashes {
     // Content hash (BLAKE3 of audio samples only)
     let content_hash = compute_content_hash(data, data_offset, data_size);
 
-    FileHashes { size_bytes, sha256, blake3, spot_hash_b3, content_hash, data_offset, data_size }
+    FileHashes {
+        size_bytes,
+        sha256,
+        blake3,
+        spot_hash_b3,
+        content_hash,
+        data_offset,
+        data_size,
+    }
 }
 
 /// Build the XC metadata sidecar JSON for a recording.
@@ -467,7 +515,10 @@ pub fn build_metadata_json(rec: &XcRecording) -> serde_json::Value {
 
 /// Build the XC metadata sidecar JSON for a recording, including file hashes.
 /// Hashes are nested under a `"_app"` key to distinguish from XC API fields.
-pub fn build_metadata_json_with_hashes(rec: &XcRecording, hashes: &FileHashes) -> serde_json::Value {
+pub fn build_metadata_json_with_hashes(
+    rec: &XcRecording,
+    hashes: &FileHashes,
+) -> serde_json::Value {
     let mut json = build_metadata_json(rec);
     if let Some(obj) = json.as_object_mut() {
         // Remove top-level "retrieved" — it goes under _app
@@ -476,8 +527,14 @@ pub fn build_metadata_json_with_hashes(rec: &XcRecording, hashes: &FileHashes) -
         bm.insert("file_size".into(), serde_json::json!(hashes.size_bytes));
         bm.insert("sha256".into(), serde_json::json!(hashes.sha256));
         bm.insert("blake3".into(), serde_json::json!(hashes.blake3));
-        bm.insert("spot_hash_b3".into(), serde_json::json!(hashes.spot_hash_b3));
-        bm.insert("content_hash".into(), serde_json::json!(hashes.content_hash));
+        bm.insert(
+            "spot_hash_b3".into(),
+            serde_json::json!(hashes.spot_hash_b3),
+        );
+        bm.insert(
+            "content_hash".into(),
+            serde_json::json!(hashes.content_hash),
+        );
         if let Some(offset) = hashes.data_offset {
             bm.insert("data_offset".into(), serde_json::json!(offset));
         }
@@ -512,8 +569,7 @@ pub fn save_recording(
     }
 
     let sounds_dir = root.join("sounds");
-    fs::create_dir_all(&sounds_dir)
-        .map_err(|e| format!("Failed to create sounds dir: {e}"))?;
+    fs::create_dir_all(&sounds_dir).map_err(|e| format!("Failed to create sounds dir: {e}"))?;
 
     let stem = recording_stem(rec);
     let ext = audio_extension(rec);
@@ -522,8 +578,7 @@ pub fn save_recording(
 
     // Write audio
     let audio_path = sounds_dir.join(&audio_filename);
-    fs::write(&audio_path, audio_bytes)
-        .map_err(|e| format!("Failed to write audio: {e}"))?;
+    fs::write(&audio_path, audio_bytes).map_err(|e| format!("Failed to write audio: {e}"))?;
 
     // Write metadata sidecar (with file hashes). Reuse the caller's hashes when
     // provided — hashing a large recording (sha256 + blake3 + spot + content) is
@@ -538,8 +593,8 @@ pub fn save_recording(
         }
     };
     let metadata = build_metadata_json_with_hashes(rec, hashes);
-    let json_str = serde_json::to_string_pretty(&metadata)
-        .map_err(|e| format!("Serialize error: {e}"))?;
+    let json_str =
+        serde_json::to_string_pretty(&metadata).map_err(|e| format!("Serialize error: {e}"))?;
     fs::write(&meta_path, format!("{json_str}\n"))
         .map_err(|e| format!("Failed to write metadata: {e}"))?;
 
@@ -616,8 +671,8 @@ fn remove_from_index_inner(root: &Path, id: u64) -> Result<(), String> {
     }
 
     let tmp_path = root.join("index.json.tmp");
-    let json_str = serde_json::to_string_pretty(&index)
-        .map_err(|e| format!("Serialize error: {e}"))?;
+    let json_str =
+        serde_json::to_string_pretty(&index).map_err(|e| format!("Serialize error: {e}"))?;
     fs::write(&tmp_path, format!("{json_str}\n"))
         .map_err(|e| format!("Failed to write index.json.tmp: {e}"))?;
     fs::rename(&tmp_path, &index_path)
@@ -678,7 +733,9 @@ fn update_index(
     audio_filename: &str,
     meta_filename: &str,
 ) -> Result<(), String> {
-    with_index_lock(root, || update_index_inner(root, rec, audio_filename, meta_filename))
+    with_index_lock(root, || {
+        update_index_inner(root, rec, audio_filename, meta_filename)
+    })
 }
 
 fn update_index_inner(
@@ -711,8 +768,8 @@ fn update_index_inner(
         "source": "xeno-canto"
     }));
 
-    let json_str = serde_json::to_string_pretty(&index)
-        .map_err(|e| format!("Serialize error: {e}"))?;
+    let json_str =
+        serde_json::to_string_pretty(&index).map_err(|e| format!("Serialize error: {e}"))?;
 
     // Write to temp file first, then rename for atomic update
     fs::write(&tmp_path, format!("{json_str}\n"))

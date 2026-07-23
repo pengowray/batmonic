@@ -1,7 +1,7 @@
 use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::state::{AppState, StatusLevel};
 use crate::viewport;
+use leptos::prelude::*;
 
 /// App-level toast display — always visible regardless of whether a file is open.
 #[component]

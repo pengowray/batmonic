@@ -4,10 +4,10 @@
 // "clears the fog" and reveals a shield (for frequency bands) or a solid
 // highlight (for time ranges).
 
-use web_sys::CanvasRenderingContext2d;
 use crate::canvas::colors::{freq_resistor_bands, freq_shield_color};
 use crate::canvas::overlays::{draw_bend_shield, draw_solid_shield};
 use crate::state::ShieldStyle;
+use web_sys::CanvasRenderingContext2d;
 
 /// Size (px) of one checkerboard cell. Two cells fit across the gutter's
 /// short axis, giving a ~40px-wide drag surface for finger-drag on mobile.
@@ -51,9 +51,13 @@ pub fn draw_fog(ctx: &CanvasRenderingContext2d, x: f64, y: f64, w: f64, h: f64, 
 /// Pick a frequency-division interval based on the total visible range.
 /// Mirrors the spectrogram's `draw_freq_markers` adaptive-interval logic.
 fn pick_div_interval(range_hz: f64) -> f64 {
-    if range_hz <= 5_000.0 { 1_000.0 }
-    else if range_hz <= 25_000.0 { 5_000.0 }
-    else { 10_000.0 }
+    if range_hz <= 5_000.0 {
+        1_000.0
+    } else if range_hz <= 25_000.0 {
+        5_000.0
+    } else {
+        10_000.0
+    }
 }
 
 /// Draw the band gutter. Paints fog over the whole rectangle, then overlays
@@ -77,7 +81,8 @@ fn pick_div_interval(range_hz: f64) -> f64 {
 /// the host's y-axis.
 pub fn draw_band_gutter(
     ctx: &CanvasRenderingContext2d,
-    w: f64, h: f64,
+    w: f64,
+    h: f64,
     min_freq: f64,
     max_freq: f64,
     band_lo: f64,
@@ -98,7 +103,11 @@ pub fn draw_band_gutter(
     // Background fog — slightly dimmer when HFR is off and no drag is
     // active. An in-progress drag brightens the fog too, so the whole
     // strip reads as "hot" during selection.
-    let fog_dim = if hfr_on || drag_range.is_some() { 1.0 } else { 0.7 };
+    let fog_dim = if hfr_on || drag_range.is_some() {
+        1.0
+    } else {
+        0.7
+    };
     draw_fog(ctx, shield_x, 0.0, shield_w, h, fog_dim);
 
     // Label divisions use the visible range's span — same adaptive rule as
@@ -121,7 +130,9 @@ pub fn draw_band_gutter(
     // the gutter edges when the spectrogram is zoomed in.
     let lo_clamped = draw_lo.max(min_freq).min(max_freq);
     let hi_clamped = draw_hi.max(min_freq).min(max_freq);
-    if hi_clamped <= lo_clamped { return; }
+    if hi_clamped <= lo_clamped {
+        return;
+    }
 
     // Match the spectrogram's y-mapping: min_freq at y=h, max_freq at y=0.
     let freq_y = |f: f64| -> f64 { h - ((f - min_freq) / range).clamp(0.0, 1.0) * h };
@@ -151,11 +162,27 @@ pub fn draw_band_gutter(
                     match shield_style {
                         ShieldStyle::Resistor => {
                             let bands = freq_resistor_bands(freq);
-                            draw_bend_shield(ctx, shield_x, y_top, shield_w, bar_h, bands, alpha_active);
+                            draw_bend_shield(
+                                ctx,
+                                shield_x,
+                                y_top,
+                                shield_w,
+                                bar_h,
+                                bands,
+                                alpha_active,
+                            );
                         }
                         ShieldStyle::Solid => {
                             let c = freq_shield_color(freq, div_interval);
-                            draw_solid_shield(ctx, shield_x, y_top, shield_w, bar_h, c, alpha_active);
+                            draw_solid_shield(
+                                ctx,
+                                shield_x,
+                                y_top,
+                                shield_w,
+                                bar_h,
+                                c,
+                                alpha_active,
+                            );
                         }
                         ShieldStyle::Off => {}
                     }
@@ -183,11 +210,27 @@ pub fn draw_band_gutter(
                     match shield_style {
                         ShieldStyle::Resistor => {
                             let bands = freq_resistor_bands(mf);
-                            draw_bend_shield(ctx, shield_x, y_top, shield_w, bar_h, bands, alpha_minor);
+                            draw_bend_shield(
+                                ctx,
+                                shield_x,
+                                y_top,
+                                shield_w,
+                                bar_h,
+                                bands,
+                                alpha_minor,
+                            );
                         }
                         ShieldStyle::Solid => {
                             let c = freq_shield_color(mf, minor_interval);
-                            draw_solid_shield(ctx, shield_x, y_top, shield_w, bar_h, c, alpha_minor);
+                            draw_solid_shield(
+                                ctx,
+                                shield_x,
+                                y_top,
+                                shield_w,
+                                bar_h,
+                                c,
+                                alpha_minor,
+                            );
                         }
                         ShieldStyle::Off => {}
                     }
@@ -216,7 +259,12 @@ pub fn draw_band_gutter(
             &wasm_bindgen::JsValue::from_f64(3.0),
             &wasm_bindgen::JsValue::from_f64(3.0),
         ));
-        ctx.stroke_rect(shield_x + 0.5, y_top + 0.5, shield_w - 1.0, (y_bot - y_top) - 1.0);
+        ctx.stroke_rect(
+            shield_x + 0.5,
+            y_top + 0.5,
+            shield_w - 1.0,
+            (y_bot - y_top) - 1.0,
+        );
         let _ = ctx.set_line_dash(&js_sys::Array::new());
         ctx.restore();
     }
@@ -227,8 +275,12 @@ pub fn draw_band_gutter(
 /// the selected time range (clipped to the visible window).
 pub fn draw_time_gutter_overlay(
     ctx: &CanvasRenderingContext2d,
-    x: f64, y: f64, w: f64, h: f64,
-    visible_start: f64, visible_end: f64,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    visible_start: f64,
+    visible_end: f64,
     selection: Option<(f64, f64)>,
 ) {
     draw_fog(ctx, x, y, w, h, 1.0);
@@ -266,7 +318,9 @@ fn draw_left_axis_labels(
     div_interval: f64,
 ) {
     let range = (max_freq - min_freq).max(1.0);
-    if h <= 0.0 || range <= 0.0 { return; }
+    if h <= 0.0 || range <= 0.0 {
+        return;
+    }
 
     // Tick spans the 4px immediately left of the shield edge; label
     // right-aligned just inside that, with a 2px gap from the tick.
@@ -322,13 +376,16 @@ fn draw_left_axis_labels(
 /// labels. Always drawn (independent of selection).
 fn draw_right_edge_ticks(
     ctx: &CanvasRenderingContext2d,
-    w: f64, h: f64,
+    w: f64,
+    h: f64,
     min_freq: f64,
     max_freq: f64,
     div_interval: f64,
 ) {
     let range = (max_freq - min_freq).max(1.0);
-    if h <= 0.0 || range <= 0.0 { return; }
+    if h <= 0.0 || range <= 0.0 {
+        return;
+    }
 
     // Major ticks — 4 px, 70% alpha, tinted with the frequency's marker colour.
     let first_div = ((min_freq / div_interval).ceil() * div_interval).max(div_interval);
@@ -375,7 +432,9 @@ pub fn freq_to_y(freq: f64, min_freq: f64, max_freq: f64, h: f64) -> f64 {
 /// Inverse of `freq_to_y`: map a Y pixel to a frequency (Hz) within the
 /// visible range.
 pub fn y_to_freq(y: f64, min_freq: f64, max_freq: f64, h: f64) -> f64 {
-    if h <= 0.0 { return min_freq; }
+    if h <= 0.0 {
+        return min_freq;
+    }
     let range = (max_freq - min_freq).max(0.0);
     let frac = (1.0 - (y / h)).clamp(0.0, 1.0);
     min_freq + frac * range

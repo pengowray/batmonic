@@ -1,8 +1,8 @@
+use crate::canvas::spectrogram_renderer::Colormap;
 use crate::state::store_fields::*;
+use crate::state::{AppState, ChromaColormap, ShieldStyle};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::canvas::spectrogram_renderer::Colormap;
-use crate::state::{AppState, ChromaColormap, ShieldStyle};
 
 fn parse_colormap_pref(s: &str) -> Colormap {
     match s {
@@ -34,15 +34,27 @@ pub(super) fn ConfigPanel() -> impl IntoView {
     let on_colormap_change = move |ev: web_sys::Event| {
         let target = ev.target().unwrap();
         let select: web_sys::HtmlSelectElement = target.unchecked_into();
-        state.spect.colormap_preference().set(parse_colormap_pref(&select.value()));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .spect
+            .colormap_preference()
+            .set(parse_colormap_pref(&select.value()));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     };
 
     let on_hfr_colormap_change = move |ev: web_sys::Event| {
         let target = ev.target().unwrap();
         let select: web_sys::HtmlSelectElement = target.unchecked_into();
-        state.spect.hfr_colormap_preference().set(parse_colormap_pref(&select.value()));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .spect
+            .hfr_colormap_preference()
+            .set(parse_colormap_pref(&select.value()));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     };
 
     let is_tauri = state.is_tauri;

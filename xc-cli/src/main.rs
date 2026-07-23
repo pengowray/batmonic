@@ -154,15 +154,13 @@ async fn main() {
     let client = reqwest::Client::new();
 
     match cli.command {
-        Commands::SetKey { key } => {
-            match key_store::save_key(&key) {
-                Ok(path) => println!("API key saved to {}", path.display()),
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
+        Commands::SetKey { key } => match key_store::save_key(&key) {
+            Ok(path) => println!("API key saved to {}", path.display()),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
             }
-        }
+        },
 
         Commands::ShowKey => {
             match key_store::key_path() {
@@ -171,7 +169,7 @@ async fn main() {
                     match key_store::load_key() {
                         Some(k) => {
                             let masked = if k.len() > 8 {
-                                format!("{}...{}", &k[..4], &k[k.len()-4..])
+                                format!("{}...{}", &k[..4], &k[k.len() - 4..])
                             } else {
                                 "****".to_string()
                             };
@@ -190,15 +188,13 @@ async fn main() {
             }
         }
 
-        Commands::ClearKey => {
-            match key_store::delete_key() {
-                Ok(()) => println!("API key removed"),
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
+        Commands::ClearKey => match key_store::delete_key() {
+            Ok(()) => println!("API key removed"),
+            Err(e) => {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
             }
-        }
+        },
 
         Commands::Fetch {
             recording,
@@ -207,11 +203,10 @@ async fn main() {
             key,
         } => {
             let api_key = require_api_key(&key);
-            let xc_number = api::parse_xc_number(&recording)
-                .unwrap_or_else(|e| {
-                    eprintln!("{e}");
-                    std::process::exit(1);
-                });
+            let xc_number = api::parse_xc_number(&recording).unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(1);
+            });
 
             let cache_root = cache_dir.unwrap_or_else(|| PathBuf::from("."));
 
@@ -333,16 +328,21 @@ async fn main() {
             // Step 1: Get bat taxonomy (use cache if available)
             let taxonomy = match cache::load_taxonomy(&cache_root, "bats", None) {
                 Ok(Some(cached)) => {
-                    let age = cache::taxonomy_age_string(&cache_root, "bats", None)
-                        .unwrap_or_default();
+                    let age =
+                        cache::taxonomy_age_string(&cache_root, "bats", None).unwrap_or_default();
                     eprintln!("Using cached bat taxonomy ({age})");
                     cached
                 }
                 _ => {
                     eprintln!("Fetching bat species list...");
                     let tax = taxonomy::build_species_list(
-                        &client, &api_key, "bats", None,
-                        |page, total| { eprint!("\rPage {page}/{total}..."); },
+                        &client,
+                        &api_key,
+                        "bats",
+                        None,
+                        |page, total| {
+                            eprint!("\rPage {page}/{total}...");
+                        },
                     )
                     .await
                     .unwrap_or_else(|e| {
@@ -397,10 +397,7 @@ async fn main() {
 
                 // Search for best quality recordings of this species
                 // Quality sort: q:A first, then by sample rate descending
-                let query = format!(
-                    "grp:bats gen:{} sp:{}",
-                    species.genus, species.sp
-                );
+                let query = format!("grp:bats gen:{} sp:{}", species.genus, species.sp);
 
                 let search_result = match api::search(&client, &api_key, &query, 1, 50).await {
                     Ok(r) => r,
@@ -442,7 +439,10 @@ async fn main() {
                     let smp_display = rec.smp.parse::<u64>().unwrap_or(0);
                     eprintln!(
                         "  Downloading XC{}: q={}, {}kHz, {}",
-                        rec.id, rec.q, smp_display / 1000, rec.length
+                        rec.id,
+                        rec.q,
+                        smp_display / 1000,
+                        rec.length
                     );
 
                     if dry_run {
@@ -484,7 +484,12 @@ async fn main() {
             );
         }
 
-        Commands::RefreshMetadata { cache_dir, key, dry_run, delay } => {
+        Commands::RefreshMetadata {
+            cache_dir,
+            key,
+            dry_run,
+            delay,
+        } => {
             let api_key = require_api_key(&key);
             let root = cache_dir.unwrap_or_else(|| PathBuf::from("."));
             let sounds_dir = root.join("sounds");
@@ -565,7 +570,10 @@ async fn main() {
 
                 // Preserve existing _app section (hashes, retrieved date, etc.)
                 if let Some(app) = existing_json.get("_app") {
-                    new_json.as_object_mut().unwrap().insert("_app".into(), app.clone());
+                    new_json
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("_app".into(), app.clone());
                 }
 
                 if dry_run {
@@ -657,7 +665,11 @@ async fn main() {
             );
         }
 
-        Commands::Rehash { cache_dir, dry_run, force } => {
+        Commands::Rehash {
+            cache_dir,
+            dry_run,
+            force,
+        } => {
             let root = cache_dir.unwrap_or_else(|| PathBuf::from("."));
             let sounds_dir = root.join("sounds");
             if !sounds_dir.exists() {
@@ -713,7 +725,11 @@ async fn main() {
                 };
 
                 // Check what hashes are missing
-                let app = if json["_app"].is_object() { &json["_app"] } else { &json };
+                let app = if json["_app"].is_object() {
+                    &json["_app"]
+                } else {
+                    &json
+                };
                 let has_spot_b3 = app["spot_hash_b3"].is_string();
                 let has_content = app["content_hash"].is_string();
                 let has_blake3 = app["blake3"].is_string();
@@ -742,7 +758,9 @@ async fn main() {
                     cache::migrate_sidecar_json(&mut json);
                 }
                 if !json["_app"].is_object() {
-                    json.as_object_mut().unwrap().insert("_app".into(), serde_json::json!({}));
+                    json.as_object_mut()
+                        .unwrap()
+                        .insert("_app".into(), serde_json::json!({}));
                 }
                 let app_obj = json["_app"].as_object_mut().unwrap();
 
@@ -756,11 +774,17 @@ async fn main() {
                     changes.push("sha256");
                 }
                 if force || !has_spot_b3 {
-                    app_obj.insert("spot_hash_b3".into(), serde_json::json!(hashes.spot_hash_b3));
+                    app_obj.insert(
+                        "spot_hash_b3".into(),
+                        serde_json::json!(hashes.spot_hash_b3),
+                    );
                     changes.push("spot_hash_b3");
                 }
                 if force || !has_content {
-                    app_obj.insert("content_hash".into(), serde_json::json!(hashes.content_hash));
+                    app_obj.insert(
+                        "content_hash".into(),
+                        serde_json::json!(hashes.content_hash),
+                    );
                     changes.push("content_hash");
                 }
                 // Always ensure file_size, data_offset, data_size are present

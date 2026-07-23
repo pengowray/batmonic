@@ -15,18 +15,24 @@
 // Hearing-DSP controls (HFR, Band, EQ, Notch, Gain) live in `HearingBar`.
 // Visualization controls (View, Anno, Book, Tool) live in `ViewBar`.
 
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
-use crate::state::{AppState, Bar, ChannelMode, LayerPanel, MicStrategy, PlayStartMode, PlaybackMode, RecordMode};
-use crate::audio::{microphone, playback};
 use crate::audio::source::ChannelView;
+use crate::audio::{microphone, playback};
 use crate::components::combo_button::ComboButton;
 use crate::components::listen_button::ListenButton;
 use crate::components::mode_button::ModeBucket;
+use crate::state::store_fields::*;
+use crate::state::{
+    AppState, Bar, ChannelMode, LayerPanel, MicStrategy, PlayStartMode, PlaybackMode, RecordMode,
+};
+use leptos::prelude::*;
+use wasm_bindgen::prelude::*;
 
 fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
+    if active {
+        "layer-panel-opt sel"
+    } else {
+        "layer-panel-opt"
+    }
 }
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {
@@ -54,7 +60,8 @@ pub fn BottomToolbar() -> impl IntoView {
             });
             if let Some(window) = web_sys::window() {
                 if let Ok(id) = window.set_interval_with_callback_and_timeout_and_arguments_0(
-                    cb.as_ref().unchecked_ref(), 100,
+                    cb.as_ref().unchecked_ref(),
+                    100,
                 ) {
                     interval_id.set_value(Some(id));
                 }
@@ -69,21 +76,25 @@ pub fn BottomToolbar() -> impl IntoView {
     });
 
     // ── Play ComboButton setup ──
-    let play_is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::PlayMode));
+    let play_is_open =
+        Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::PlayMode));
 
     // True when current mode is 1:1 (Normal) AND the active band is
     // entirely above human hearing — same warning state surfaced as the
     // amber underline on the 1:1 mode radio button.
     let play_inaudible = Signal::derive(move || {
         use crate::state::PlaybackMode;
-        if state.playback.mode().get() != PlaybackMode::Normal { return false; }
+        if state.playback.mode().get() != PlaybackMode::Normal {
+            return false;
+        }
         let lo = state.filter.band_ff_freq_lo().get();
         let hi = state.filter.band_ff_freq_hi().get();
         hi > lo && lo >= 20_000.0
     });
 
     let play_left_class = Signal::derive(move || {
-        let no_file = state.library.current_index().get().is_none() && state.timeline.active().get().is_none();
+        let no_file = state.library.current_index().get().is_none()
+            && state.timeline.active().get().is_none();
         let recording_and_listening = state.mic.recording().get() && state.mic.listening().get();
         if no_file || recording_and_listening {
             "layer-btn combo-btn-left disabled"
@@ -181,31 +192,29 @@ pub fn BottomToolbar() -> impl IntoView {
     // Sel) and dispatch to the right playback helper. Used by both the
     // primary Play button and the per-mode Play buttons in the
     // multi-mode row.
-    let do_start_playback = move || {
-        match state.playback.start_mode().get_untracked() {
-            PlayStartMode::All => playback::play_from_start(&state),
-            PlayStartMode::FromHere => playback::play_from_here(&state),
-            PlayStartMode::Selected => {
-                if playback::effective_selection(&state).is_some() {
-                    playback::play(&state);
-                } else {
-                    playback::play_from_start(&state);
-                }
+    let do_start_playback = move || match state.playback.start_mode().get_untracked() {
+        PlayStartMode::All => playback::play_from_start(&state),
+        PlayStartMode::FromHere => playback::play_from_here(&state),
+        PlayStartMode::Selected => {
+            if playback::effective_selection(&state).is_some() {
+                playback::play(&state);
+            } else {
+                playback::play_from_start(&state);
             }
-            PlayStartMode::Auto => {
-                if let Some(sel) = playback::effective_selection(&state) {
-                    if playback::is_selection_in_viewport(&state, &sel) {
-                        playback::play(&state);
-                    } else if state.view.scroll_offset().get_untracked() <= 0.0 {
-                        playback::play_from_start(&state);
-                    } else {
-                        playback::play_from_here(&state);
-                    }
+        }
+        PlayStartMode::Auto => {
+            if let Some(sel) = playback::effective_selection(&state) {
+                if playback::is_selection_in_viewport(&state, &sel) {
+                    playback::play(&state);
                 } else if state.view.scroll_offset().get_untracked() <= 0.0 {
                     playback::play_from_start(&state);
                 } else {
                     playback::play_from_here(&state);
                 }
+            } else if state.view.scroll_offset().get_untracked() <= 0.0 {
+                playback::play_from_start(&state);
+            } else {
+                playback::play_from_here(&state);
             }
         }
     };
@@ -215,9 +224,13 @@ pub fn BottomToolbar() -> impl IntoView {
     // playback_mode, handle the special "1:1 needs HFR off" case, and
     // start playback.
     let do_play_in_mode = move |mode: PlaybackMode| {
-        let no_file = state.library.current_index().get_untracked().is_none() && state.timeline.active().get_untracked().is_none();
-        let recording_and_listening = state.mic.recording().get_untracked() && state.mic.listening().get_untracked();
-        if no_file || recording_and_listening { return; }
+        let no_file = state.library.current_index().get_untracked().is_none()
+            && state.timeline.active().get_untracked().is_none();
+        let recording_and_listening =
+            state.mic.recording().get_untracked() && state.mic.listening().get_untracked();
+        if no_file || recording_and_listening {
+            return;
+        }
         // Stop anything currently playing (lets the HFR-restore Effect
         // unpause HFR if we'd paused it for a previous 1:1 play).
         if state.playback.is_playing().get_untracked() {
@@ -234,7 +247,10 @@ pub fn BottomToolbar() -> impl IntoView {
         if new_bucket != old_bucket {
             state.playback.modes_extra().update(|extras| {
                 extras.retain(|m| ModeBucket::from_mode(*m) != new_bucket);
-                if !extras.iter().any(|m| ModeBucket::from_mode(*m) == old_bucket) {
+                if !extras
+                    .iter()
+                    .any(|m| ModeBucket::from_mode(*m) == old_bucket)
+                {
                     extras.push(old_active);
                 }
             });
@@ -251,9 +267,13 @@ pub fn BottomToolbar() -> impl IntoView {
     };
 
     let play_left_click = Callback::new(move |_: web_sys::MouseEvent| {
-        let no_file = state.library.current_index().get_untracked().is_none() && state.timeline.active().get_untracked().is_none();
-        let recording_and_listening = state.mic.recording().get_untracked() && state.mic.listening().get_untracked();
-        if no_file || recording_and_listening { return; }
+        let no_file = state.library.current_index().get_untracked().is_none()
+            && state.timeline.active().get_untracked().is_none();
+        let recording_and_listening =
+            state.mic.recording().get_untracked() && state.mic.listening().get_untracked();
+        if no_file || recording_and_listening {
+            return;
+        }
         if state.playback.is_playing().get_untracked() {
             playback::stop(&state);
         } else {
@@ -265,25 +285,37 @@ pub fn BottomToolbar() -> impl IntoView {
     });
 
     // ── Record ComboButton setup ──
-    let rec_is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::RecordMode));
+    let rec_is_open = Signal::derive(move || {
+        state.panels.layer_panel_open().get() == Some(LayerPanel::RecordMode)
+    });
 
     let rec_left_class = Signal::derive(move || {
         if state.mic.recording().get() {
             "layer-btn combo-btn-left rec-btn mic-recording"
-        } else if state.playback.record_mode().get() == RecordMode::ListenOnly || state.mic.strategy().get() == MicStrategy::None {
+        } else if state.playback.record_mode().get() == RecordMode::ListenOnly
+            || state.mic.strategy().get() == MicStrategy::None
+        {
             "layer-btn combo-btn-left rec-btn disabled"
         } else {
             "layer-btn combo-btn-left rec-btn"
         }
     });
     let rec_right_class = Signal::derive(move || {
-        if rec_is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+        if rec_is_open.get() {
+            "layer-btn combo-btn-right open"
+        } else {
+            "layer-btn combo-btn-right"
+        }
     });
 
     let rec_left_value = Signal::derive(move || {
         if state.mic.recording().get() {
             let _ = state.mic.timer_tick().get();
-            let start = state.mic.recording_start_time().get_untracked().unwrap_or(0.0);
+            let start = state
+                .mic
+                .recording_start_time()
+                .get_untracked()
+                .unwrap_or(0.0);
             let now = js_sys::Date::now();
             let secs = (now - start) / 1000.0;
             format!("Rec {}", crate::format_time::format_duration_compact(secs))
@@ -291,17 +323,16 @@ pub fn BottomToolbar() -> impl IntoView {
             String::new() // CSS ::before renders the red dot
         }
     });
-    let rec_right_value = Signal::derive(move || {
-        match state.playback.record_mode().get() {
-            RecordMode::ToFile => "File".to_string(),
-            RecordMode::ToMemory => "Mem".to_string(),
-            RecordMode::ListenOnly => "Listen".to_string(),
-        }
+    let rec_right_value = Signal::derive(move || match state.playback.record_mode().get() {
+        RecordMode::ToFile => "File".to_string(),
+        RecordMode::ToMemory => "Mem".to_string(),
+        RecordMode::ListenOnly => "Listen".to_string(),
     });
 
     let rec_left_click = Callback::new(move |_: web_sys::MouseEvent| {
         if state.playback.record_mode().get_untracked() == RecordMode::ListenOnly
-            || state.mic.strategy().get_untracked() == MicStrategy::None {
+            || state.mic.strategy().get_untracked() == MicStrategy::None
+        {
             return; // greyed out
         }
         let st = state;
@@ -355,7 +386,9 @@ pub fn BottomToolbar() -> impl IntoView {
     };
 
     let on_handle_pointermove = move |ev: web_sys::PointerEvent| {
-        if !drag_active.get_value() { return; }
+        if !drag_active.get_value() {
+            return;
+        }
         ev.prevent_default();
         let delta = drag_start_y.get_value() - ev.client_y() as f64; // dragging up = positive
         let new_height = (drag_start_height.get_value() + delta).clamp(48.0, 400.0);
@@ -363,7 +396,9 @@ pub fn BottomToolbar() -> impl IntoView {
     };
 
     let on_handle_pointerup = move |ev: web_sys::PointerEvent| {
-        if !drag_active.get_value() { return; }
+        if !drag_active.get_value() {
+            return;
+        }
         drag_active.set_value(false);
         // Release pointer capture
         if let Some(target) = ev.target() {

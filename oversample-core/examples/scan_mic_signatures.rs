@@ -61,18 +61,30 @@ fn main() {
         let lsb = lsb_autocorr::analyze_lsb_autocorr(mono, bits, is_float);
         let pip = pipistrelle::detect(mono, sample_rate, bits, is_float);
         let nyq = effective_nyquist::detect(mono, sample_rate);
-        let lsb_zero_padded = matches!(lsb.verdict, lsb_autocorr::LsbVerdict::ZeroPaddedNBit { .. });
+        let lsb_zero_padded =
+            matches!(lsb.verdict, lsb_autocorr::LsbVerdict::ZeroPaddedNBit { .. });
         let am = audiomoth::detect(mono, sample_rate, bits, is_float, lsb_zero_padded);
 
         let lsb_verdict = match &lsb.verdict {
             lsb_autocorr::LsbVerdict::NotApplicable => "n/a".to_string(),
-            lsb_autocorr::LsbVerdict::ZeroPaddedNBit { effective_bits, padding_bits } => {
+            lsb_autocorr::LsbVerdict::ZeroPaddedNBit {
+                effective_bits,
+                padding_bits,
+            } => {
                 format!("zero-padded({}b, eff {}b)", padding_bits, effective_bits)
             }
-            lsb_autocorr::LsbVerdict::QuietSectionZeroPadded { effective_bits_in_quiet, padding_bits } => {
-                format!("quiet-zero({}b, eff-in-quiet {}b)", padding_bits, effective_bits_in_quiet)
+            lsb_autocorr::LsbVerdict::QuietSectionZeroPadded {
+                effective_bits_in_quiet,
+                padding_bits,
+            } => {
+                format!(
+                    "quiet-zero({}b, eff-in-quiet {}b)",
+                    padding_bits, effective_bits_in_quiet
+                )
             }
-            lsb_autocorr::LsbVerdict::DspPaddedLowBitDepth { effective_bits_guess } => {
+            lsb_autocorr::LsbVerdict::DspPaddedLowBitDepth {
+                effective_bits_guess,
+            } => {
                 format!("dsp-padded(eff ~{}b)", effective_bits_guess)
             }
             lsb_autocorr::LsbVerdict::ConsistentWithClaimedBitDepth => "consistent".into(),
@@ -88,7 +100,14 @@ fn main() {
 
         // Infer hints + metadata comparison
         let hints = device_hint::infer_device_hints(
-            sample_rate, bits, is_float, &bit, &lsb, &pip, Some(&nyq), Some(&am),
+            sample_rate,
+            bits,
+            is_float,
+            &bit,
+            &lsb,
+            &pip,
+            Some(&nyq),
+            Some(&am),
         );
         let xc_pairs = vec![
             ("dvc".to_string(), dvc.clone()),
@@ -106,11 +125,14 @@ fn main() {
         let mm_str = match mm {
             MetadataMatch::NoClaim => "no-claim".to_string(),
             MetadataMatch::ClaimNoAnalysis { .. } => "claim-no-hints".to_string(),
-            MetadataMatch::Match { matched_candidate, .. } => format!("match: {}", matched_candidate),
+            MetadataMatch::Match {
+                matched_candidate, ..
+            } => format!("match: {}", matched_candidate),
             MetadataMatch::Mismatch { .. } => "MISMATCH".to_string(),
         };
 
-        let period_str = lsb.low_bit_period
+        let period_str = lsb
+            .low_bit_period
             .map(|p| p.to_string())
             .unwrap_or_default();
 
@@ -121,10 +143,13 @@ fn main() {
             audiomoth::AudioMothVerdict::NotApplicable => "n/a",
         };
         let (am_cutoff, am_osdiv, am_gain, am_mf, am_nip) = match am.best.as_ref() {
-            Some(b) => (b.cutoff_hz.to_string(), b.os_times_div.to_string(),
-                        format!("{:.3}", b.gain_total),
-                        format!("{:.4}", b.mean_abs_frac),
-                        format!("{:.1}", b.near_integer_frac * 100.0)),
+            Some(b) => (
+                b.cutoff_hz.to_string(),
+                b.os_times_div.to_string(),
+                format!("{:.3}", b.gain_total),
+                format!("{:.4}", b.mean_abs_frac),
+                format!("{:.1}", b.near_integer_frac * 100.0),
+            ),
             None => ("".into(), "".into(), "".into(), "".into(), "".into()),
         };
 
@@ -181,12 +206,19 @@ fn tsv(s: &str) -> String {
 
 fn walk_wavs(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(entries) = fs::read_dir(dir) else { return out };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return out;
+    };
     for ent in entries.flatten() {
         let p = ent.path();
         if p.is_dir() {
             out.extend(walk_wavs(&p));
-        } else if p.extension().and_then(|s| s.to_str()).map(|s| s.eq_ignore_ascii_case("wav")) == Some(true) {
+        } else if p
+            .extension()
+            .and_then(|s| s.to_str())
+            .map(|s| s.eq_ignore_ascii_case("wav"))
+            == Some(true)
+        {
             out.push(p);
         }
     }
@@ -194,7 +226,9 @@ fn walk_wavs(dir: &Path) -> Vec<PathBuf> {
 }
 
 fn read_xc_sidecar(p: &Path) -> (String, String, Option<String>) {
-    let Ok(bytes) = fs::read(p) else { return (String::new(), String::new(), None) };
+    let Ok(bytes) = fs::read(p) else {
+        return (String::new(), String::new(), None);
+    };
     let Ok(v): Result<Value, _> = serde_json::from_slice(&bytes) else {
         return (String::new(), String::new(), None);
     };

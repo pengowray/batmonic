@@ -1,9 +1,9 @@
+use crate::bat_book::auto_resolve;
+use crate::bat_book::data::get_manifest;
 use crate::state::store_fields::*;
+use crate::state::AppState;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::state::AppState;
-use crate::bat_book::data::get_manifest;
-use crate::bat_book::auto_resolve;
 
 /// Floating reference panel on the right side of the main view.
 /// Shows info about the selected bat family/families.
@@ -26,7 +26,9 @@ pub fn BatBookRefPanel() -> impl IntoView {
         }
         let region = state.bat_book.region().get();
         let manifest = get_manifest(region);
-        let mut entries: Vec<_> = manifest.entries.into_iter()
+        let mut entries: Vec<_> = manifest
+            .entries
+            .into_iter()
             .filter(|e| sel_ids.iter().any(|id| id == e.id))
             .collect();
         // Include auto-matched entries not found in the current manifest
@@ -54,11 +56,19 @@ pub fn BatBookRefPanel() -> impl IntoView {
 
     // Scroll the body to bring the Nth .ref-panel-entry into view
     let scroll_body_to_entry = move |index: usize| {
-        let Some(body) = body_ref.get_untracked() else { return };
+        let Some(body) = body_ref.get_untracked() else {
+            return;
+        };
         let body_el: &web_sys::HtmlElement = &body;
-        let Ok(nodes) = body_el.query_selector_all(".ref-panel-entry") else { return };
-        let Some(node) = nodes.get(index as u32) else { return };
-        let Ok(el) = node.dyn_into::<web_sys::Element>() else { return };
+        let Ok(nodes) = body_el.query_selector_all(".ref-panel-entry") else {
+            return;
+        };
+        let Some(node) = nodes.get(index as u32) else {
+            return;
+        };
+        let Ok(el) = node.dyn_into::<web_sys::Element>() else {
+            return;
+        };
         let opts = web_sys::ScrollIntoViewOptions::new();
         opts.set_behavior(web_sys::ScrollBehavior::Smooth);
         opts.set_block(web_sys::ScrollLogicalPosition::Start);
@@ -70,7 +80,9 @@ pub fn BatBookRefPanel() -> impl IntoView {
         ev.prevent_default();
         ev.stop_propagation();
         let delta = ev.delta_y();
-        if delta.abs() < 1.0 { return; }
+        if delta.abs() < 1.0 {
+            return;
+        }
 
         let ids = state.bat_book.selected_ids().get_untracked();
 
@@ -78,13 +90,23 @@ pub fn BatBookRefPanel() -> impl IntoView {
             // Multi-select: scroll through selected entries in the body
             let entries = selected_entries.get_untracked();
             let n = entries.len();
-            if n == 0 { return; }
+            if n == 0 {
+                return;
+            }
 
             let cur = focused_index.get_untracked();
             let next = if delta > 0.0 {
-                if cur + 1 < n { cur + 1 } else { return }
+                if cur + 1 < n {
+                    cur + 1
+                } else {
+                    return;
+                }
             } else {
-                if cur > 0 { cur - 1 } else { return }
+                if cur > 0 {
+                    cur - 1
+                } else {
+                    return;
+                }
             };
             focused_index.set(next);
             scroll_body_to_entry(next);
@@ -92,21 +114,38 @@ pub fn BatBookRefPanel() -> impl IntoView {
             // Single select: navigate through full manifest
             let region = state.bat_book.region().get_untracked();
             let manifest = get_manifest(region);
-            if ids.is_empty() || manifest.entries.is_empty() { return; }
+            if ids.is_empty() || manifest.entries.is_empty() {
+                return;
+            }
 
             let last_id = &ids[ids.len() - 1];
-            let cur_idx = manifest.entries.iter().position(|e| e.id == last_id.as_str());
+            let cur_idx = manifest
+                .entries
+                .iter()
+                .position(|e| e.id == last_id.as_str());
 
             let next = if let Some(cur) = cur_idx {
                 // Currently on a manifest entry — navigate normally
                 if delta > 0.0 {
-                    if cur + 1 < manifest.entries.len() { cur + 1 } else { return }
+                    if cur + 1 < manifest.entries.len() {
+                        cur + 1
+                    } else {
+                        return;
+                    }
                 } else {
-                    if cur > 0 { cur - 1 } else { return }
+                    if cur > 0 {
+                        cur - 1
+                    } else {
+                        return;
+                    }
                 }
             } else {
                 // Out-of-range species (not in manifest) — scroll into the book
-                if delta > 0.0 { 0 } else { manifest.entries.len() - 1 }
+                if delta > 0.0 {
+                    0
+                } else {
+                    manifest.entries.len() - 1
+                }
             };
 
             let new_id = manifest.entries[next].id.to_string();

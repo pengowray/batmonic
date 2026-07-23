@@ -51,8 +51,7 @@ pub(crate) struct CachedChunk {
 
 impl CachedChunk {
     pub(crate) fn byte_size(&self) -> usize {
-        self.mono.len() * 4
-            + self.raw.as_ref().map_or(0, |r| r.len() * 4)
+        self.mono.len() * 4 + self.raw.as_ref().map_or(0, |r| r.len() * 4)
     }
 }
 
@@ -110,7 +109,9 @@ impl ChunkCache {
 
         // Evict until we have room
         while self.total_bytes + size > CACHE_MAX_BYTES {
-            let Some(oldest) = self.lru.pop_front() else { break; };
+            let Some(oldest) = self.lru.pop_front() else {
+                break;
+            };
             if let Some(removed) = self.chunks.remove(&oldest) {
                 self.total_bytes -= removed.byte_size();
             }
@@ -166,9 +167,12 @@ pub async fn read_media_store_range(
         length: byte_len as f64,
     };
     let res: oversample_ipc::plugins::ReadRecordingRangeResult =
-        crate::tauri_bridge::tauri_invoke_typed_args("plugin:media-store|readRecordingRange", &args)
-            .await
-            .map_err(|e| format!("readRecordingRange failed: {:?}", e))?;
+        crate::tauri_bridge::tauri_invoke_typed_args(
+            "plugin:media-store|readRecordingRange",
+            &args,
+        )
+        .await
+        .map_err(|e| format!("readRecordingRange failed: {:?}", e))?;
     base64_decode(&res.data)
 }
 
@@ -214,7 +218,9 @@ impl FileHandle {
             FileHandle::TauriPath(path) => {
                 crate::tauri_bridge::read_file_range(path, byte_start, byte_len).await
             }
-            FileHandle::MediaStoreUri(uri) => read_media_store_range(uri, byte_start, byte_len).await,
+            FileHandle::MediaStoreUri(uri) => {
+                read_media_store_range(uri, byte_start, byte_len).await
+            }
             FileHandle::Bytes(b) => slice_bytes(b, byte_start, byte_start + byte_len),
         }
     }
@@ -348,8 +354,8 @@ impl StreamingWavSource {
             let chunk_end_frame = (chunk_start_frame + CHUNK_FRAMES as u64).min(self.total_frames);
             let frames_in_chunk = (chunk_end_frame - chunk_start_frame) as usize;
 
-            let byte_start = self.info.data_offset
-                + chunk_start_frame * self.info.bytes_per_frame as u64;
+            let byte_start =
+                self.info.data_offset + chunk_start_frame * self.info.bytes_per_frame as u64;
             let byte_len = frames_in_chunk as u64 * self.info.bytes_per_frame as u64;
 
             // Read raw bytes from file via the appropriate backend.
@@ -357,7 +363,11 @@ impl StreamingWavSource {
             let bytes = match bytes {
                 Ok(b) => b,
                 Err(e) => {
-                    log::warn!("StreamingWavSource: prefetch chunk {} failed: {}", chunk_idx, e);
+                    log::warn!(
+                        "StreamingWavSource: prefetch chunk {} failed: {}",
+                        chunk_idx,
+                        e
+                    );
                     continue;
                 }
             };
@@ -373,7 +383,9 @@ impl StreamingWavSource {
                 (mono, Some(interleaved))
             };
 
-            self.cache.borrow_mut().insert(chunk_idx, CachedChunk { mono, raw });
+            self.cache
+                .borrow_mut()
+                .insert(chunk_idx, CachedChunk { mono, raw });
         }
     }
 
@@ -493,12 +505,7 @@ impl AudioSource for StreamingWavSource {
         false
     }
 
-    fn read_samples(
-        &self,
-        channel: ChannelView,
-        start: u64,
-        buf: &mut [f32],
-    ) -> usize {
+    fn read_samples(&self, channel: ChannelView, start: u64, buf: &mut [f32]) -> usize {
         let end = (start + buf.len() as u64).min(self.total_frames);
         if end <= start {
             return 0;
@@ -526,7 +533,9 @@ impl AudioSource for StreamingWavSource {
             }
             ChannelView::Channel(ch) => {
                 if ch >= self.info.channels {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 if end <= head_end {
@@ -542,7 +551,9 @@ impl AudioSource for StreamingWavSource {
             }
             ChannelView::Difference => {
                 if self.info.channels < 2 {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 // Read L and R separately, compute difference.
@@ -579,12 +590,10 @@ impl AudioSource for StreamingWavSource {
 /// Decode raw PCM bytes into interleaved f32 samples.
 fn decode_pcm_bytes(bytes: &[u8], info: &WavFormatInfo) -> Vec<f32> {
     match (info.is_float, info.bits_per_sample) {
-        (true, 32) => {
-            bytes
-                .chunks_exact(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-                .collect()
-        }
+        (true, 32) => bytes
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .collect(),
         (false, 16) => {
             let max = 32768.0f32;
             bytes
@@ -599,7 +608,11 @@ fn decode_pcm_bytes(bytes: &[u8], info: &WavFormatInfo) -> Vec<f32> {
                 .map(|b| {
                     // Sign-extend 24-bit to 32-bit
                     let val = (b[0] as i32) | ((b[1] as i32) << 8) | ((b[2] as i32) << 16);
-                    let val = if val & 0x800000 != 0 { val | !0xFFFFFF } else { val };
+                    let val = if val & 0x800000 != 0 {
+                        val | !0xFFFFFF
+                    } else {
+                        val
+                    };
                     val as f32 / max
                 })
                 .collect()
@@ -779,7 +792,10 @@ impl StreamingFlacSource {
         let read_start = byte_cursor.saturating_sub(overlap);
         let read_end = read_start + FLAC_WINDOW_BYTES + overlap;
 
-        let bytes = self.handle.read_range(read_start, read_end - read_start).await;
+        let bytes = self
+            .handle
+            .read_range(read_start, read_end - read_start)
+            .await;
         let bytes = match bytes {
             Ok(b) if b.is_empty() => return Err("EOF: no bytes read".into()),
             Ok(b) => b,
@@ -859,8 +875,8 @@ impl StreamingFlacSource {
 
                     block_buf = block.into_buffer();
                 }
-                Ok(None) => break,  // Clean EOF
-                Err(_) => break,    // Partial frame at window boundary — expected
+                Ok(None) => break, // Clean EOF
+                Err(_) => break,   // Partial frame at window boundary — expected
             }
         }
 
@@ -970,8 +986,7 @@ impl StreamingFlacSource {
                     let end_idx = (offset_in_chunk + to_read).min(chunk.mono.len());
                     let start_idx = offset_in_chunk.min(end_idx);
                     let n = end_idx - start_idx;
-                    buf[written..written + n]
-                        .copy_from_slice(&chunk.mono[start_idx..end_idx]);
+                    buf[written..written + n].copy_from_slice(&chunk.mono[start_idx..end_idx]);
                     for s in &mut buf[written + n..written + to_read] {
                         *s = 0.0;
                     }
@@ -1053,7 +1068,9 @@ impl AudioSource for StreamingFlacSource {
             }
             ChannelView::Channel(ch) => {
                 if ch >= self.channels {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 if end <= head_end {
@@ -1069,7 +1086,9 @@ impl AudioSource for StreamingFlacSource {
             }
             ChannelView::Difference => {
                 if self.channels < 2 {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 let mut left = vec![0.0f32; total_len];
@@ -1119,17 +1138,36 @@ pub async fn prefetch_streaming(source: &dyn AudioSource, start: u64, len: usize
 
 /// Check if a source is a streaming (non-in-memory) source.
 pub fn is_streaming(source: &dyn AudioSource) -> bool {
-    source.as_any().downcast_ref::<StreamingWavSource>().is_some()
-        || source.as_any().downcast_ref::<StreamingFlacSource>().is_some()
-        || source.as_any().downcast_ref::<StreamingMp3Source>().is_some()
-        || source.as_any().downcast_ref::<StreamingOggSource>().is_some()
-        || source.as_any().downcast_ref::<StreamingM4aSource>().is_some()
+    source
+        .as_any()
+        .downcast_ref::<StreamingWavSource>()
+        .is_some()
+        || source
+            .as_any()
+            .downcast_ref::<StreamingFlacSource>()
+            .is_some()
+        || source
+            .as_any()
+            .downcast_ref::<StreamingMp3Source>()
+            .is_some()
+        || source
+            .as_any()
+            .downcast_ref::<StreamingOggSource>()
+            .is_some()
+        || source
+            .as_any()
+            .downcast_ref::<StreamingM4aSource>()
+            .is_some()
 }
 
 /// Read a byte range from a `web_sys::File` using `File.slice()` + `FileReader`.
 ///
 /// `start` and `end` are byte offsets (like `File.slice(start, end)`).
-pub async fn read_blob_range(file: &web_sys::File, start: f64, end: f64) -> Result<Vec<u8>, String> {
+pub async fn read_blob_range(
+    file: &web_sys::File,
+    start: f64,
+    end: f64,
+) -> Result<Vec<u8>, String> {
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
 
@@ -1137,8 +1175,8 @@ pub async fn read_blob_range(file: &web_sys::File, start: f64, end: f64) -> Resu
         .slice_with_f64_and_f64(start, end)
         .map_err(|e| format!("File.slice failed: {:?}", e))?;
 
-    let reader = web_sys::FileReader::new()
-        .map_err(|e| format!("FileReader::new failed: {:?}", e))?;
+    let reader =
+        web_sys::FileReader::new().map_err(|e| format!("FileReader::new failed: {:?}", e))?;
 
     let reader_clone = reader.clone();
     let promise = js_sys::Promise::new(&mut |resolve, reject| {

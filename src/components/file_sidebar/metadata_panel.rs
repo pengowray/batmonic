@@ -1,6 +1,6 @@
 use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::state::{AppState, MetadataView};
+use leptos::prelude::*;
 
 /// Returns (section, display_key) for a GUANO field.
 /// Known fields return "GUANO" as section; unknown pipe-separated keys
@@ -83,7 +83,9 @@ fn parse_lat_lon(value: &str) -> Option<(f64, f64)> {
     } else {
         s.split_whitespace().collect()
     };
-    if parts.len() < 2 { return None; }
+    if parts.len() < 2 {
+        return None;
+    }
     let lat: f64 = parts[0].trim().parse().ok()?;
     let lon: f64 = parts[1].trim().parse().ok()?;
     if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
@@ -98,13 +100,16 @@ fn parse_lat_lon(value: &str) -> Option<(f64, f64)> {
 /// the conversion.
 fn parse_temp_c(value: &str) -> Option<f64> {
     let v = value.trim();
-    if v.is_empty() { return None; }
+    if v.is_empty() {
+        return None;
+    }
     let lower = v.to_ascii_lowercase();
     if lower.contains('f') && !lower.contains('c') {
         return None;
     }
     // Strip non-numeric trailing characters
-    let num: String = v.chars()
+    let num: String = v
+        .chars()
         .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '.' || *c == '+')
         .collect();
     num.parse().ok()
@@ -115,9 +120,15 @@ fn parse_temp_c(value: &str) -> Option<f64> {
 /// of looser shapes (incl. "2024-03-15").
 fn parse_date_ms(value: &str) -> Option<f64> {
     let v = value.trim();
-    if v.is_empty() { return None; }
+    if v.is_empty() {
+        return None;
+    }
     let ms = js_sys::Date::parse(v);
-    if ms.is_nan() { None } else { Some(ms) }
+    if ms.is_nan() {
+        None
+    } else {
+        Some(ms)
+    }
 }
 
 /// Extract the UTC offset (in minutes) explicitly written in the
@@ -125,8 +136,12 @@ fn parse_date_ms(value: &str) -> Option<f64> {
 /// `-HH:MM`, `+HHMM`, `-HHMM`. Returns None if no offset is present.
 fn extract_tz_offset_minutes(value: &str) -> Option<i32> {
     let v = value.trim();
-    if v.is_empty() { return None; }
-    if v.ends_with('Z') || v.ends_with('z') { return Some(0); }
+    if v.is_empty() {
+        return None;
+    }
+    if v.ends_with('Z') || v.ends_with('z') {
+        return Some(0);
+    }
     // A timezone offset can only appear in the *time* portion. If there is no
     // time portion at all (a bare date like "2025-05-30"), there is no offset —
     // and scanning the whole string would mis-read the date's own "-" separators
@@ -161,7 +176,9 @@ fn extract_tz_offset_minutes(value: &str) -> Option<i32> {
 }
 
 fn format_tz_offset(minutes: i32) -> String {
-    if minutes == 0 { return "UTC".into(); }
+    if minutes == 0 {
+        return "UTC".into();
+    }
     let sign = if minutes < 0 { '-' } else { '+' };
     let m = minutes.unsigned_abs();
     format!("UTC{sign}{:02}:{:02}", m / 60, m % 60)
@@ -190,7 +207,9 @@ fn format_date_long(ms: f64, had_time: bool, tz_minutes: Option<i32>) -> String 
         None => ms,
     };
     let d = js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(shifted_ms));
-    d.to_locale_string("default", &opts).as_string().unwrap_or_default()
+    d.to_locale_string("default", &opts)
+        .as_string()
+        .unwrap_or_default()
 }
 
 /// "4 days ago" / "in 2 hours" style relative time.
@@ -240,9 +259,13 @@ fn extract_json(value: &str) -> Option<serde_json::Value> {
     for (i, b) in bytes.iter().enumerate().skip(start) {
         let c = *b as char;
         if in_str {
-            if esc { esc = false; }
-            else if c == '\\' { esc = true; }
-            else if c == '"' { in_str = false; }
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                in_str = false;
+            }
             continue;
         }
         match c {
@@ -250,7 +273,10 @@ fn extract_json(value: &str) -> Option<serde_json::Value> {
             x if x == open => depth += 1,
             x if x == close => {
                 depth -= 1;
-                if depth == 0 { end = Some(i + 1); break; }
+                if depth == 0 {
+                    end = Some(i + 1);
+                    break;
+                }
             }
             _ => {}
         }
@@ -280,15 +306,18 @@ fn json_block(json: &serde_json::Value) -> impl IntoView {
         }
     }
     let entries: Vec<_> = match json {
-        serde_json::Value::Array(arr) => arr.iter()
+        serde_json::Value::Array(arr) => arr
+            .iter()
             .flat_map(|v| match v {
-                serde_json::Value::Object(map) => map.iter()
+                serde_json::Value::Object(map) => map
+                    .iter()
                     .map(|(k, v)| line(k.clone(), flatten_value(v)).into_any())
                     .collect::<Vec<_>>(),
                 other => vec![line(String::new(), flatten_value(other)).into_any()],
             })
             .collect(),
-        serde_json::Value::Object(map) => map.iter()
+        serde_json::Value::Object(map) => map
+            .iter()
             .map(|(k, v)| line(k.clone(), flatten_value(v)).into_any())
             .collect(),
         other => vec![line(String::new(), flatten_value(other)).into_any()],
@@ -301,10 +330,12 @@ fn json_block(json: &serde_json::Value) -> impl IntoView {
 fn format_temp_c_f(value: &str) -> Option<(String, String)> {
     let c = parse_temp_c(value)?;
     let f = c * 9.0 / 5.0 + 32.0;
-    let fmt = |n: f64| if (n - n.round()).abs() < 0.05 {
-        format!("{n:.0}")
-    } else {
-        format!("{n:.1}")
+    let fmt = |n: f64| {
+        if (n - n.round()).abs() < 0.05 {
+            format!("{n:.0}")
+        } else {
+            format!("{n:.1}")
+        }
     };
     Some((
         format!("{}\u{00B0}C", fmt(c)),
@@ -366,9 +397,12 @@ fn render_value_body(
     kind: FieldKind,
     view_mode: MetadataView,
 ) -> leptos::tachys::view::any_view::AnyView {
-    let raw = || view! {
-        <div class="metadata-value-block" title=value.to_string()>{value.to_string()}</div>
-    }.into_any();
+    let raw = || {
+        view! {
+            <div class="metadata-value-block" title=value.to_string()>{value.to_string()}</div>
+        }
+        .into_any()
+    };
 
     if view_mode == MetadataView::Original {
         return raw();
@@ -384,7 +418,8 @@ fn render_value_body(
                         " "
                         <span class="metadata-temp-f">"("{f}")"</span>
                     </div>
-                }.into_any()
+                }
+                .into_any()
             } else {
                 raw()
             }
@@ -414,7 +449,8 @@ fn render_value_body(
                         <div class="metadata-value-block metadata-value-json">
                             {json_block(&j)}
                         </div>
-                    }.into_any();
+                    }
+                    .into_any();
                 }
             }
             let _ = label;
@@ -430,14 +466,19 @@ fn date_block(value: &str) -> impl IntoView {
     let Some(ms) = parse_date_ms(value) else {
         return view! {
             <div class="metadata-value-block" title=value.to_string()>{value.to_string()}</div>
-        }.into_any();
+        }
+        .into_any();
     };
     let had_time = value.contains('T') || value.contains(':');
     let orig_tz = extract_tz_offset_minutes(value);
     let rel = humanize_relative(ms);
 
     let primary_str = match orig_tz {
-        Some(off) => format!("{} {}", format_date_long(ms, had_time, Some(off)), format_tz_offset(off)),
+        Some(off) => format!(
+            "{} {}",
+            format_date_long(ms, had_time, Some(off)),
+            format_tz_offset(off)
+        ),
         // A bare date with no explicit zone (e.g. "2025-05-30") is parsed as UTC
         // midnight; render it in UTC too so it doesn't slip to the previous day
         // for viewers west of Greenwich.
@@ -448,9 +489,11 @@ fn date_block(value: &str) -> impl IntoView {
     // A distinct "Local:" interpretation exists only when the original timestamp
     // pinned a specific tz AND that tz differs from the viewer's local tz.
     let local_line = orig_tz.and_then(|off| {
-        let local_offset = -(js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms))
-            .get_timezone_offset() as i32);
-        if local_offset == off { return None; }
+        let local_offset =
+            -(js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(ms)).get_timezone_offset() as i32);
+        if local_offset == off {
+            return None;
+        }
         Some(format!(
             "Local: {} {}",
             format_date_long(ms, had_time, None),
@@ -462,7 +505,8 @@ fn date_block(value: &str) -> impl IntoView {
         return view! {
             <div class="metadata-value-block">{primary_str}</div>
             <div class="metadata-value-relative">{rel}</div>
-        }.into_any();
+        }
+        .into_any();
     };
 
     // The local line is shown by default only for recent recordings (within the
@@ -485,7 +529,8 @@ fn date_block(value: &str) -> impl IntoView {
             move || view! { <div class="metadata-value-local">{local_str}</div> }
         })}
         <div class="metadata-value-relative">{rel}</div>
-    }.into_any()
+    }
+    .into_any()
 }
 
 /// Parse an 8- or 14-digit `YYYYMMDD[HHMMSS]` run into an ISO string, with
@@ -567,7 +612,8 @@ fn date_row(label: String, value: String, view_mode: MetadataView) -> impl IntoV
         super::copy_to_clipboard(&value_for_copy);
     };
     let body = if view_mode == MetadataView::Original {
-        view! { <div class="metadata-value-block" title=value.clone()>{value.clone()}</div> }.into_any()
+        view! { <div class="metadata-value-block" title=value.clone()>{value.clone()}</div> }
+            .into_any()
     } else {
         date_block(&value).into_any()
     };
@@ -617,10 +663,7 @@ fn date_section(f: &crate::state::LoadedFile, view_mode: MetadataView) -> impl I
                 .map(|(_, v)| v.clone())
                 .filter(|v| !v.trim().is_empty())
         };
-        let date_label = format!(
-            "{} date",
-            f.source_label.as_deref().unwrap_or("Xeno-canto")
-        );
+        let date_label = format!("{} date", f.source_label.as_deref().unwrap_or("Xeno-canto"));
         match (get("Date"), get("Time")) {
             (Some(d), Some(t)) => rows.push((date_label, format!("{d}T{t}"))),
             (Some(d), None) => rows.push((date_label, d)),
@@ -720,20 +763,40 @@ fn zc_header_section(f: &crate::state::LoadedFile, view_mode: MetadataView) -> i
     let md = &zc.metadata;
 
     let mut rows: Vec<(String, String)> = Vec::new();
-    if !md.location.is_empty() { rows.push(("Location".into(), md.location.clone())); }
-    if !md.species.is_empty()  { rows.push(("Species".into(),  md.species.clone()));  }
-    if !md.tape.is_empty()     { rows.push(("Tape".into(),     md.tape.clone()));     }
-    if !md.date.is_empty()     { rows.push(("Date".into(),     md.date.clone()));     }
-    if !md.spec.is_empty()     { rows.push(("Spec".into(),     md.spec.clone()));     }
-    if !md.note1.is_empty()    { rows.push(("Note 1".into(),   md.note1.clone()));    }
-    if !md.note2.is_empty()    { rows.push(("Note 2".into(),   md.note2.clone()));    }
-    if !md.id_code.is_empty()  { rows.push(("ID".into(),       md.id_code.clone()));  }
-    if !md.gps.is_empty()      { rows.push(("GPS".into(),      md.gps.clone()));      }
+    if !md.location.is_empty() {
+        rows.push(("Location".into(), md.location.clone()));
+    }
+    if !md.species.is_empty() {
+        rows.push(("Species".into(), md.species.clone()));
+    }
+    if !md.tape.is_empty() {
+        rows.push(("Tape".into(), md.tape.clone()));
+    }
+    if !md.date.is_empty() {
+        rows.push(("Date".into(), md.date.clone()));
+    }
+    if !md.spec.is_empty() {
+        rows.push(("Spec".into(), md.spec.clone()));
+    }
+    if !md.note1.is_empty() {
+        rows.push(("Note 1".into(), md.note1.clone()));
+    }
+    if !md.note2.is_empty() {
+        rows.push(("Note 2".into(), md.note2.clone()));
+    }
+    if !md.id_code.is_empty() {
+        rows.push(("ID".into(), md.id_code.clone()));
+    }
+    if !md.gps.is_empty() {
+        rows.push(("GPS".into(), md.gps.clone()));
+    }
     if let Some(ts) = md.timestamp {
         rows.push((
             "Recorded".into(),
-            format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
-                ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.microseconds_total),
+            format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:06}",
+                ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.microseconds_total
+            ),
         ));
     }
 
@@ -741,7 +804,8 @@ fn zc_header_section(f: &crate::state::LoadedFile, view_mode: MetadataView) -> i
         return view! { <span></span> }.into_any();
     }
 
-    let items: Vec<_> = rows.into_iter()
+    let items: Vec<_> = rows
+        .into_iter()
         .map(|(k, v)| spacious_row(k, v, None, view_mode).into_any())
         .collect();
 
@@ -753,7 +817,8 @@ fn zc_header_section(f: &crate::state::LoadedFile, view_mode: MetadataView) -> i
             </div>
             {items}
         </div>
-    }.into_any()
+    }
+    .into_any()
 }
 
 fn format_file_size(bytes: usize) -> String {
@@ -775,26 +840,49 @@ fn file_identity_section(f: &crate::state::LoadedFile) -> impl IntoView {
 
     // Key off this section's own file id (not the current-file index) so the
     // sidecar hashes always match the file being rendered.
-    let sidecar_identity = state.annotations.store().with_untracked(|store| {
-        store.get(f.id).map(|set| set.file_identity.clone())
-    });
+    let sidecar_identity = state
+        .annotations
+        .store()
+        .with_untracked(|store| store.get(f.id).map(|set| set.file_identity.clone()));
     let xc = &f.xc_hashes;
-    let ref_blake3 = xc.as_ref().and_then(|h| h.blake3.clone())
-        .or_else(|| sidecar_identity.as_ref().and_then(|s| s.full_blake3.clone()));
-    let ref_sha256 = xc.as_ref().and_then(|h| h.sha256.clone())
-        .or_else(|| sidecar_identity.as_ref().and_then(|s| s.full_sha256.clone()));
-    let ref_spot = xc.as_ref().and_then(|h| h.spot_hash_b3.clone())
-        .or_else(|| sidecar_identity.as_ref().and_then(|s| s.spot_hash_b3.clone()));
-    let ref_content = xc.as_ref().and_then(|h| h.content_hash.clone())
-        .or_else(|| sidecar_identity.as_ref().and_then(|s| s.content_hash.clone()));
-    let ref_file_size = xc.as_ref().and_then(|h| h.file_size)
+    let ref_blake3 = xc.as_ref().and_then(|h| h.blake3.clone()).or_else(|| {
+        sidecar_identity
+            .as_ref()
+            .and_then(|s| s.full_blake3.clone())
+    });
+    let ref_sha256 = xc.as_ref().and_then(|h| h.sha256.clone()).or_else(|| {
+        sidecar_identity
+            .as_ref()
+            .and_then(|s| s.full_sha256.clone())
+    });
+    let ref_spot = xc
+        .as_ref()
+        .and_then(|h| h.spot_hash_b3.clone())
+        .or_else(|| {
+            sidecar_identity
+                .as_ref()
+                .and_then(|s| s.spot_hash_b3.clone())
+        });
+    let ref_content = xc
+        .as_ref()
+        .and_then(|h| h.content_hash.clone())
+        .or_else(|| {
+            sidecar_identity
+                .as_ref()
+                .and_then(|s| s.content_hash.clone())
+        });
+    let ref_file_size = xc
+        .as_ref()
+        .and_then(|h| h.file_size)
         .or_else(|| sidecar_identity.as_ref().map(|s| s.file_size));
 
     let mut items: Vec<leptos::tachys::view::any_view::AnyView> = Vec::new();
 
     let actual_size = identity.as_ref().map(|id| id.file_size);
     let display_size = actual_size.or(ref_file_size);
-    let is_small = display_size.map(|s| s < crate::file_identity::SMALL_FILE_THRESHOLD).unwrap_or(true);
+    let is_small = display_size
+        .map(|s| s < crate::file_identity::SMALL_FILE_THRESHOLD)
+        .unwrap_or(true);
 
     if let Some(size) = display_size {
         if size > 0 {
@@ -806,38 +894,67 @@ fn file_identity_section(f: &crate::state::LoadedFile) -> impl IntoView {
                 }),
                 _ => None,
             };
-            items.push(hash_row("File size (bytes)", &size.to_string(), size_ref.as_deref(), false).into_any());
+            items.push(
+                hash_row(
+                    "File size (bytes)",
+                    &size.to_string(),
+                    size_ref.as_deref(),
+                    false,
+                )
+                .into_any(),
+            );
         }
     }
 
     if let Some(ref id) = identity {
         if let Some(ref hash) = id.spot_hash_b3 {
-            let reference = if !is_small || all_verified { ref_spot.as_deref() } else { None };
+            let reference = if !is_small || all_verified {
+                ref_spot.as_deref()
+            } else {
+                None
+            };
             items.push(hash_row("Spot hash", hash, reference, false).into_any());
         } else {
-            items.push(spacious_row("Spot hash".into(), "computing...".into(), None, MetadataView::Original).into_any());
+            items.push(
+                spacious_row(
+                    "Spot hash".into(),
+                    "computing...".into(),
+                    None,
+                    MetadataView::Original,
+                )
+                .into_any(),
+            );
         }
 
         if let Some(ref hash) = id.full_blake3 {
-            let reference = if is_small || all_verified { ref_blake3.as_deref() } else { None };
+            let reference = if is_small || all_verified {
+                ref_blake3.as_deref()
+            } else {
+                None
+            };
             items.push(hash_row("Full BLAKE3", hash, reference, false).into_any());
         } else if let Some(ref known) = ref_blake3 {
             items.push(hash_row("Full BLAKE3", known, None, true).into_any());
         }
 
         if let Some(ref hash) = id.content_hash {
-            let reference = if verify_outcome == crate::state::VerifyOutcome::ContentMatch || all_verified {
-                ref_content.as_deref()
-            } else {
-                None
-            };
+            let reference =
+                if verify_outcome == crate::state::VerifyOutcome::ContentMatch || all_verified {
+                    ref_content.as_deref()
+                } else {
+                    None
+                };
             items.push(hash_row("Content hash", hash, reference, false).into_any());
         } else if let Some(ref known) = ref_content {
             items.push(hash_row("Content hash", known, None, true).into_any());
         }
 
         if let Some(ref hash) = id.full_sha256 {
-            let reference = if all_verified { ref_sha256.as_deref() } else { None };
+            let reference = if all_verified {
+                ref_sha256.as_deref()
+            } else {
+                None
+            };
             items.push(hash_row("Full SHA-256", hash, reference, false).into_any());
         } else if let Some(ref known) = ref_sha256 {
             items.push(hash_row("Full SHA-256", known, None, true).into_any());
@@ -858,11 +975,14 @@ fn file_identity_section(f: &crate::state::LoadedFile) -> impl IntoView {
     }
 
     if verify_outcome == crate::state::VerifyOutcome::ContentMatch {
-        items.push(view! {
-            <div class="metadata-row metadata-row-spacious">
-                <div class="hash-note">"Header changed \u{2014} audio content verified"</div>
-            </div>
-        }.into_any());
+        items.push(
+            view! {
+                <div class="metadata-row metadata-row-spacious">
+                    <div class="hash-note">"Header changed \u{2014} audio content verified"</div>
+                </div>
+            }
+            .into_any(),
+        );
     }
 
     if has_file_handle && !all_verified {
@@ -872,7 +992,11 @@ fn file_identity_section(f: &crate::state::LoadedFile) -> impl IntoView {
                 crate::file_identity::start_full_hash_computation(state, idx, true);
             }
         };
-        let label = if computing { "Computing..." } else { "Calculate all hashes" };
+        let label = if computing {
+            "Computing..."
+        } else {
+            "Calculate all hashes"
+        };
         items.push(view! {
             <div class="metadata-row metadata-row-spacious">
                 <button class="hash-calc-btn" on:click=on_calc_all disabled=computing>{label}</button>
@@ -888,7 +1012,8 @@ fn file_identity_section(f: &crate::state::LoadedFile) -> impl IntoView {
                 <div class="setting-group-title setting-group-title-major">"File Identity"</div>
                 {items}
             </div>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
@@ -1048,7 +1173,10 @@ mod tests {
 
     #[test]
     fn filename_date_patterns() {
-        assert_eq!(date_from_filename("20240115.WAV").as_deref(), Some("2024-01-15"));
+        assert_eq!(
+            date_from_filename("20240115.WAV").as_deref(),
+            Some("2024-01-15")
+        );
         assert_eq!(
             date_from_filename("PREFIX_20210630_223015.wav").as_deref(),
             Some("2021-06-30T22:30:15"),
@@ -1090,22 +1218,52 @@ mod tests {
 
     #[test]
     fn tz_offset_colon_forms() {
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45+05:00"), Some(300));
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45-05:00"), Some(-300));
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45+05:30"), Some(330));
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45-09:30"), Some(-570));
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45+05:00"),
+            Some(300)
+        );
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45-05:00"),
+            Some(-300)
+        );
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45+05:30"),
+            Some(330)
+        );
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45-09:30"),
+            Some(-570)
+        );
         // Space separator instead of 'T'.
-        assert_eq!(extract_tz_offset_minutes("2025-05-30 10:30:45-05:00"), Some(-300));
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30 10:30:45-05:00"),
+            Some(-300)
+        );
         // Odd-but-real three-quarter-hour zone (Chatham Islands, +12:45).
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45+12:45"), Some(765));
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45+12:45"),
+            Some(765)
+        );
     }
 
     #[test]
     fn tz_offset_compact_forms() {
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45+0530"), Some(330));
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45-0530"), Some(-330));
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45+05"), Some(300));
-        assert_eq!(extract_tz_offset_minutes("2025-05-30T10:30:45-08"), Some(-480));
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45+0530"),
+            Some(330)
+        );
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45-0530"),
+            Some(-330)
+        );
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45+05"),
+            Some(300)
+        );
+        assert_eq!(
+            extract_tz_offset_minutes("2025-05-30T10:30:45-08"),
+            Some(-480)
+        );
     }
 
     #[test]

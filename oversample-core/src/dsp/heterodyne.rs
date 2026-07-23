@@ -170,7 +170,9 @@ impl RealtimeCombHet {
     ) {
         let n = carrier_freqs.len();
         if n == 0 || input.is_empty() {
-            for o in output.iter_mut() { *o = 0.0; }
+            for o in output.iter_mut() {
+                *o = 0.0;
+            }
             return;
         }
         self.ensure_n(n);
@@ -207,7 +209,7 @@ mod tests {
         let sample_rate = 192_000u32;
         let input_freq = 45_000.0; // 45 kHz bat call
         let lo_freq = 44_000.0; // Tuned to 44 kHz
-        // Expected difference: 1 kHz (audible)
+                                // Expected difference: 1 kHz (audible)
 
         let duration = 0.05; // 50ms
         let num_samples = (sample_rate as f64 * duration) as usize;
@@ -223,9 +225,8 @@ mod tests {
         assert_eq!(output.len(), input.len());
 
         // Verify the output has energy (is not all zeros)
-        let rms: f64 = (output.iter().map(|s| (*s as f64).powi(2)).sum::<f64>()
-            / output.len() as f64)
-            .sqrt();
+        let rms: f64 =
+            (output.iter().map(|s| (*s as f64).powi(2)).sum::<f64>() / output.len() as f64).sqrt();
         assert!(
             rms > 0.01,
             "Output should have significant energy, got RMS={rms}"
@@ -273,9 +274,12 @@ mod tests {
         let warmup = (sample_rate as f64 * 0.005) as usize;
         let tail = &output[warmup..];
 
-        let rms: f64 = (tail.iter().map(|s| (*s as f64).powi(2)).sum::<f64>()
-            / tail.len() as f64).sqrt();
-        assert!(rms > 0.005, "Comb output should pick up the tone, got RMS={rms}");
+        let rms: f64 =
+            (tail.iter().map(|s| (*s as f64).powi(2)).sum::<f64>() / tail.len() as f64).sqrt();
+        assert!(
+            rms > 0.005,
+            "Comb output should pick up the tone, got RMS={rms}"
+        );
 
         let zc = crate::dsp::zero_crossing::zero_crossing_frequency(tail, sample_rate);
         let error = (zc.estimated_frequency_hz - 3000.0).abs();

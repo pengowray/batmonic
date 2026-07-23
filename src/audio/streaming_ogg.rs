@@ -3,9 +3,11 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
+use super::streaming_source::{
+    mix_to_mono, read_blob_range, CachedChunk, ChunkCache, FileHandle, CHUNK_FRAMES,
+};
 use crate::audio::loader::OggHeader;
 use crate::audio::source::{AudioSource, ChannelView};
-use super::streaming_source::{FileHandle, ChunkCache, CachedChunk, CHUNK_FRAMES, mix_to_mono, read_blob_range};
 
 /// Size of each compressed read window for OGG streaming (4 MB).
 const OGG_WINDOW_BYTES: u64 = 4 * 1024 * 1024;
@@ -160,7 +162,12 @@ impl StreamingOggSource {
             }
             FileHandle::Bytes(b) => super::streaming_source::slice_bytes(b, read_start, read_end),
             FileHandle::MediaStoreUri(uri) => {
-                super::streaming_source::read_media_store_range(uri, read_start, read_end - read_start).await
+                super::streaming_source::read_media_store_range(
+                    uri,
+                    read_start,
+                    read_end - read_start,
+                )
+                .await
             }
         };
         let bytes = match bytes {
@@ -181,7 +188,12 @@ impl StreamingOggSource {
         hint.with_extension("ogg");
 
         let mut format = symphonia::default::get_probe()
-            .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+            .probe(
+                &hint,
+                mss,
+                FormatOptions::default(),
+                MetadataOptions::default(),
+            )
             .map_err(|e| format!("OGG window probe error: {e}"))?;
 
         let track = format
@@ -389,8 +401,7 @@ impl StreamingOggSource {
                     let end_idx = (offset_in_chunk + to_read).min(chunk.mono.len());
                     let start_idx = offset_in_chunk.min(end_idx);
                     let n = end_idx - start_idx;
-                    buf[written..written + n]
-                        .copy_from_slice(&chunk.mono[start_idx..end_idx]);
+                    buf[written..written + n].copy_from_slice(&chunk.mono[start_idx..end_idx]);
                     for s in &mut buf[written + n..written + to_read] {
                         *s = 0.0;
                     }
@@ -475,7 +486,9 @@ impl AudioSource for StreamingOggSource {
             }
             ChannelView::Channel(ch) => {
                 if ch >= self.channels {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 if end <= head_end {
@@ -491,7 +504,9 @@ impl AudioSource for StreamingOggSource {
             }
             ChannelView::Difference => {
                 if self.channels < 2 {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 let mut left = vec![0.0f32; total_len];

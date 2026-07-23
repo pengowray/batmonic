@@ -45,24 +45,34 @@ pub fn stft_to_chromagram(
     // Frequency bounds for the active range
     // C(min_octave) ≈ 16.35 * 2^min_octave
     let min_freq = 16.35 * (1u64 << min_octave) as f64 * 0.95; // slight margin
-    // B(max_octave-1) ≈ 15.89 * 2^max_octave (top of the last included octave)
+                                                               // B(max_octave-1) ≈ 15.89 * 2^max_octave (top of the last included octave)
     let max_freq = 15.89 * (1u64 << max_octave.min(20)) as f64 * 1.05;
 
     for (bin_idx, &mag) in magnitudes.iter().enumerate() {
-        if bin_idx == 0 { continue; } // skip DC
+        if bin_idx == 0 {
+            continue;
+        } // skip DC
         let freq = bin_idx as f64 * freq_resolution;
-        if freq < min_freq { continue; }
-        if freq > max_freq { break; } // bins are monotonically increasing
+        if freq < min_freq {
+            continue;
+        }
+        if freq > max_freq {
+            break;
+        } // bins are monotonically increasing
 
         // MIDI note number: 69 = A4 = 440 Hz
         let midi = 69.0 + 12.0 * (freq / 440.0).log2();
-        if midi < 0.0 { continue; }
+        if midi < 0.0 {
+            continue;
+        }
 
         let midi_rounded = midi.round() as usize;
         let pc = midi_rounded % 12;
         let octave = (midi_rounded / 12).saturating_sub(1);
 
-        if octave < min_octave || octave >= max_octave { continue; }
+        if octave < min_octave || octave >= max_octave {
+            continue;
+        }
 
         // Use energy (mag²) for better perceptual weighting
         let energy = mag * mag;
@@ -71,7 +81,10 @@ pub fn stft_to_chromagram(
         octave_detail[pc][octave] += energy;
     }
 
-    ChromagramColumn { pitch_classes, octave_detail }
+    ChromagramColumn {
+        pitch_classes,
+        octave_detail,
+    }
 }
 
 /// The total number of logical rows in a chromagram display.
@@ -102,7 +115,9 @@ pub fn compute_chroma_max(
     let max_octave = min_octave + num_octaves;
     for col in stft_columns {
         let ch = stft_to_chromagram(&col.magnitudes, freq_resolution, min_octave, num_octaves);
-        for &v in &ch.pitch_classes { max_class = max_class.max(v); }
+        for &v in &ch.pitch_classes {
+            max_class = max_class.max(v);
+        }
         for octaves in &ch.octave_detail {
             for &v in &octaves[min_octave..max_octave.min(MAX_OCTAVES)] {
                 max_note = max_note.max(v);
@@ -149,10 +164,20 @@ pub fn pre_render_chromagram_columns(
 ) -> crate::types::PreRendered {
     // Compute all chromagram columns from the STFT, then hand off to the
     // shared pixel renderer (also used by the resonator path).
-    let chromas: Vec<ChromagramColumn> = stft_columns.iter()
+    let chromas: Vec<ChromagramColumn> = stft_columns
+        .iter()
         .map(|col| stft_to_chromagram(&col.magnitudes, freq_resolution, min_octave, num_octaves))
         .collect();
-    pre_render_chroma_from_columns(&chromas, max_class, max_note, min_octave, num_octaves, gain_db, adapt, floor_db)
+    pre_render_chroma_from_columns(
+        &chromas,
+        max_class,
+        max_note,
+        min_octave,
+        num_octaves,
+        gain_db,
+        adapt,
+        floor_db,
+    )
 }
 
 /// Time constant (in columns) used by the per-column local-max smoother that
@@ -166,7 +191,9 @@ const ADAPT_TAU_COLS: f32 = 32.0;
 /// without lag.
 fn smooth_two_pass_ema(input: &[f32], tau_cols: f32) -> Vec<f32> {
     let n = input.len();
-    if n == 0 { return Vec::new(); }
+    if n == 0 {
+        return Vec::new();
+    }
     let alpha = if tau_cols > 0.5 {
         1.0 - (-1.0 / tau_cols).exp()
     } else {
@@ -222,7 +249,13 @@ pub fn pre_render_chroma_from_columns(
     use crate::types::PreRendered;
 
     if chromas.is_empty() {
-        return PreRendered { width: 0, height: 0, pixels: Vec::new(), db_data: Vec::new(), flow_shifts: Vec::new() };
+        return PreRendered {
+            width: 0,
+            height: 0,
+            pixels: Vec::new(),
+            db_data: Vec::new(),
+            flow_shifts: Vec::new(),
+        };
     }
 
     let width = chromas.len();
@@ -230,7 +263,13 @@ pub fn pre_render_chroma_from_columns(
     let mut pixels = vec![0u8; width * height * 4];
 
     if max_class <= 0.0 || max_note <= 0.0 {
-        return PreRendered { width: width as u32, height: height as u32, pixels, db_data: Vec::new(), flow_shifts: Vec::new() };
+        return PreRendered {
+            width: width as u32,
+            height: height as u32,
+            pixels,
+            db_data: Vec::new(),
+            flow_shifts: Vec::new(),
+        };
     }
 
     // Apply gain by lowering the effective normalisation max.
@@ -260,10 +299,12 @@ pub fn pre_render_chroma_from_columns(
     // Per-column peak energy (max over the active pitch classes / octaves) —
     // the substrate the local-AGC slider smooths over.
     let (smoothed_class, smoothed_note) = if adapt > 0.0 {
-        let local_class: Vec<f32> = chromas.iter()
+        let local_class: Vec<f32> = chromas
+            .iter()
             .map(|ch| ch.pitch_classes.iter().cloned().fold(0.0_f32, f32::max))
             .collect();
-        let local_note: Vec<f32> = chromas.iter()
+        let local_note: Vec<f32> = chromas
+            .iter()
             .map(|ch| {
                 let mut m = 0.0_f32;
                 for octs in &ch.octave_detail {
@@ -286,9 +327,13 @@ pub fn pre_render_chroma_from_columns(
     // and the hard dB floor, returning an amplitude-domain norm in [0, 1].
     #[inline]
     fn map_norm(energy: f32, eff_max_c: f32, floor_lin: f32) -> f32 {
-        if eff_max_c <= 0.0 { return 0.0; }
+        if eff_max_c <= 0.0 {
+            return 0.0;
+        }
         let ratio = (energy / eff_max_c).min(1.0);
-        if ratio <= floor_lin { return 0.0; }
+        if ratio <= floor_lin {
+            return 0.0;
+        }
         // Remap [floor_lin, 1] → [0, 1] linearly in energy, then sqrt for the
         // amplitude-domain perceptual curve (matches the pre-Adapt behaviour).
         let denom = (1.0 - floor_lin).max(f32::MIN_POSITIVE);
@@ -314,11 +359,16 @@ pub fn pre_render_chroma_from_columns(
         };
 
         for pc in 0..NUM_PITCH_CLASSES {
-            let class_byte = (map_norm(chroma.pitch_classes[pc], eff_max_class_c, floor_lin) * 255.0) as u8;
+            let class_byte =
+                (map_norm(chroma.pitch_classes[pc], eff_max_class_c, floor_lin) * 255.0) as u8;
 
             for oct_abs in min_octave..max_octave {
                 let oct_rel = oct_abs - min_octave; // relative index for row layout
-                let note_byte = (map_norm(chroma.octave_detail[pc][oct_abs], eff_max_note_c, floor_lin) * 255.0) as u8;
+                let note_byte = (map_norm(
+                    chroma.octave_detail[pc][oct_abs],
+                    eff_max_note_c,
+                    floor_lin,
+                ) * 255.0) as u8;
 
                 // B channel: energy flow between consecutive columns
                 let flow_byte = if col_idx == 0 {
@@ -336,16 +386,22 @@ pub fn pre_render_chroma_from_columns(
                 for s in 0..CHROMA_RENDER_SCALE {
                     let y = height - 1 - (row_from_bottom * CHROMA_RENDER_SCALE + s);
                     let pixel_idx = (y * width + col_idx) * 4;
-                    pixels[pixel_idx] = class_byte;       // R = pitch class intensity
-                    pixels[pixel_idx + 1] = note_byte;    // G = note intensity
-                    pixels[pixel_idx + 2] = flow_byte;    // B = energy flow
+                    pixels[pixel_idx] = class_byte; // R = pitch class intensity
+                    pixels[pixel_idx + 1] = note_byte; // G = note intensity
+                    pixels[pixel_idx + 2] = flow_byte; // B = energy flow
                     pixels[pixel_idx + 3] = 255;
                 }
             }
         }
     }
 
-    PreRendered { width: width as u32, height: height as u32, pixels, db_data: Vec::new(), flow_shifts: Vec::new() }
+    PreRendered {
+        width: width as u32,
+        height: height as u32,
+        pixels,
+        db_data: Vec::new(),
+        flow_shifts: Vec::new(),
+    }
 }
 
 /// Default quality factor for the note-aligned resonator chromagram.
@@ -429,7 +485,9 @@ pub fn compute_chroma_columns_resonators(
     for octave in min_octave..max_octave {
         for pc in 0..NUM_PITCH_CLASSES {
             let f = note_freq_hz(pc, octave) as f32;
-            if f <= 0.0 || f >= nyq * 0.999 { continue; }
+            if f <= 0.0 || f >= nyq * 0.999 {
+                continue;
+            }
             // Constant-Q at audible+ frequencies; widen below the τ cap so
             // low notes don't hold broadband click energy for hundreds of ms.
             let bw = (f / q).max(bw_floor).clamp(0.1, nyq * 0.99);
@@ -456,10 +514,14 @@ pub fn compute_chroma_columns_resonators(
     let mut pos = 0usize;
     for frame in 0..col_end {
         let next = pos + hop_size;
-        if next > total_samples { break; }
+        if next > total_samples {
+            break;
+        }
         bank.process_samples(&samples[pos..next]);
         pos = next;
-        if frame < col_start { continue; }
+        if frame < col_start {
+            continue;
+        }
 
         let mut col = empty_col();
         for (k, &(pc, octave)) in bin_map.iter().enumerate() {
@@ -487,7 +549,9 @@ pub fn compute_chroma_max_from_columns(
     let mut max_note = 0.0f32;
     let max_octave = (min_octave + num_octaves).min(MAX_OCTAVES);
     for ch in chromas {
-        for &v in &ch.pitch_classes { max_class = max_class.max(v); }
+        for &v in &ch.pitch_classes {
+            max_class = max_class.max(v);
+        }
         for octaves in &ch.octave_detail {
             for &v in &octaves[min_octave..max_octave] {
                 max_note = max_note.max(v);
@@ -503,7 +567,12 @@ mod tests {
 
     /// Build a magnitude column where a single FFT bin is set, at the bin nearest
     /// `freq_hz`. Returns the full magnitudes vec.
-    fn one_tone_magnitudes(freq_hz: f64, freq_resolution: f64, num_bins: usize, mag: f32) -> Vec<f32> {
+    fn one_tone_magnitudes(
+        freq_hz: f64,
+        freq_resolution: f64,
+        num_bins: usize,
+        mag: f32,
+    ) -> Vec<f32> {
         let mut mags = vec![0.0f32; num_bins];
         let bin = (freq_hz / freq_resolution).round() as usize;
         if bin < num_bins {
@@ -521,7 +590,10 @@ mod tests {
 
     #[test]
     fn chroma_pixel_height_multiplies_by_render_scale() {
-        assert_eq!(chroma_pixel_height(10), chroma_rows(10) * CHROMA_RENDER_SCALE);
+        assert_eq!(
+            chroma_pixel_height(10),
+            chroma_rows(10) * CHROMA_RENDER_SCALE
+        );
     }
 
     #[test]
@@ -532,7 +604,8 @@ mod tests {
         let chroma = stft_to_chromagram(&mags, 1.0, 0, 10);
         let a_idx = PITCH_CLASS_NAMES.iter().position(|&n| n == "A").unwrap();
         // The "A" class should be the strongest of the 12.
-        let strongest = chroma.pitch_classes
+        let strongest = chroma
+            .pitch_classes
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
@@ -583,20 +656,34 @@ mod tests {
         let warmup_cols = 64;
         let total_cols = warmup_cols + 16;
         let cols = compute_chroma_columns_resonators(
-            &samples, sr, hop, warmup_cols, total_cols - warmup_cols,
-            0, 10, CHROMA_RESONATOR_Q,
+            &samples,
+            sr,
+            hop,
+            warmup_cols,
+            total_cols - warmup_cols,
+            0,
+            10,
+            CHROMA_RESONATOR_Q,
         );
         assert!(!cols.is_empty(), "should emit columns past warm-up");
         let last = cols.last().unwrap();
         let a_idx = PITCH_CLASS_NAMES.iter().position(|&n| n == "A").unwrap();
-        let strongest = last.pitch_classes
-            .iter().enumerate()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0;
+        let strongest = last
+            .pitch_classes
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .unwrap()
+            .0;
         assert_eq!(strongest, a_idx, "440 Hz should land in pitch class A");
         // Among octaves of A, octave 4 should win.
         let a_oct = (0..MAX_OCTAVES)
-            .max_by(|&i, &j| last.octave_detail[a_idx][i]
-                .partial_cmp(&last.octave_detail[a_idx][j]).unwrap()).unwrap();
+            .max_by(|&i, &j| {
+                last.octave_detail[a_idx][i]
+                    .partial_cmp(&last.octave_detail[a_idx][j])
+                    .unwrap()
+            })
+            .unwrap();
         assert_eq!(a_oct, 4, "440 Hz is A4");
     }
 
@@ -607,7 +694,10 @@ mod tests {
         // `compute_chroma_max` produces from the same STFT input.
         use crate::types::SpectrogramColumn;
         let mags = one_tone_magnitudes(440.0, 1.0, 1024, 2.0);
-        let col = SpectrogramColumn { magnitudes: mags, time_offset: 0.0 };
+        let col = SpectrogramColumn {
+            magnitudes: mags,
+            time_offset: 0.0,
+        };
         let (stft_max_class, stft_max_note) =
             compute_chroma_max(std::slice::from_ref(&col), 1.0, 0, 10);
         let chroma = stft_to_chromagram(&col.magnitudes, 1.0, 0, 10);

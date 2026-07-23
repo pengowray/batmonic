@@ -3,8 +3,10 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
+use super::streaming_source::{
+    mix_to_mono, read_blob_range, CachedChunk, ChunkCache, FileHandle, CHUNK_FRAMES,
+};
 use crate::audio::source::{AudioSource, ChannelView};
-use super::streaming_source::{FileHandle, ChunkCache, CachedChunk, CHUNK_FRAMES, mix_to_mono, read_blob_range};
 
 /// Size of each compressed read window for MP3 streaming (4 MB).
 const MP3_WINDOW_BYTES: u64 = 4 * 1024 * 1024;
@@ -155,7 +157,8 @@ impl StreamingMp3Source {
         let cursor_frame = *self.decode_frame_cursor.borrow();
         let skip_threshold = MP3_WINDOW_BYTES * 2; // ~8 MB worth of sequential decode
         if fetch_start > cursor_frame {
-            let gap_bytes = self.estimate_byte_for_frame(fetch_start)
+            let gap_bytes = self
+                .estimate_byte_for_frame(fetch_start)
                 .saturating_sub(*self.decode_byte_cursor.borrow());
             if gap_bytes > skip_threshold {
                 let seek_byte = self.estimate_byte_for_frame(fetch_start);
@@ -204,7 +207,12 @@ impl StreamingMp3Source {
             }
             FileHandle::Bytes(b) => super::streaming_source::slice_bytes(b, read_start, read_end),
             FileHandle::MediaStoreUri(uri) => {
-                super::streaming_source::read_media_store_range(uri, read_start, read_end - read_start).await
+                super::streaming_source::read_media_store_range(
+                    uri,
+                    read_start,
+                    read_end - read_start,
+                )
+                .await
             }
         };
         let bytes = match bytes {
@@ -226,7 +234,12 @@ impl StreamingMp3Source {
         hint.with_extension("mp3");
 
         let mut format = symphonia::default::get_probe()
-            .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+            .probe(
+                &hint,
+                mss,
+                FormatOptions::default(),
+                MetadataOptions::default(),
+            )
             .map_err(|e| format!("MP3 window probe error: {e}"))?;
 
         let track = format
@@ -454,8 +467,7 @@ impl StreamingMp3Source {
                     let end_idx = (offset_in_chunk + to_read).min(chunk.mono.len());
                     let start_idx = offset_in_chunk.min(end_idx);
                     let n = end_idx - start_idx;
-                    buf[written..written + n]
-                        .copy_from_slice(&chunk.mono[start_idx..end_idx]);
+                    buf[written..written + n].copy_from_slice(&chunk.mono[start_idx..end_idx]);
                     for s in &mut buf[written + n..written + to_read] {
                         *s = 0.0;
                     }
@@ -540,7 +552,9 @@ impl AudioSource for StreamingMp3Source {
             }
             ChannelView::Channel(ch) => {
                 if ch >= self.channels {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 if end <= head_end {
@@ -556,7 +570,9 @@ impl AudioSource for StreamingMp3Source {
             }
             ChannelView::Difference => {
                 if self.channels < 2 {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 let mut left = vec![0.0f32; total_len];
@@ -592,8 +608,12 @@ mod tests {
     /// so a busy-poll with a no-op waker drives them straight to completion.
     fn block_on<F: std::future::Future>(fut: F) -> F::Output {
         use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-        const VTABLE: RawWakerVTable =
-            RawWakerVTable::new(|_| RawWaker::new(std::ptr::null(), &VTABLE), |_| {}, |_| {}, |_| {});
+        const VTABLE: RawWakerVTable = RawWakerVTable::new(
+            |_| RawWaker::new(std::ptr::null(), &VTABLE),
+            |_| {},
+            |_| {},
+            |_| {},
+        );
         let waker = unsafe { Waker::from_raw(RawWaker::new(std::ptr::null(), &VTABLE)) };
         let mut cx = Context::from_waker(&waker);
         let mut fut = std::pin::pin!(fut);
@@ -626,7 +646,10 @@ mod tests {
             big.extend_from_slice(single);
         }
         let file_size = big.len() as u64;
-        assert!(file_size > MP3_WINDOW_BYTES * 2, "fixture must span >2 windows");
+        assert!(
+            file_size > MP3_WINDOW_BYTES * 2,
+            "fixture must span >2 windows"
+        );
 
         // Ground truth: a full in-memory decode of the same bytes.
         let real = load_audio(&big).expect("decode").samples.len() as u64;
@@ -637,7 +660,8 @@ mod tests {
         assert!(
             header.estimated_total_frames < real * 7 / 10,
             "test precondition: header should under-estimate; est={}, real={}",
-            header.estimated_total_frames, real,
+            header.estimated_total_frames,
+            real,
         );
 
         let src = StreamingMp3Source::new(
@@ -657,7 +681,10 @@ mod tests {
             let cursor = src.decode_frame_cursor_value();
             block_on(src.prefetch_region(cursor, 262_144));
             guard += 1;
-            assert!(guard < 100_000, "decode did not terminate (possible regression)");
+            assert!(
+                guard < 100_000,
+                "decode did not terminate (possible regression)"
+            );
         }
 
         let total = src.total_samples();
@@ -667,7 +694,9 @@ mod tests {
              the estimate-stop bug is back",
             100.0 * total as f64 / real as f64,
         );
-        assert!(!src.length_is_estimated(), "length is exact after full decode");
+        assert!(
+            !src.length_is_estimated(),
+            "length is exact after full decode"
+        );
     }
 }
-

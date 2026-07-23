@@ -24,7 +24,8 @@ pub const RHINOLOPHIDAE: BatSpecies = BatSpecies {
     call_type: "CF",
     freq_lo_hz: 30_000.0,
     freq_hi_hz: 120_000.0,
-    description: "Constant-frequency calls; species range ~30 kHz (large) to ~112 kHz (lesser horseshoe)",
+    description:
+        "Constant-frequency calls; species range ~30 kHz (large) to ~112 kHz (lesser horseshoe)",
     echolocates: true,
 };
 
@@ -1549,7 +1550,8 @@ pub const TRINYCTERIS_NICEFORI: BatSpecies = BatSpecies {
     call_type: "FM",
     freq_lo_hz: 55_000.0,
     freq_hi_hz: 100_000.0,
-    description: "Low-intensity gleaner. Peak ~80 kHz. Multiharmonic FM. Forest understory specialist.",
+    description:
+        "Low-intensity gleaner. Peak ~80 kHz. Multiharmonic FM. Forest understory specialist.",
     echolocates: true,
 };
 
@@ -2612,7 +2614,8 @@ pub const MYOTIS_HOSONOI: BatSpecies = BatSpecies {
     call_type: "FM",
     freq_lo_hz: 35_000.0,
     freq_hi_hz: 95_000.0,
-    description: "FM calls typical of Myotis. Endemic to Japan (Honshu). Cave-dwelling. Poorly studied.",
+    description:
+        "FM calls typical of Myotis. Endemic to Japan (Honshu). Cave-dwelling. Poorly studied.",
     echolocates: true,
 };
 
@@ -3438,7 +3441,8 @@ pub const PEROPTERYX_LEUCOPTERA: BatSpecies = BatSpecies {
     call_type: "QCF",
     freq_lo_hz: 38_000.0,
     freq_hi_hz: 50_000.0,
-    description: "Distinctive white wing membrane patches. QCF at ~42 kHz. Amazonian lowland forests.",
+    description:
+        "Distinctive white wing membrane patches. QCF at ~42 kHz. Amazonian lowland forests.",
     echolocates: true,
 };
 
@@ -3450,7 +3454,8 @@ pub const PEROPTERYX_TRINITATIS: BatSpecies = BatSpecies {
     call_type: "QCF",
     freq_lo_hz: 38_000.0,
     freq_hi_hz: 52_000.0,
-    description: "Northern South America. QCF at ~43 kHz. Open-area forager near rock shelters and caves.",
+    description:
+        "Northern South America. QCF at ~43 kHz. Open-area forager near rock shelters and caves.",
     echolocates: true,
 };
 
@@ -3670,7 +3675,8 @@ pub const MOLOSSOPS_NEGLECTUS: BatSpecies = BatSpecies {
     call_type: "QCF",
     freq_lo_hz: 32_000.0,
     freq_hi_hz: 48_000.0,
-    description: "Small Amazonian molossid. QCF at ~40 kHz. Poorly known. Forest edge and gap forager.",
+    description:
+        "Small Amazonian molossid. QCF at ~40 kHz. Poorly known. Forest edge and gap forager.",
     echolocates: true,
 };
 
@@ -3955,7 +3961,8 @@ pub const RHINOLOPHUS_SIMULATOR: BatSpecies = BatSpecies {
     call_type: "CF",
     freq_lo_hz: 76_000.0,
     freq_hi_hz: 84_000.0,
-    description: "Southern and eastern Africa savannas. CF peak ~80 kHz. Often sympatric with R. swinnyi.",
+    description:
+        "Southern and eastern Africa savannas. CF peak ~80 kHz. Often sympatric with R. swinnyi.",
     echolocates: true,
 };
 
@@ -4003,7 +4010,8 @@ pub const RHINOLOPHUS_BLASII: BatSpecies = BatSpecies {
     call_type: "CF",
     freq_lo_hz: 82_000.0,
     freq_hi_hz: 90_000.0,
-    description: "North Africa and East Africa. CF peak ~86 kHz. Mediterranean-type habitats and caves.",
+    description:
+        "North Africa and East Africa. CF peak ~86 kHz. Mediterranean-type habitats and caves.",
     echolocates: true,
 };
 
@@ -5806,7 +5814,8 @@ pub const RHINOLOPHUS_COGNATUS: BatSpecies = BatSpecies {
     call_type: "CF",
     freq_lo_hz: 78_000.0,
     freq_hi_hz: 100_000.0,
-    description: "Endemic to the Andaman Islands. CF peak ~85\u{2013}92 kHz (mean ~90 kHz). Cave-roosting.",
+    description:
+        "Endemic to the Andaman Islands. CF peak ~85\u{2013}92 kHz (mean ~90 kHz). Cave-roosting.",
     echolocates: true,
 };
 

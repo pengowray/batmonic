@@ -1,11 +1,13 @@
 use crate::state::store_fields::*;
+use crate::state::{
+    AppState, MicAcquisitionState, MicBackend, MicDeviceInfo, MicPendingAction, MicStrategy,
+};
+use crate::tauri_bridge::tauri_invoke_typed_no_args;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
-use crate::state::{AppState, MicBackend, MicAcquisitionState, MicPendingAction, MicDeviceInfo, MicStrategy};
-use crate::tauri_bridge::tauri_invoke_typed_no_args;
 
 // ── Shared device-selection helpers ──────────────────────────────────────────
 // Every device row in the chooser performs the same selection sequence; only the
@@ -100,75 +102,103 @@ pub fn MicChooserModal() -> impl IntoView {
     // re-runs on a USB hot-plug while the chooser is open (Effect below), so a
     // freshly-attached mic shows up without reopening the dialog.
     let refresh_devices = move || {
-    spawn_local(async move {
-        // Fetch cpal devices via the typed IPC boundary (oversample_ipc::mic).
-        match tauri_invoke_typed_no_args::<oversample_ipc::mic::DeviceListResult>("mic_list_devices").await {
-            Ok(result) => {
-                cpal_host_name.set(result.host_name);
-                let mut devs = Vec::new();
-                for dev in result.devices {
-                    // Collect the common rates each device's ranges support,
-                    // plus the distinct sample-format tags.
-                    let mut rates = Vec::new();
-                    let mut formats = std::collections::BTreeSet::new();
-                    for range in &dev.sample_rate_ranges {
-                        if !range.format.is_empty() {
-                            formats.insert(range.format.clone());
-                        }
-                        for &r in &[44100u32, 48000, 96000, 192000, 256000, 384000, 500000] {
-                            if r >= range.min && r <= range.max && !rates.contains(&r) {
-                                rates.push(r);
+        spawn_local(async move {
+            // Fetch cpal devices via the typed IPC boundary (oversample_ipc::mic).
+            match tauri_invoke_typed_no_args::<oversample_ipc::mic::DeviceListResult>(
+                "mic_list_devices",
+            )
+            .await
+            {
+                Ok(result) => {
+                    cpal_host_name.set(result.host_name);
+                    let mut devs = Vec::new();
+                    for dev in result.devices {
+                        // Collect the common rates each device's ranges support,
+                        // plus the distinct sample-format tags.
+                        let mut rates = Vec::new();
+                        let mut formats = std::collections::BTreeSet::new();
+                        for range in &dev.sample_rate_ranges {
+                            if !range.format.is_empty() {
+                                formats.insert(range.format.clone());
+                            }
+                            for &r in &[44100u32, 48000, 96000, 192000, 256000, 384000, 500000] {
+                                if r >= range.min && r <= range.max && !rates.contains(&r) {
+                                    rates.push(r);
+                                }
                             }
                         }
+                        rates.sort();
+                        let rates_summary = rates
+                            .iter()
+                            .map(|&r| {
+                                if r >= 1000 {
+                                    format!("{}k", r / 1000)
+                                } else {
+                                    format!("{}", r)
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        // Derive bit depths from format strings before consuming formats
+                        let bit_depths: Vec<u16> = formats
+                            .iter()
+                            .filter_map(|f| {
+                                if f.contains("I16") {
+                                    Some(16)
+                                } else if f.contains("I24") {
+                                    Some(24)
+                                } else if f.contains("I32") {
+                                    Some(32)
+                                } else if f.contains("F32") {
+                                    Some(32)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        let format = formats.into_iter().collect::<Vec<_>>().join(", ");
+                        devs.push(CpalDevice {
+                            name: dev.name,
+                            is_default: dev.is_default,
+                            rates_summary,
+                            format,
+                            rates,
+                            bit_depths,
+                        });
                     }
-                    rates.sort();
-                    let rates_summary = rates
-                        .iter()
-                        .map(|&r| {
-                            if r >= 1000 {
-                                format!("{}k", r / 1000)
-                            } else {
-                                format!("{}", r)
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    // Derive bit depths from format strings before consuming formats
-                    let bit_depths: Vec<u16> = formats.iter().filter_map(|f| {
-                        if f.contains("I16") { Some(16) }
-                        else if f.contains("I24") { Some(24) }
-                        else if f.contains("I32") { Some(32) }
-                        else if f.contains("F32") { Some(32) }
-                        else { None }
-                    }).collect();
-                    let format = formats.into_iter().collect::<Vec<_>>().join(", ");
-                    devs.push(CpalDevice { name: dev.name, is_default: dev.is_default, rates_summary, format, rates, bit_depths });
+                    cpal_devices.set(devs);
                 }
-                cpal_devices.set(devs);
+                Err(e) => log::warn!("Failed to list cpal devices: {}", e),
             }
-            Err(e) => log::warn!("Failed to list cpal devices: {}", e),
-        }
 
-        // Fetch USB devices (if available)
-        if let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::plugins::UsbDeviceListResult>(
-            "plugin:usb-audio|listUsbDevices",
-        ).await {
-            let devs = result.devices.into_iter()
-                .filter(|d| d.is_audio_device)
-                .map(|d| {
-                    let product_name = if d.product_name.is_empty() {
-                        d.device_name.clone()
-                    } else {
-                        d.product_name
-                    };
-                    UsbDevice { device_name: d.device_name, product_name, has_permission: d.has_permission }
-                })
-                .collect();
-            usb_devices.set(devs);
-        }
+            // Fetch USB devices (if available)
+            if let Ok(result) = tauri_invoke_typed_no_args::<
+                oversample_ipc::plugins::UsbDeviceListResult,
+            >("plugin:usb-audio|listUsbDevices")
+            .await
+            {
+                let devs = result
+                    .devices
+                    .into_iter()
+                    .filter(|d| d.is_audio_device)
+                    .map(|d| {
+                        let product_name = if d.product_name.is_empty() {
+                            d.device_name.clone()
+                        } else {
+                            d.product_name
+                        };
+                        UsbDevice {
+                            device_name: d.device_name,
+                            product_name,
+                            has_permission: d.has_permission,
+                        }
+                    })
+                    .collect();
+                usb_devices.set(devs);
+            }
 
-        loading.set(false);
-    });
+            loading.set(false);
+        });
     };
     refresh_devices();
 
@@ -567,13 +597,21 @@ async fn enumerate_browser_devices(
     for i in 0..arr.length() {
         let item = arr.get(i);
         let kind = js_sys::Reflect::get(&item, &"kind".into())
-            .ok().and_then(|v| v.as_string()).unwrap_or_default();
-        if kind != "audioinput" { continue; }
+            .ok()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
+        if kind != "audioinput" {
+            continue;
+        }
 
         let device_id = js_sys::Reflect::get(&item, &"deviceId".into())
-            .ok().and_then(|v| v.as_string()).unwrap_or_default();
+            .ok()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
         let label = js_sys::Reflect::get(&item, &"label".into())
-            .ok().and_then(|v| v.as_string()).unwrap_or_default();
+            .ok()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
 
         if label.is_empty() {
             has_empty_label = true;
@@ -585,9 +623,15 @@ async fn enumerate_browser_devices(
         first_audio_input = false;
 
         // Skip the synthetic "default" entry if we already have real devices
-        if device_id == "default" { continue; }
+        if device_id == "default" {
+            continue;
+        }
 
-        devs.push(BrowserDevice { device_id, label, is_default: is_default && devs.is_empty() });
+        devs.push(BrowserDevice {
+            device_id,
+            label,
+            is_default: is_default && devs.is_empty(),
+        });
     }
 
     // If we got no labeled devices but there were unlabeled ones, prompt for permission

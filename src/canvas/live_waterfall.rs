@@ -4,11 +4,11 @@
 //! spectrogram canvas, bypassing the tile cache entirely. This gives immediate
 //! one-column-at-a-time display during live audio capture.
 
-use std::cell::RefCell;
-use web_sys::CanvasRenderingContext2d;
-use crate::canvas::colors::{magnitude_to_db, db_to_greyscale};
+use crate::canvas::colors::{db_to_greyscale, magnitude_to_db};
 use crate::canvas::spectrogram_renderer::{ColormapMode, SpectDisplaySettings};
 use crate::types::SpectrogramColumn;
+use std::cell::RefCell;
+use web_sys::CanvasRenderingContext2d;
 
 /// Maximum columns to keep in the circular buffer.
 /// 30k columns ≈ 160s at 48kHz/hop256, or ≈ 20s at 384kHz/hop256.
@@ -77,8 +77,7 @@ fn grey_lut_key(s: &SpectDisplaySettings) -> u64 {
     let c = s.gamma.to_bits() as u64;
     let d = s.gain_db.to_bits() as u64;
     // Mix so distinct tuples don't collide (xor-shift fold).
-    (a.wrapping_mul(0x9E3779B1) ^ b.rotate_left(16))
-        .wrapping_mul(0x85EBCA77)
+    (a.wrapping_mul(0x9E3779B1) ^ b.rotate_left(16)).wrapping_mul(0x85EBCA77)
         ^ c.rotate_left(32)
         ^ d.rotate_left(48)
 }
@@ -167,15 +166,14 @@ pub fn is_active() -> bool {
 
 /// Total columns written so far (for scroll position calculations).
 pub fn total_columns() -> usize {
-    WATERFALL.with(|w| {
-        w.borrow().as_ref().map(|wf| wf.total_written).unwrap_or(0)
-    })
+    WATERFALL.with(|w| w.borrow().as_ref().map(|wf| wf.total_written).unwrap_or(0))
 }
 
 /// Total elapsed time in seconds (total_columns * time_resolution).
 pub fn total_time() -> f64 {
     WATERFALL.with(|w| {
-        w.borrow().as_ref()
+        w.borrow()
+            .as_ref()
             .map(|wf| wf.total_written as f64 * wf.hop_size as f64 / wf.sample_rate as f64)
             .unwrap_or(0.0)
     })
@@ -186,7 +184,8 @@ pub fn total_time() -> f64 {
 /// Returns 0.0 while the buffer hasn't filled yet.
 pub fn oldest_time() -> f64 {
     WATERFALL.with(|w| {
-        w.borrow().as_ref()
+        w.borrow()
+            .as_ref()
             .map(|wf| {
                 let oldest = wf.total_written.saturating_sub(wf.capacity);
                 oldest as f64 * wf.hop_size as f64 / wf.sample_rate as f64
@@ -201,7 +200,11 @@ pub fn oldest_time() -> f64 {
 /// the full retained window `[oldest .. now]`. Either way it spans only what we
 /// actually hold, so the live overview isn't "a 10-minute file with a sliver at
 /// the end". Returns `None` until there's data.
-pub fn render_overview(out_w: u32, out_h: u32, recent_cols: Option<usize>) -> Option<crate::types::PreviewImage> {
+pub fn render_overview(
+    out_w: u32,
+    out_h: u32,
+    recent_cols: Option<usize>,
+) -> Option<crate::types::PreviewImage> {
     use crate::canvas::colors::magnitude_to_greyscale;
     if out_w == 0 || out_h == 0 {
         return None;
@@ -253,7 +256,8 @@ pub fn render_overview(out_w: u32, out_h: u32, recent_cols: Option<usize>) -> Op
 /// i.e. the oldest history the waterfall could ever show. 0 when inactive.
 pub fn capacity_time() -> f64 {
     WATERFALL.with(|w| {
-        w.borrow().as_ref()
+        w.borrow()
+            .as_ref()
             .map(|wf| wf.capacity as f64 * wf.hop_size as f64 / wf.sample_rate as f64)
             .unwrap_or(0.0)
     })
@@ -262,7 +266,8 @@ pub fn capacity_time() -> f64 {
 /// Time resolution (seconds per column).
 pub fn time_resolution() -> f64 {
     WATERFALL.with(|w| {
-        w.borrow().as_ref()
+        w.borrow()
+            .as_ref()
             .map(|wf| wf.hop_size as f64 / wf.sample_rate as f64)
             .unwrap_or(1.0)
     })
@@ -271,7 +276,8 @@ pub fn time_resolution() -> f64 {
 /// Max frequency (Nyquist).
 pub fn max_freq() -> f64 {
     WATERFALL.with(|w| {
-        w.borrow().as_ref()
+        w.borrow()
+            .as_ref()
             .map(|wf| wf.sample_rate as f64 / 2.0)
             .unwrap_or(96000.0)
     })
@@ -279,15 +285,14 @@ pub fn max_freq() -> f64 {
 
 /// Capture sample rate (Hz), or 0 when no waterfall is active.
 pub fn sample_rate() -> u32 {
-    WATERFALL.with(|w| {
-        w.borrow().as_ref().map(|wf| wf.sample_rate).unwrap_or(0)
-    })
+    WATERFALL.with(|w| w.borrow().as_ref().map(|wf| wf.sample_rate).unwrap_or(0))
 }
 
 /// Get the running max magnitude (for auto-gain / ref_db).
 pub fn get_max_magnitude() -> f32 {
     WATERFALL.with(|w| {
-        w.borrow().as_ref()
+        w.borrow()
+            .as_ref()
             .map(|wf| wf.max_magnitude)
             .unwrap_or(0.0)
     })
@@ -310,11 +315,15 @@ pub fn render_viewport(
     WATERFALL.with(|w| {
         let wf = w.borrow();
         let Some(wf) = wf.as_ref() else { return false };
-        if wf.total_written == 0 { return false; }
+        if wf.total_written == 0 {
+            return false;
+        }
 
         let img_w = viewport_w as u32;
         let img_h = viewport_h as u32;
-        if img_w == 0 || img_h == 0 { return false; }
+        if img_w == 0 || img_h == 0 {
+            return false;
+        }
 
         let total_bins = wf.freq_bins;
         let oldest_available = wf.total_written.saturating_sub(wf.capacity);
@@ -323,16 +332,23 @@ pub fn render_viewport(
         let pixel_count = iw * ih;
 
         // Refresh the cached row→bin map only when height / crop changes.
-        let bin_key = (img_h, total_bins, freq_crop_lo.to_bits(), freq_crop_hi.to_bits());
+        let bin_key = (
+            img_h,
+            total_bins,
+            freq_crop_lo.to_bits(),
+            freq_crop_hi.to_bits(),
+        );
         RENDER_BIN_MAP.with(|cell| {
             let mut bm = cell.borrow_mut();
             if bm.1 != bin_key {
                 bm.0.clear();
                 bm.0.extend((0..ih).map(|py| {
                     let frac = py as f64 / viewport_h; // 0 at top, 1 at bottom
-                    // freq_crop_hi = top, freq_crop_lo = bottom
+                                                       // freq_crop_hi = top, freq_crop_lo = bottom
                     let freq_frac = freq_crop_hi - frac * (freq_crop_hi - freq_crop_lo);
-                    (freq_frac * total_bins as f64).floor().clamp(0.0, (total_bins - 1) as f64) as usize
+                    (freq_frac * total_bins as f64)
+                        .floor()
+                        .clamp(0.0, (total_bins - 1) as f64) as usize
                 }));
                 bm.1 = bin_key;
             }
@@ -419,17 +435,17 @@ pub fn render_viewport(
                     // Put pixels on canvas.
                     let t_upload = perf_now();
                     let clamped = wasm_bindgen::Clamped(&pixels[..need]);
-                    if let Ok(img_data) = web_sys::ImageData::new_with_u8_clamped_array_and_sh(
-                        clamped, img_w, img_h,
-                    ) {
+                    if let Ok(img_data) =
+                        web_sys::ImageData::new_with_u8_clamped_array_and_sh(clamped, img_w, img_h)
+                    {
                         let _ = ctx.put_image_data(&img_data, 0.0, 0.0);
                     }
                     let t_end = perf_now();
                     RENDER_TIMING.with(|c| {
                         let mut t = c.borrow_mut();
                         t.0 += 1;
-                        t.1 += t_end - t_start;   // total render
-                        t.2 += t_end - t_upload;  // put_image_data only
+                        t.1 += t_end - t_start; // total render
+                        t.2 += t_end - t_upload; // put_image_data only
                     });
                 });
             });
@@ -450,7 +466,11 @@ fn apply_colormap_mode(
 ) -> [u8; 3] {
     match mode {
         ColormapMode::Uniform(cm) => cm.apply(grey),
-        ColormapMode::HfrFocus { colormap: cm, band_ff_lo_frac, band_ff_hi_frac } => {
+        ColormapMode::HfrFocus {
+            colormap: cm,
+            band_ff_lo_frac,
+            band_ff_hi_frac,
+        } => {
             // Convert canvas row to frequency fraction.
             let h = canvas_height as f64;
             let focus_top = (h * (1.0 - band_ff_hi_frac)).round() as usize;
@@ -492,7 +512,10 @@ mod tests {
         assert!(
             max_diff <= 1,
             "LUT off by {max_diff} grey levels (floor {}, range {}, gamma {}, gain {})",
-            settings.floor_db, settings.range_db, settings.gamma, settings.gain_db
+            settings.floor_db,
+            settings.range_db,
+            settings.gamma,
+            settings.gain_db
         );
         // Zero / negative magnitudes clamp to the darkest level.
         assert_eq!(grey_from_lut(&lut, 0.0), 0);
@@ -501,12 +524,27 @@ mod tests {
 
     #[test]
     fn grey_lut_matches_direct_linear() {
-        check_lut(&SpectDisplaySettings { floor_db: -90.0, range_db: 90.0, gamma: 1.0, gain_db: 6.0 });
+        check_lut(&SpectDisplaySettings {
+            floor_db: -90.0,
+            range_db: 90.0,
+            gamma: 1.0,
+            gain_db: 6.0,
+        });
     }
 
     #[test]
     fn grey_lut_matches_direct_gamma() {
-        check_lut(&SpectDisplaySettings { floor_db: -120.0, range_db: 120.0, gamma: 2.2, gain_db: 0.0 });
-        check_lut(&SpectDisplaySettings { floor_db: -60.0, range_db: 60.0, gamma: 0.5, gain_db: -10.0 });
+        check_lut(&SpectDisplaySettings {
+            floor_db: -120.0,
+            range_db: 120.0,
+            gamma: 2.2,
+            gain_db: 0.0,
+        });
+        check_lut(&SpectDisplaySettings {
+            floor_db: -60.0,
+            range_db: 60.0,
+            gamma: 0.5,
+            gain_db: -10.0,
+        });
     }
 }

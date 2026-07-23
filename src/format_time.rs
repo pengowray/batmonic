@@ -77,17 +77,28 @@ pub fn format_time_display(seconds: f64, precision: u8) -> String {
     } else if abs < 3600.0 {
         let mins = (abs / 60.0).floor() as u32;
         let secs = abs - mins as f64 * 60.0;
-        format!("{}{}m{:0>width$.prec$}s", sign, mins, secs,
+        format!(
+            "{}{}m{:0>width$.prec$}s",
+            sign,
+            mins,
+            secs,
             width = 3 + precision as usize, // "00." = 3 chars + decimals
-            prec = precision as usize)
+            prec = precision as usize
+        )
     } else {
         let hours = (abs / 3600.0).floor() as u32;
         let rem = abs - hours as f64 * 3600.0;
         let mins = (rem / 60.0).floor() as u32;
         let secs = rem - mins as f64 * 60.0;
-        format!("{}{}h{:02}m{:0>width$.prec$}s", sign, hours, mins, secs,
+        format!(
+            "{}{}h{:02}m{:0>width$.prec$}s",
+            sign,
+            hours,
+            mins,
+            secs,
             width = 3 + precision as usize,
-            prec = precision as usize)
+            prec = precision as usize
+        )
     }
 }
 
@@ -132,7 +143,11 @@ pub fn format_duration_compact(seconds: f64) -> String {
 ///
 /// Example: `5.000–10.500s`
 pub fn format_time_range(start: f64, end: f64, precision: u8) -> String {
-    format!("{}–{}", format_time_display(start, precision), format_time_display(end, precision))
+    format!(
+        "{}–{}",
+        format_time_display(start, precision),
+        format_time_display(end, precision)
+    )
 }
 
 // ── GUANO timestamp helper ─────────────────────────────────────────────

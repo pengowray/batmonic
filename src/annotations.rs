@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Multi-layered file identity for matching annotations to audio files across sessions.
 /// Layers are computed progressively — Layer 1 is instant, higher layers are lazy.
@@ -75,16 +75,22 @@ impl FileIdentity {
         // Check from highest confidence downward
         // Layer 4: full file hash (BLAKE3 or SHA-256)
         if let (Some(a), Some(b)) = (&self.full_blake3, &other.full_blake3) {
-            if a == b { return MatchConfidence::Certain; }
+            if a == b {
+                return MatchConfidence::Certain;
+            }
             return MatchConfidence::None;
         }
         if let (Some(a), Some(b)) = (&self.full_sha256, &other.full_sha256) {
-            if a == b { return MatchConfidence::Certain; }
+            if a == b {
+                return MatchConfidence::Certain;
+            }
             return MatchConfidence::None;
         }
         // Layer 3: content hash (header-zeroed BLAKE3)
         if let (Some(a), Some(b)) = (&self.content_hash, &other.content_hash) {
-            if a == b { return MatchConfidence::High; }
+            if a == b {
+                return MatchConfidence::High;
+            }
             // If content_hash mismatches but data_size is the same, the header may have
             // changed size (different zero-padding length → different content_hash).
             // Don't reject outright — fall through to spot hash check.
@@ -100,12 +106,16 @@ impl FileIdentity {
         }
         // Layer 2: BLAKE3 spot hash
         if let (Some(a), Some(b)) = (&self.spot_hash_b3, &other.spot_hash_b3) {
-            if a == b { return MatchConfidence::Likely; }
+            if a == b {
+                return MatchConfidence::Likely;
+            }
             return MatchConfidence::None;
         }
         // Legacy Layer 2: SHA-256 spot hash (for old sidecars)
         if let (Some(a), Some(b)) = (&self.legacy_spot_hash, &other.legacy_spot_hash) {
-            if a == b { return MatchConfidence::Likely; }
+            if a == b {
+                return MatchConfidence::Likely;
+            }
             return MatchConfidence::None;
         }
         // Layer 1: filename + size
@@ -299,12 +309,20 @@ pub fn generate_default_label(
     let prefix = kind_name(kind);
     let mut max_n: u32 = 0;
     for a in annotations {
-        if exclude_id == Some(a.id.as_str()) { continue; }
-        let Some(label) = label_of(&a.kind) else { continue; };
-        let Some(rest) = label.strip_prefix(prefix) else { continue; };
+        if exclude_id == Some(a.id.as_str()) {
+            continue;
+        }
+        let Some(label) = label_of(&a.kind) else {
+            continue;
+        };
+        let Some(rest) = label.strip_prefix(prefix) else {
+            continue;
+        };
         let rest = rest.trim_start();
         if let Ok(n) = rest.parse::<u32>() {
-            if n > max_n { max_n = n; }
+            if n > max_n {
+                max_n = n;
+            }
         }
     }
     format!("{} {}", prefix, max_n + 1)
@@ -521,7 +539,8 @@ pub fn build_annotation_tree(annotations: &[Annotation]) -> Vec<AnnotationNode> 
     use std::collections::HashMap;
 
     // Index annotations by id
-    let id_set: std::collections::HashSet<&str> = annotations.iter().map(|a| a.id.as_str()).collect();
+    let id_set: std::collections::HashSet<&str> =
+        annotations.iter().map(|a| a.id.as_str()).collect();
 
     // Collect children per parent_id (None = root)
     let mut children_map: HashMap<Option<&str>, Vec<&Annotation>> = HashMap::new();
@@ -539,7 +558,8 @@ pub fn build_annotation_tree(annotations: &[Annotation]) -> Vec<AnnotationNode> 
         list.sort_by(|a, b| {
             let oa = a.sort_order.unwrap_or(f64::MAX);
             let ob = b.sort_order.unwrap_or(f64::MAX);
-            oa.partial_cmp(&ob).unwrap_or(std::cmp::Ordering::Equal)
+            oa.partial_cmp(&ob)
+                .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| a.created_at.cmp(&b.created_at))
         });
     }
@@ -552,14 +572,17 @@ pub fn build_annotation_tree(annotations: &[Annotation]) -> Vec<AnnotationNode> 
         let Some(children) = children_map.get(&parent_key) else {
             return Vec::new();
         };
-        children.iter().map(|a| {
-            let kids = build_children(Some(a.id.as_str()), children_map, depth + 1);
-            AnnotationNode {
-                annotation: (*a).clone(),
-                children: kids,
-                depth,
-            }
-        }).collect()
+        children
+            .iter()
+            .map(|a| {
+                let kids = build_children(Some(a.id.as_str()), children_map, depth + 1);
+                AnnotationNode {
+                    annotation: (*a).clone(),
+                    children: kids,
+                    depth,
+                }
+            })
+            .collect()
     }
 
     build_children(None, &children_map, 0)
@@ -576,7 +599,10 @@ pub fn flatten_tree(nodes: &[AnnotationNode]) -> Vec<(AnnotationId, usize)> {
 }
 
 /// Collect all descendant ids of an annotation (for recursive deletion / grouping).
-pub fn collect_descendants(annotations: &[Annotation], parent_id: &AnnotationId) -> Vec<AnnotationId> {
+pub fn collect_descendants(
+    annotations: &[Annotation],
+    parent_id: &AnnotationId,
+) -> Vec<AnnotationId> {
     let mut result = Vec::new();
     for a in annotations {
         if a.parent_id.as_ref() == Some(parent_id) {
@@ -589,7 +615,9 @@ pub fn collect_descendants(annotations: &[Annotation], parent_id: &AnnotationId)
 
 /// Assign consecutive sort_order values to annotations at a given parent level.
 pub fn renumber_children(annotations: &mut [Annotation], parent_id: Option<&AnnotationId>) {
-    let mut indices: Vec<usize> = annotations.iter().enumerate()
+    let mut indices: Vec<usize> = annotations
+        .iter()
+        .enumerate()
         .filter(|(_, a)| a.parent_id.as_ref() == parent_id)
         .map(|(i, _)| i)
         .collect();
@@ -599,7 +627,8 @@ pub fn renumber_children(annotations: &mut [Annotation], parent_id: Option<&Anno
         let b = &annotations[j];
         let oa = a.sort_order.unwrap_or(f64::MAX);
         let ob = b.sort_order.unwrap_or(f64::MAX);
-        oa.partial_cmp(&ob).unwrap_or(std::cmp::Ordering::Equal)
+        oa.partial_cmp(&ob)
+            .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.created_at.cmp(&b.created_at))
     });
     for (rank, &idx) in indices.iter().enumerate() {
@@ -631,7 +660,10 @@ mod tests {
     fn optional_and_listed_ids_stay_bare() {
         let parent: Option<AnnotationId> = Some(AnnotationId::from("p1"));
         assert_eq!(serde_json::to_string(&parent).unwrap(), "\"p1\"");
-        assert_eq!(serde_json::to_string(&Option::<AnnotationId>::None).unwrap(), "null");
+        assert_eq!(
+            serde_json::to_string(&Option::<AnnotationId>::None).unwrap(),
+            "null"
+        );
 
         let ids = vec![AnnotationId::from("a"), AnnotationId::from("b")];
         assert_eq!(serde_json::to_string(&ids).unwrap(), "[\"a\",\"b\"]");

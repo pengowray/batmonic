@@ -12,8 +12,8 @@
 //! could cover them. Portalling to `<body>` cuts that knot — popups always
 //! sit above everything else.
 
-use leptos::prelude::*;
 use leptos::portal::Portal;
+use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -150,8 +150,12 @@ pub fn PopupPanel(
         // re-run from the resize listener), so it can fire after PopupPanel is
         // disposed, which disposes these NodeRefs. The outer `Some` guards
         // disposal; the inner guards the element not being mounted yet.
-        let Some(Some(anchor_el)) = anchor.try_get_untracked() else { return };
-        let Some(Some(panel_el)) = panel_ref.try_get_untracked() else { return };
+        let Some(Some(anchor_el)) = anchor.try_get_untracked() else {
+            return;
+        };
+        let Some(Some(panel_el)) = panel_ref.try_get_untracked() else {
+            return;
+        };
         let Some(win) = web_sys::window() else { return };
 
         let a = anchor_el.get_bounding_client_rect();

@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-only OR MIT OR Apache-2.0
 use crate::canvas::colors::{
-    magnitude_to_greyscale, magnitude_to_db,
-    db_to_greyscale, flow_rgb_scheme, coherence_rgb, phase_rgb,
-    greyscale_to_viridis, greyscale_to_inferno,
-    greyscale_to_magma, greyscale_to_plasma, greyscale_to_cividis, greyscale_to_turbo,
+    coherence_rgb, db_to_greyscale, flow_rgb_scheme, greyscale_to_cividis, greyscale_to_inferno,
+    greyscale_to_magma, greyscale_to_plasma, greyscale_to_turbo, greyscale_to_viridis,
+    magnitude_to_db, magnitude_to_greyscale, phase_rgb,
 };
 use crate::state::FlowColorScheme;
 use crate::types::{PreviewImage, SpectrogramData};
-use wasm_bindgen::JsCast;
 use wasm_bindgen::Clamped;
+use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData};
 
 use crate::viewport;
 
 // Re-export from split modules so callers don't need to change imports
-pub use crate::canvas::flow::{FlowAlgo, FlowData, compute_flow_data, composite_flow, pre_render_flow_columns};
+pub use crate::canvas::flow::{
+    composite_flow, compute_flow_data, pre_render_flow_columns, FlowAlgo, FlowData,
+};
 pub use crate::canvas::overlays::{
-    FreqShiftMode, FreqMarkerState, TimeMarkerStyle, DebugTileKind,
-    draw_freq_markers, draw_time_markers, draw_band_ff_overlay, draw_het_overlay,
-    draw_pulses, draw_selection, draw_harmonic_shadows, draw_filter_overlay,
-    pixel_to_time_freq, draw_notch_bands, draw_tile_debug_overlay, draw_annotations,
-    draw_time_marker_lines,
+    draw_annotations, draw_band_ff_overlay, draw_filter_overlay, draw_freq_markers,
+    draw_harmonic_shadows, draw_het_overlay, draw_notch_bands, draw_pulses, draw_selection,
+    draw_tile_debug_overlay, draw_time_marker_lines, draw_time_markers, pixel_to_time_freq,
+    DebugTileKind, FreqMarkerState, FreqShiftMode, TimeMarkerStyle,
 };
 
 // PreRendered and SpectDisplaySettings are defined in oversample-core::types.
@@ -34,7 +34,8 @@ pub fn pre_render(data: &SpectrogramData) -> PreRendered {
         !data.is_store_backed(),
         "pre_render: store-backed spectrogram ({} cols resident, {} total) — \
          `columns` is not the full set; use the tiled path instead",
-        data.columns_in_memory(), data.total_columns,
+        data.columns_in_memory(),
+        data.total_columns,
     );
     if data.columns.is_empty() {
         return PreRendered {
@@ -65,10 +66,10 @@ pub fn pre_render(data: &SpectrogramData) -> PreRendered {
             // Flip vertically: bin 0 = lowest freq → bottom row
             let y = height as usize - 1 - bin_idx;
             let pixel_idx = (y * width as usize + col_idx) * 4;
-            pixels[pixel_idx] = grey;     // R
+            pixels[pixel_idx] = grey; // R
             pixels[pixel_idx + 1] = grey; // G
             pixels[pixel_idx + 2] = grey; // B
-            pixels[pixel_idx + 3] = 255;  // A
+            pixels[pixel_idx + 3] = 255; // A
         }
     }
 
@@ -90,26 +91,44 @@ pub fn pre_render_columns<C: std::borrow::Borrow<crate::types::SpectrogramColumn
     columns: &[C],
 ) -> PreRendered {
     if columns.is_empty() {
-        return PreRendered { width: 0, height: 0, pixels: Vec::new(), db_data: Vec::new(), flow_shifts: Vec::new() };
+        return PreRendered {
+            width: 0,
+            height: 0,
+            pixels: Vec::new(),
+            db_data: Vec::new(),
+            flow_shifts: Vec::new(),
+        };
     }
     let width = columns.len() as u32;
     let height = columns[0].borrow().magnitudes.len() as u32;
     let mut db_data = vec![f32::NEG_INFINITY; (width * height) as usize];
     for (col_idx, col) in columns.iter().enumerate() {
         for (bin_idx, &mag) in col.borrow().magnitudes.iter().enumerate() {
-            if bin_idx >= height as usize { break; }
+            if bin_idx >= height as usize {
+                break;
+            }
             let db = magnitude_to_db(mag);
             let y = height as usize - 1 - bin_idx;
             let idx = y * width as usize + col_idx;
             db_data[idx] = db;
         }
     }
-    PreRendered { width, height, pixels: Vec::new(), db_data, flow_shifts: Vec::new() }
+    PreRendered {
+        width,
+        height,
+        pixels: Vec::new(),
+        db_data,
+        flow_shifts: Vec::new(),
+    }
 }
 
 /// Compute the global max magnitude across a full spectrogram (for tile normalisation).
 pub fn global_max_magnitude(data: &SpectrogramData) -> f32 {
-    data.columns.iter().flat_map(|c| c.magnitudes.iter()).copied().fold(0.0f32, f32::max)
+    data.columns
+        .iter()
+        .flat_map(|c| c.magnitudes.iter())
+        .copied()
+        .fold(0.0f32, f32::max)
 }
 
 /// Selects which tile cache to read from during rendering.
@@ -187,7 +206,11 @@ pub enum ColormapMode {
     Uniform(Colormap),
     /// Colormap inside HFR focus band, greyscale outside.
     /// Fractions are relative to the full image (0 Hz = 0.0, file_max_freq = 1.0).
-    HfrFocus { colormap: Colormap, band_ff_lo_frac: f64, band_ff_hi_frac: f64 },
+    HfrFocus {
+        colormap: Colormap,
+        band_ff_lo_frac: f64,
+        band_ff_hi_frac: f64,
+    },
 }
 
 /// Blit the pre-rendered spectrogram to a visible canvas, handling scroll, zoom, and freq crop.
@@ -221,7 +244,9 @@ pub fn blit_viewport(
     // How many source columns are visible at current zoom
     let natural_visible_cols = cw / zoom;
     let visible_cols = natural_visible_cols.min(pre_rendered.width as f64);
-    let src_start = scroll_col.max(0.0).min((pre_rendered.width as f64 - visible_cols).max(0.0));
+    let src_start = scroll_col
+        .max(0.0)
+        .min((pre_rendered.width as f64 - visible_cols).max(0.0));
 
     // If file has fewer columns than the view span, draw at correct proportional
     // width instead of stretching.  This keeps the spectrogram aligned with the
@@ -267,7 +292,11 @@ pub fn blit_viewport(
                 &mapped_pixels
             }
         }
-        ColormapMode::HfrFocus { colormap: cm, band_ff_lo_frac, band_ff_hi_frac } => {
+        ColormapMode::HfrFocus {
+            colormap: cm,
+            band_ff_lo_frac,
+            band_ff_hi_frac,
+        } => {
             mapped_pixels = {
                 let mut buf = pre_rendered.pixels.clone();
                 let h = pre_rendered.height as f64;
@@ -304,21 +333,25 @@ pub fn blit_viewport(
 
     match image_data {
         Ok(img) => {
-            let Some((tmp, tmp_ctx)) = get_tmp_canvas(pre_rendered.width, pre_rendered.height) else { return };
+            let Some((tmp, tmp_ctx)) = get_tmp_canvas(pre_rendered.width, pre_rendered.height)
+            else {
+                return;
+            };
             let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
             // Draw the visible portion, proportionally sized to match overlay coordinate space
-            let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                &tmp,
-                src_start,
-                src_y,
-                visible_cols,
-                src_h,
-                0.0,
-                dst_y,
-                dst_w,
-                dst_h,
-            );
+            let _ = ctx
+                .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                    &tmp,
+                    src_start,
+                    src_y,
+                    visible_cols,
+                    src_h,
+                    0.0,
+                    dst_y,
+                    dst_w,
+                    dst_h,
+                );
         }
         Err(e) => {
             log::error!("Failed to create ImageData: {e:?}");
@@ -334,11 +367,11 @@ pub fn blit_preview_as_background(
     preview: &PreviewImage,
     viewport_width: f64,
     viewport_height: f64,
-    scroll_offset: f64,    // left edge of viewport in seconds
-    visible_time: f64,     // seconds of audio visible in viewport
-    total_duration: f64,   // total file duration in seconds
-    freq_crop_lo: f64,     // 0..1 fraction of Nyquist
-    freq_crop_hi: f64,     // 0..1 fraction of Nyquist
+    scroll_offset: f64,  // left edge of viewport in seconds
+    visible_time: f64,   // seconds of audio visible in viewport
+    total_duration: f64, // total file duration in seconds
+    freq_crop_lo: f64,   // 0..1 fraction of Nyquist
+    freq_crop_hi: f64,   // 0..1 fraction of Nyquist
     colormap: ColormapMode,
 ) {
     let cw = viewport_width;
@@ -354,16 +387,19 @@ pub fn blit_preview_as_background(
     // Map viewport time range to preview pixel columns.
     // The preview spans the entire file: column 0 = time 0, column W = total_duration.
     let pw = preview.width as f64;
-    let Some((data_start, data_end, dst_x, dst_w)) = viewport::data_region_px(
-        scroll_offset,
-        visible_time,
-        total_duration,
-        cw,
-    ) else { return; };
+    let Some((data_start, data_end, dst_x, dst_w)) =
+        viewport::data_region_px(scroll_offset, visible_time, total_duration, cw)
+    else {
+        return;
+    };
     let src_x = (data_start / total_duration * pw).clamp(0.0, pw);
     let remaining = pw - src_x;
-    if remaining < 0.5 { return; }
-    let src_w = (((data_end - data_start) / total_duration) * pw).max(0.5).min(remaining);
+    if remaining < 0.5 {
+        return;
+    }
+    let src_w = (((data_end - data_start) / total_duration) * pw)
+        .max(0.5)
+        .min(remaining);
 
     // Vertical crop: row 0 = highest freq, last row = 0 Hz
     let fc_lo = freq_crop_lo.max(0.0);
@@ -384,26 +420,36 @@ pub fn blit_preview_as_background(
     let mut pixels = preview.pixels.as_ref().clone();
     match colormap {
         ColormapMode::Uniform(cm) => apply_colormap_to_tile(&mut pixels, cm),
-        ColormapMode::HfrFocus { colormap: cm, band_ff_lo_frac, band_ff_hi_frac } => {
+        ColormapMode::HfrFocus {
+            colormap: cm,
+            band_ff_lo_frac,
+            band_ff_hi_frac,
+        } => {
             apply_hfr_colormap_to_tile(
-                &mut pixels, preview.width, preview.height,
-                cm, band_ff_lo_frac, band_ff_hi_frac,
+                &mut pixels,
+                preview.width,
+                preview.height,
+                cm,
+                band_ff_lo_frac,
+                band_ff_hi_frac,
             );
         }
     }
 
     let clamped = Clamped(&pixels[..]);
-    let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(
-        clamped, preview.width, preview.height,
-    ) else { return };
+    let Ok(img) =
+        ImageData::new_with_u8_clamped_array_and_sh(clamped, preview.width, preview.height)
+    else {
+        return;
+    };
 
-    let Some((tmp, tmp_ctx)) = get_tmp_canvas(preview.width, preview.height) else { return };
+    let Some((tmp, tmp_ctx)) = get_tmp_canvas(preview.width, preview.height) else {
+        return;
+    };
     let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
     let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-        &tmp,
-        src_x, src_y, src_w, src_h,
-        dst_x, dst_y, dst_w, dst_h,
+        &tmp, src_x, src_y, src_w, src_h, dst_x, dst_y, dst_w, dst_h,
     );
 }
 
@@ -430,7 +476,10 @@ struct TileCanvasLru {
 
 impl TileCanvasLru {
     fn new() -> Self {
-        Self { entries: HashMap::new(), next_stamp: 0 }
+        Self {
+            entries: HashMap::new(),
+            next_stamp: 0,
+        }
     }
 
     fn get(&mut self, key: &TileKey, fingerprint: u64) -> Option<HtmlCanvasElement> {
@@ -446,12 +495,18 @@ impl TileCanvasLru {
     fn insert(&mut self, key: TileKey, canvas: HtmlCanvasElement, fingerprint: u64) {
         self.next_stamp += 1;
         let stamp = self.next_stamp;
-        self.entries.insert(key, TileCanvasEntry { canvas, fingerprint, stamp });
+        self.entries.insert(
+            key,
+            TileCanvasEntry {
+                canvas,
+                fingerprint,
+                stamp,
+            },
+        );
         if self.entries.len() > 256 {
             // Evict oldest entries by LRU stamp
-            let mut stamps: Vec<(TileKey, u64)> = self.entries.iter()
-                .map(|(&k, e)| (k, e.stamp))
-                .collect();
+            let mut stamps: Vec<(TileKey, u64)> =
+                self.entries.iter().map(|(&k, e)| (k, e.stamp)).collect();
             stamps.sort_unstable_by_key(|&(_, s)| s);
             let to_remove = self.entries.len() - 128;
             for (k, _) in stamps.into_iter().take(to_remove) {
@@ -508,14 +563,26 @@ fn tile_render_fingerprint(
                 mix(&mut h, 0);
                 mix(&mut h, *cm as u64);
             }
-            ColormapMode::HfrFocus { colormap: cm, band_ff_lo_frac, band_ff_hi_frac } => {
+            ColormapMode::HfrFocus {
+                colormap: cm,
+                band_ff_lo_frac,
+                band_ff_hi_frac,
+            } => {
                 mix(&mut h, 1);
                 mix(&mut h, *cm as u64);
                 mix(&mut h, band_ff_lo_frac.to_bits());
                 mix(&mut h, band_ff_hi_frac.to_bits());
             }
         },
-        TileRenderMode::Flow { intensity_gate, flow_gate, opacity, shift_gain, color_gamma, algo, scheme } => {
+        TileRenderMode::Flow {
+            intensity_gate,
+            flow_gate,
+            opacity,
+            shift_gain,
+            color_gamma,
+            algo,
+            scheme,
+        } => {
             mix(&mut h, 2);
             mix(&mut h, intensity_gate.to_bits() as u64);
             mix(&mut h, flow_gate.to_bits() as u64);
@@ -536,7 +603,13 @@ fn hash_freq_adjustments(adj: Option<&[f32]>) -> u64 {
     let Some(a) = adj else { return 0 };
     let mut h: u64 = a.len() as u64;
     // Sample a few values for a fast approximate hash
-    for &idx in &[0, a.len() / 4, a.len() / 2, 3 * a.len() / 4, a.len().saturating_sub(1)] {
+    for &idx in &[
+        0,
+        a.len() / 4,
+        a.len() / 2,
+        3 * a.len() / 4,
+        a.len().saturating_sub(1),
+    ] {
         if idx < a.len() {
             h ^= a[idx].to_bits() as u64;
             h = h.wrapping_mul(0x100000001b3);
@@ -568,11 +641,18 @@ fn get_tmp_canvas(w: u32, h: u32) -> Option<(HtmlCanvasElement, CanvasRenderingC
         }
         // Create new
         let doc = web_sys::window()?.document()?;
-        let c = doc.create_element("canvas").ok()?
-            .dyn_into::<HtmlCanvasElement>().ok()?;
+        let c = doc
+            .create_element("canvas")
+            .ok()?
+            .dyn_into::<HtmlCanvasElement>()
+            .ok()?;
         c.set_width(w);
         c.set_height(h);
-        let ctx = c.get_context("2d").ok()??.dyn_into::<CanvasRenderingContext2d>().ok()?;
+        let ctx = c
+            .get_context("2d")
+            .ok()??
+            .dyn_into::<CanvasRenderingContext2d>()
+            .ok()?;
         *slot = Some((c.clone(), ctx.clone()));
         Some((c, ctx))
     })
@@ -593,8 +673,12 @@ fn apply_colormap_to_tile(pixels: &mut [u8], colormap: Colormap) {
 
 /// Apply HFR-focus colormap: color inside focus band, greyscale outside.
 fn apply_hfr_colormap_to_tile(
-    pixels: &mut [u8], width: u32, height: u32,
-    colormap: Colormap, band_ff_lo_frac: f64, band_ff_hi_frac: f64,
+    pixels: &mut [u8],
+    width: u32,
+    height: u32,
+    colormap: Colormap,
+    band_ff_lo_frac: f64,
+    band_ff_hi_frac: f64,
 ) {
     let h = height as f64;
     let w = width as usize;
@@ -632,8 +716,16 @@ fn tile_to_rgba(
             ColormapMode::Uniform(cm) => {
                 for (i, &db) in db_data.iter().enumerate() {
                     let row = if w > 0 { i / w } else { 0 };
-                    let extra = freq_adjustments.and_then(|a| a.get(row).copied()).unwrap_or(0.0);
-                    let grey = db_to_greyscale(db, settings.floor_db, settings.range_db, settings.gamma, settings.gain_db + extra);
+                    let extra = freq_adjustments
+                        .and_then(|a| a.get(row).copied())
+                        .unwrap_or(0.0);
+                    let grey = db_to_greyscale(
+                        db,
+                        settings.floor_db,
+                        settings.range_db,
+                        settings.gamma,
+                        settings.gain_db + extra,
+                    );
                     let [r, g, b] = cm.apply(grey);
                     let pi = i * 4;
                     rgba[pi] = r;
@@ -642,14 +734,26 @@ fn tile_to_rgba(
                     rgba[pi + 3] = 255;
                 }
             }
-            ColormapMode::HfrFocus { colormap: cm, band_ff_lo_frac, band_ff_hi_frac } => {
+            ColormapMode::HfrFocus {
+                colormap: cm,
+                band_ff_lo_frac,
+                band_ff_hi_frac,
+            } => {
                 let h = rendered.height as f64;
                 let focus_top = (h * (1.0 - band_ff_hi_frac)).round() as usize;
                 let focus_bot = (h * (1.0 - band_ff_lo_frac)).round() as usize;
                 for (i, &db) in db_data.iter().enumerate() {
                     let row = if w > 0 { i / w } else { 0 };
-                    let extra = freq_adjustments.and_then(|a| a.get(row).copied()).unwrap_or(0.0);
-                    let grey = db_to_greyscale(db, settings.floor_db, settings.range_db, settings.gamma, settings.gain_db + extra);
+                    let extra = freq_adjustments
+                        .and_then(|a| a.get(row).copied())
+                        .unwrap_or(0.0);
+                    let grey = db_to_greyscale(
+                        db,
+                        settings.floor_db,
+                        settings.range_db,
+                        settings.gamma,
+                        settings.gain_db + extra,
+                    );
                     let [r, g, b] = if row >= focus_top && row < focus_bot {
                         cm.apply(grey)
                     } else {
@@ -663,20 +767,54 @@ fn tile_to_rgba(
                 }
             }
         },
-        TileRenderMode::Flow { intensity_gate, flow_gate, opacity, shift_gain, color_gamma, algo, scheme } => {
+        TileRenderMode::Flow {
+            intensity_gate,
+            flow_gate,
+            opacity,
+            shift_gain,
+            color_gamma,
+            algo,
+            scheme,
+        } => {
             let flow_shifts = &rendered.flow_shifts;
             for (i, &db) in db_data.iter().enumerate() {
                 let row = if w > 0 { i / w } else { 0 };
-                let extra = freq_adjustments.and_then(|a| a.get(row).copied()).unwrap_or(0.0);
+                let extra = freq_adjustments
+                    .and_then(|a| a.get(row).copied())
+                    .unwrap_or(0.0);
                 let grey = db_to_greyscale(
-                    db, settings.floor_db, settings.range_db,
-                    settings.gamma, settings.gain_db + extra,
+                    db,
+                    settings.floor_db,
+                    settings.range_db,
+                    settings.gamma,
+                    settings.gain_db + extra,
                 );
-                let shift = if i < flow_shifts.len() { flow_shifts[i] } else { 0.0 };
+                let shift = if i < flow_shifts.len() {
+                    flow_shifts[i]
+                } else {
+                    0.0
+                };
                 let [r, g, b] = match algo {
                     FlowAlgo::Phase => phase_rgb(grey, shift, *intensity_gate),
-                    FlowAlgo::PhaseCoherence => coherence_rgb(grey, shift, *intensity_gate, *flow_gate, *opacity, *shift_gain, *color_gamma),
-                    _ => flow_rgb_scheme(grey, shift, *intensity_gate, *flow_gate, *opacity, *shift_gain, *color_gamma, *scheme),
+                    FlowAlgo::PhaseCoherence => coherence_rgb(
+                        grey,
+                        shift,
+                        *intensity_gate,
+                        *flow_gate,
+                        *opacity,
+                        *shift_gain,
+                        *color_gamma,
+                    ),
+                    _ => flow_rgb_scheme(
+                        grey,
+                        shift,
+                        *intensity_gate,
+                        *flow_gate,
+                        *opacity,
+                        *shift_gain,
+                        *color_gamma,
+                        *scheme,
+                    ),
                 };
                 let pi = i * 4;
                 rgba[pi] = r;
@@ -712,7 +850,9 @@ pub fn blit_tiles_viewport(
     total_duration: f64,
     tile_source: TileSource,
 ) -> bool {
-    use crate::canvas::tile_blit::{ViewportGeometry, compute_tile_blit_coords, for_each_visible_tile};
+    use crate::canvas::tile_blit::{
+        compute_tile_blit_coords, for_each_visible_tile, ViewportGeometry,
+    };
 
     let cw = viewport_width;
     let ch = viewport_height;
@@ -723,13 +863,27 @@ pub fn blit_tiles_viewport(
         TileRenderMode::Flow { .. } => ColormapMode::Uniform(Colormap::Greyscale),
     };
 
-    let Some(vg) = ViewportGeometry::new(cw, ch, total_cols, scroll_col, zoom, freq_crop_lo, freq_crop_hi)
-    else {
+    let Some(vg) = ViewportGeometry::new(
+        cw,
+        ch,
+        total_cols,
+        scroll_col,
+        zoom,
+        freq_crop_lo,
+        freq_crop_hi,
+    ) else {
         if let Some(pv) = preview {
             blit_preview_as_background(
-                ctx, pv, cw, ch,
-                scroll_offset, visible_time, total_duration,
-                freq_crop_lo, freq_crop_hi, preview_colormap,
+                ctx,
+                pv,
+                cw,
+                ch,
+                scroll_offset,
+                visible_time,
+                total_duration,
+                freq_crop_lo,
+                freq_crop_hi,
+                preview_colormap,
             );
         } else {
             ctx.set_fill_style_str("#000");
@@ -757,11 +911,16 @@ pub fn blit_tiles_viewport(
         };
         let mut covered = true;
         for tile_idx in vg.first_tile..=vg.last_tile {
-            if vg.tile_clip_range(tile_idx).is_none() { continue; }
-            if check_fn(file_idx, vg.ideal_lod, tile_idx) { continue; }
+            if vg.tile_clip_range(tile_idx).is_none() {
+                continue;
+            }
+            if check_fn(file_idx, vg.ideal_lod, tile_idx) {
+                continue;
+            }
             let mut found_fallback = false;
             for fb_lod in (0..vg.ideal_lod).rev() {
-                let (fb_tile, _, _) = tile_cache::fallback_tile_info(vg.ideal_lod, tile_idx, fb_lod);
+                let (fb_tile, _, _) =
+                    tile_cache::fallback_tile_info(vg.ideal_lod, tile_idx, fb_lod);
                 if fallback_fn(file_idx, fb_lod, fb_tile) {
                     found_fallback = true;
                     break;
@@ -778,9 +937,16 @@ pub fn blit_tiles_viewport(
     if !all_tiles_covered {
         if let Some(pv) = preview {
             blit_preview_as_background(
-                ctx, pv, cw, ch,
-                scroll_offset, visible_time, total_duration,
-                freq_crop_lo, freq_crop_hi, preview_colormap,
+                ctx,
+                pv,
+                cw,
+                ch,
+                scroll_offset,
+                visible_time,
+                total_duration,
+                freq_crop_lo,
+                freq_crop_hi,
+                preview_colormap,
             );
         } else {
             ctx.set_fill_style_str("#000");
@@ -793,40 +959,66 @@ pub fn blit_tiles_viewport(
 
     // Compute fingerprint for tile canvas cache invalidation.
     let adj_hash = hash_freq_adjustments(freq_adjustments);
-    let fingerprint = tile_render_fingerprint(display_settings, &render_mode, adj_hash, tile_source);
+    let fingerprint =
+        tile_render_fingerprint(display_settings, &render_mode, adj_hash, tile_source);
 
     // Draw a tile to the canvas given its LOD and screen clip range.
     // Uses a per-tile offscreen canvas cache to avoid re-running tile_to_rgba
     // + ImageData + put_image_data when only the scroll position changes.
-    let blit_any_tile = |tile: &tile_cache::Tile, tile_lod: u8, tile_idx: usize,
-                         clip_start: f64, clip_end: f64| {
+    let blit_any_tile = |tile: &tile_cache::Tile,
+                         tile_lod: u8,
+                         tile_idx: usize,
+                         clip_start: f64,
+                         clip_end: f64| {
         let Some(coords) = compute_tile_blit_coords(
-            &vg, tile.rendered.width as f64, tile.rendered.height as f64,
-            tile_lod, tile_idx, clip_start, clip_end,
-        ) else { return };
+            &vg,
+            tile.rendered.width as f64,
+            tile.rendered.height as f64,
+            tile_lod,
+            tile_idx,
+            clip_start,
+            clip_end,
+        ) else {
+            return;
+        };
 
-        let cache_key = TileKey { file_idx: tile.file_idx, lod: tile_lod, tile_idx };
+        let cache_key = TileKey {
+            file_idx: tile.file_idx,
+            lod: tile_lod,
+            tile_idx,
+        };
 
         // Check if we have a cached canvas for this tile with matching settings.
-        let cached = TILE_CANVAS_CACHE.with(|c| {
-            c.borrow_mut().get(&cache_key, fingerprint)
-        });
+        let cached = TILE_CANVAS_CACHE.with(|c| c.borrow_mut().get(&cache_key, fingerprint));
 
         let tile_canvas = if let Some(c) = cached {
             c
         } else {
             // Render tile to a new offscreen canvas and cache it.
             let pixels = if !tile.rendered.db_data.is_empty() {
-                tile_to_rgba(&tile.rendered, display_settings, &render_mode, freq_adjustments)
+                tile_to_rgba(
+                    &tile.rendered,
+                    display_settings,
+                    &render_mode,
+                    freq_adjustments,
+                )
             } else {
                 let mut px = tile.rendered.pixels.clone();
                 if let TileRenderMode::Spectrogram(colormap) = &render_mode {
                     match colormap {
                         ColormapMode::Uniform(cm) => apply_colormap_to_tile(&mut px, *cm),
-                        ColormapMode::HfrFocus { colormap: cm, band_ff_lo_frac, band_ff_hi_frac } => {
+                        ColormapMode::HfrFocus {
+                            colormap: cm,
+                            band_ff_lo_frac,
+                            band_ff_hi_frac,
+                        } => {
                             apply_hfr_colormap_to_tile(
-                                &mut px, tile.rendered.width, tile.rendered.height,
-                                *cm, *band_ff_lo_frac, *band_ff_hi_frac,
+                                &mut px,
+                                tile.rendered.width,
+                                tile.rendered.height,
+                                *cm,
+                                *band_ff_lo_frac,
+                                *band_ff_hi_frac,
                             );
                         }
                     }
@@ -836,10 +1028,17 @@ pub fn blit_tiles_viewport(
 
             let clamped = Clamped(&pixels[..]);
             let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(
-                clamped, tile.rendered.width, tile.rendered.height,
-            ) else { return };
+                clamped,
+                tile.rendered.width,
+                tile.rendered.height,
+            ) else {
+                return;
+            };
 
-            let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height) else { return };
+            let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height)
+            else {
+                return;
+            };
             let _ = tmp_ctx.put_image_data(&img, 0.0, 0.0);
 
             // Create a dedicated offscreen canvas for this tile's cache
@@ -849,7 +1048,7 @@ pub fn blit_tiles_viewport(
                     // Enable smoothing for fallback tiles and for coarse overview LODs
                     // (which downscale significantly and would otherwise look glittery)
                     ctx.set_image_smoothing_enabled(
-                        tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE
+                        tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE,
                     );
                     let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
                         &tmp,
@@ -859,22 +1058,34 @@ pub fn blit_tiles_viewport(
                     return;
                 }
             };
-            let tc = doc.create_element("canvas").ok()
+            let tc = doc
+                .create_element("canvas")
+                .ok()
                 .and_then(|el| el.dyn_into::<HtmlCanvasElement>().ok());
             let Some(tc) = tc else {
                 ctx.set_image_smoothing_enabled(
-                    tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE
+                    tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE,
                 );
-                let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                    &tmp,
-                    coords.src_x, coords.src_y, coords.src_w, coords.src_h,
-                    coords.dst_x, coords.dst_y, coords.dst_w, coords.dst_h,
-                );
+                let _ = ctx
+                    .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                        &tmp,
+                        coords.src_x,
+                        coords.src_y,
+                        coords.src_w,
+                        coords.src_h,
+                        coords.dst_x,
+                        coords.dst_y,
+                        coords.dst_w,
+                        coords.dst_h,
+                    );
                 return;
             };
             tc.set_width(tile.rendered.width);
             tc.set_height(tile.rendered.height);
-            if let Some(tc_ctx) = tc.get_context("2d").ok().flatten()
+            if let Some(tc_ctx) = tc
+                .get_context("2d")
+                .ok()
+                .flatten()
                 .and_then(|c| c.dyn_into::<CanvasRenderingContext2d>().ok())
             {
                 let _ = tc_ctx.draw_image_with_html_canvas_element(&tmp, 0.0, 0.0);
@@ -890,29 +1101,41 @@ pub fn blit_tiles_viewport(
         // Enable smoothing for fallback tiles and for coarse overview LODs
         // (which downscale significantly and would otherwise look glittery)
         ctx.set_image_smoothing_enabled(
-            tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE
+            tile_lod != vg.ideal_lod || vg.ideal_lod < tile_cache::LOD_BASELINE,
         );
         let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
             &tile_canvas,
-            coords.src_x, coords.src_y, coords.src_w, coords.src_h,
-            coords.dst_x, coords.dst_y, coords.dst_w, coords.dst_h,
+            coords.src_x,
+            coords.src_y,
+            coords.src_w,
+            coords.src_h,
+            coords.dst_x,
+            coords.dst_y,
+            coords.dst_w,
+            coords.dst_h,
         );
     };
 
     let any_drawn = for_each_visible_tile(
         &vg,
         |tile_idx, clip_start, clip_end| {
-            let borrow_fn = |fi: usize, lod: u8, ti: usize, f: &dyn Fn(&tile_cache::Tile)| -> Option<()> {
-                match tile_source {
-                    TileSource::Normal => tile_cache::borrow_tile(fi, lod, ti, |t| f(t)),
-                    TileSource::Reassigned => tile_cache::borrow_reassign_tile(fi, lod, ti, |t| f(t)),
-                    TileSource::Flow => tile_cache::borrow_flow_tile(fi, lod, ti, |t| f(t)),
-                    TileSource::Resonators => tile_cache::borrow_resonator_tile(fi, lod, ti, |t| f(t)),
-                }
-            };
+            let borrow_fn =
+                |fi: usize, lod: u8, ti: usize, f: &dyn Fn(&tile_cache::Tile)| -> Option<()> {
+                    match tile_source {
+                        TileSource::Normal => tile_cache::borrow_tile(fi, lod, ti, |t| f(t)),
+                        TileSource::Reassigned => {
+                            tile_cache::borrow_reassign_tile(fi, lod, ti, |t| f(t))
+                        }
+                        TileSource::Flow => tile_cache::borrow_flow_tile(fi, lod, ti, |t| f(t)),
+                        TileSource::Resonators => {
+                            tile_cache::borrow_resonator_tile(fi, lod, ti, |t| f(t))
+                        }
+                    }
+                };
             borrow_fn(file_idx, vg.ideal_lod, tile_idx, &|tile| {
                 blit_any_tile(tile, vg.ideal_lod, tile_idx, clip_start, clip_end);
-            }).is_some()
+            })
+            .is_some()
         },
         |fb_tile, fb_lod, clip_start, clip_end| {
             // Flow and Resonator fallbacks stay within their own caches; other
@@ -921,18 +1144,19 @@ pub fn blit_tiles_viewport(
                 TileSource::Flow => {
                     tile_cache::borrow_flow_tile(file_idx, fb_lod, fb_tile, |tile| {
                         blit_any_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
-                    }).is_some()
+                    })
+                    .is_some()
                 }
                 TileSource::Resonators => {
                     tile_cache::borrow_resonator_tile(file_idx, fb_lod, fb_tile, |tile| {
                         blit_any_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
-                    }).is_some()
+                    })
+                    .is_some()
                 }
-                _ => {
-                    tile_cache::borrow_tile(file_idx, fb_lod, fb_tile, |tile| {
-                        blit_any_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
-                    }).is_some()
-                }
+                _ => tile_cache::borrow_tile(file_idx, fb_lod, fb_tile, |tile| {
+                    blit_any_tile(tile, fb_lod, fb_tile, clip_start, clip_end);
+                })
+                .is_some(),
             }
         },
     );
@@ -979,11 +1203,11 @@ pub fn blit_chromagram_tiles_viewport(
     chroma_gamma: f32,
     num_octaves: usize,
 ) -> bool {
-    use crate::state::ChromaColormap;
     use crate::canvas::colormap_2d::{
-        build_chromagram_colormap, build_chromagram_pitch_class_colormaps,
-        build_chromagram_solid_colormaps, build_chromagram_octave_colormaps, Colormap2D,
+        build_chromagram_colormap, build_chromagram_octave_colormaps,
+        build_chromagram_pitch_class_colormaps, build_chromagram_solid_colormaps, Colormap2D,
     };
+    use crate::state::ChromaColormap;
 
     enum ChromaMode {
         Single(Colormap2D),
@@ -994,7 +1218,9 @@ pub fn blit_chromagram_tiles_viewport(
 
     let mode = match chroma_colormap {
         ChromaColormap::Warm => ChromaMode::Single(build_chromagram_colormap()),
-        ChromaColormap::PitchClass => ChromaMode::PerPitchClass(build_chromagram_pitch_class_colormaps()),
+        ChromaColormap::PitchClass => {
+            ChromaMode::PerPitchClass(build_chromagram_pitch_class_colormaps())
+        }
         ChromaColormap::Solid => ChromaMode::PerPitchClass(build_chromagram_solid_colormaps()),
         ChromaColormap::Octave => ChromaMode::PerOctave(build_chromagram_octave_colormaps()),
         ChromaColormap::Flow => ChromaMode::FlowInline,
@@ -1031,7 +1257,9 @@ pub fn blit_chromagram_tiles_viewport(
         let drawn = tile_cache::borrow_chroma_tile(file_idx, tile_idx, |tile| {
             let tw = tile.rendered.width as f64;
             let th = tile.rendered.height as f64;
-            if tw == 0.0 || th == 0.0 { return; }
+            if tw == 0.0 || th == 0.0 {
+                return;
+            }
 
             // Apply gamma then 2D chromagram colormap: R=class intensity, G=note intensity, B=flow
             // (Gain is baked into tiles at pre-render time for full dynamic range.)
@@ -1043,8 +1271,16 @@ pub fn blit_chromagram_tiles_viewport(
             }
             let mut pixels = tile.rendered.pixels.clone();
             for i in (0..pixels.len()).step_by(4) {
-                let class_byte = if apply_gamma { adjust_gamma(pixels[i], chroma_gamma) } else { pixels[i] };
-                let note_byte = if apply_gamma { adjust_gamma(pixels[i + 1], chroma_gamma) } else { pixels[i + 1] };
+                let class_byte = if apply_gamma {
+                    adjust_gamma(pixels[i], chroma_gamma)
+                } else {
+                    pixels[i]
+                };
+                let note_byte = if apply_gamma {
+                    adjust_gamma(pixels[i + 1], chroma_gamma)
+                } else {
+                    pixels[i + 1]
+                };
                 let flow_byte = pixels[i + 2];
                 let pixel_idx = i / 4;
                 let tile_w = tile.rendered.width as usize;
@@ -1056,11 +1292,15 @@ pub fn blit_chromagram_tiles_viewport(
                 let [r, g, b] = match &mode {
                     ChromaMode::Single(cm) => cm.apply(class_byte, note_byte),
                     ChromaMode::PerPitchClass(cms) => {
-                        let pc = (NUM_PITCH_CLASSES - 1).saturating_sub(logical_row / num_octaves).min(NUM_PITCH_CLASSES - 1);
+                        let pc = (NUM_PITCH_CLASSES - 1)
+                            .saturating_sub(logical_row / num_octaves)
+                            .min(NUM_PITCH_CLASSES - 1);
                         cms[pc].apply(class_byte, note_byte)
                     }
                     ChromaMode::PerOctave(cms) => {
-                        let oct = (num_octaves - 1).saturating_sub(logical_row % num_octaves).min(9);
+                        let oct = (num_octaves - 1)
+                            .saturating_sub(logical_row % num_octaves)
+                            .min(9);
                         cms[oct].apply(class_byte, note_byte)
                     }
                     ChromaMode::FlowInline => {
@@ -1074,10 +1314,17 @@ pub fn blit_chromagram_tiles_viewport(
 
             let clamped = Clamped(&pixels[..]);
             let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(
-                clamped, tile.rendered.width, tile.rendered.height,
-            ) else { return };
+                clamped,
+                tile.rendered.width,
+                tile.rendered.height,
+            ) else {
+                return;
+            };
 
-            let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height) else { return };
+            let Some((tmp, tmp_ctx)) = get_tmp_canvas(tile.rendered.width, tile.rendered.height)
+            else {
+                return;
+            };
             if tmp.width() != tile.rendered.width || tmp.height() != tile.rendered.height {
                 tmp.set_width(tile.rendered.width);
                 tmp.set_height(tile.rendered.height);
@@ -1087,21 +1334,23 @@ pub fn blit_chromagram_tiles_viewport(
             let tile_src_x = (src_start - tile_col_start as f64).max(0.0);
             let tile_src_end = (src_end - tile_col_start as f64).min(tw);
             let tile_src_w = (tile_src_end - tile_src_x).max(0.0);
-            if tile_src_w <= 0.0 { return; }
+            if tile_src_w <= 0.0 {
+                return;
+            }
 
             // No frequency cropping for chromagram — show full height
             let dst_x_raw = ((tile_col_start as f64 + tile_src_x) - vis_start) * zoom;
-            let dst_x_end_raw = ((tile_col_start as f64 + tile_src_x + tile_src_w) - vis_start) * zoom;
+            let dst_x_end_raw =
+                ((tile_col_start as f64 + tile_src_x + tile_src_w) - vis_start) * zoom;
             let dst_x = dst_x_raw.floor();
             let dst_w = (dst_x_end_raw.ceil() - dst_x).max(1.0);
 
             // Enable smoothing for upscaling (chromagram has few rows)
             ctx.set_image_smoothing_enabled(true);
-            let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
-                &tmp,
-                tile_src_x, 0.0, tile_src_w, th,
-                dst_x, 0.0, dst_w, ch,
-            );
+            let _ = ctx
+                .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
+                    &tmp, tile_src_x, 0.0, tile_src_w, th, dst_x, 0.0, dst_w, ch,
+                );
         });
 
         if drawn.is_some() {

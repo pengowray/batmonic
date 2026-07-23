@@ -1,8 +1,8 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::annotations::{AnnotationId, AnnotationKind, AnnotationSet};
 use crate::canvas::spectrogram_renderer;
+use crate::state::store_fields::*;
 use crate::state::{AppState, PlaybackMode, ResizeHandlePosition, SpectrogramHandle};
+use leptos::prelude::*;
 
 /// Half-width of the BandFF handle interaction zone (pixels from center).
 pub const FF_HANDLE_HALF_WIDTH: f64 = 50.0;
@@ -27,17 +27,38 @@ pub fn hit_test_spec_handles(
     let band_ff_lo = state.filter.band_ff_freq_lo().get_untracked();
     let band_ff_hi = state.filter.band_ff_freq_hi().get_untracked();
     if band_ff_focused && band_ff_hi > band_ff_lo {
-        let y_upper = spectrogram_renderer::freq_to_y(band_ff_hi.min(max_freq), min_freq, max_freq, canvas_height);
-        let y_lower = spectrogram_renderer::freq_to_y(band_ff_lo.max(min_freq), min_freq, max_freq, canvas_height);
+        let y_upper = spectrogram_renderer::freq_to_y(
+            band_ff_hi.min(max_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
+        let y_lower = spectrogram_renderer::freq_to_y(
+            band_ff_lo.max(min_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
         let d_upper = (mouse_y - y_upper).abs();
         let d_lower = (mouse_y - y_lower).abs();
-        if d_upper <= threshold { candidates.push((SpectrogramHandle::BandFfUpper, d_upper)); }
-        if d_lower <= threshold { candidates.push((SpectrogramHandle::BandFfLower, d_lower)); }
+        if d_upper <= threshold {
+            candidates.push((SpectrogramHandle::BandFfUpper, d_upper));
+        }
+        if d_lower <= threshold {
+            candidates.push((SpectrogramHandle::BandFfLower, d_lower));
+        }
         // Middle handle (midpoint between boundaries)
         let mid_freq = (band_ff_lo + band_ff_hi) / 2.0;
-        let y_mid = spectrogram_renderer::freq_to_y(mid_freq.clamp(min_freq, max_freq), min_freq, max_freq, canvas_height);
+        let y_mid = spectrogram_renderer::freq_to_y(
+            mid_freq.clamp(min_freq, max_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
         let d_mid = (mouse_y - y_mid).abs();
-        if d_mid <= threshold { candidates.push((SpectrogramHandle::BandFfMiddle, d_mid)); }
+        if d_mid <= threshold {
+            candidates.push((SpectrogramHandle::BandFfMiddle, d_mid));
+        }
     }
 
     // HET handles (only when in HET mode and parameter is manual)
@@ -46,32 +67,58 @@ pub fn hit_test_spec_handles(
         let het_cutoff = state.transform.het_cutoff().get_untracked();
 
         if !state.transform.het_freq_auto().get_untracked() {
-            let y_center = spectrogram_renderer::freq_to_y(het_freq, min_freq, max_freq, canvas_height);
+            let y_center =
+                spectrogram_renderer::freq_to_y(het_freq, min_freq, max_freq, canvas_height);
             let d = (mouse_y - y_center).abs();
-            if d <= threshold { candidates.push((SpectrogramHandle::HetCenter, d)); }
+            if d <= threshold {
+                candidates.push((SpectrogramHandle::HetCenter, d));
+            }
         }
         if !state.transform.het_cutoff_auto().get_untracked() {
             let y_upper = spectrogram_renderer::freq_to_y(
-                (het_freq + het_cutoff).min(max_freq), min_freq, max_freq, canvas_height,
+                (het_freq + het_cutoff).min(max_freq),
+                min_freq,
+                max_freq,
+                canvas_height,
             );
             let y_lower = spectrogram_renderer::freq_to_y(
-                (het_freq - het_cutoff).max(min_freq), min_freq, max_freq, canvas_height,
+                (het_freq - het_cutoff).max(min_freq),
+                min_freq,
+                max_freq,
+                canvas_height,
             );
             let d_upper = (mouse_y - y_upper).abs();
             let d_lower = (mouse_y - y_lower).abs();
-            if d_upper <= threshold { candidates.push((SpectrogramHandle::HetBandUpper, d_upper)); }
-            if d_lower <= threshold { candidates.push((SpectrogramHandle::HetBandLower, d_lower)); }
+            if d_upper <= threshold {
+                candidates.push((SpectrogramHandle::HetBandUpper, d_upper));
+            }
+            if d_lower <= threshold {
+                candidates.push((SpectrogramHandle::HetBandLower, d_lower));
+            }
         }
     }
 
-    if candidates.is_empty() { return None; }
+    if candidates.is_empty() {
+        return None;
+    }
 
     // Sort by distance, then prefer HET over BandFF when tied
     candidates.sort_by(|a, b| {
-        a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
+        a.1.partial_cmp(&b.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| {
-                let a_het = matches!(a.0, SpectrogramHandle::HetCenter | SpectrogramHandle::HetBandUpper | SpectrogramHandle::HetBandLower);
-                let b_het = matches!(b.0, SpectrogramHandle::HetCenter | SpectrogramHandle::HetBandUpper | SpectrogramHandle::HetBandLower);
+                let a_het = matches!(
+                    a.0,
+                    SpectrogramHandle::HetCenter
+                        | SpectrogramHandle::HetBandUpper
+                        | SpectrogramHandle::HetBandLower
+                );
+                let b_het = matches!(
+                    b.0,
+                    SpectrogramHandle::HetCenter
+                        | SpectrogramHandle::HetBandUpper
+                        | SpectrogramHandle::HetBandLower
+                );
                 b_het.cmp(&a_het) // HET first
             })
     });
@@ -170,18 +217,23 @@ pub fn hit_test_annotation_handles(
         };
 
         let handles = annotation_handle_positions(
-            region.time_start, region.time_end,
-            region.freq_low, region.freq_high,
-            scroll_offset, px_per_sec, start_time,
-            min_freq, max_freq, canvas_height,
+            region.time_start,
+            region.time_end,
+            region.freq_low,
+            region.freq_high,
+            scroll_offset,
+            px_per_sec,
+            start_time,
+            min_freq,
+            max_freq,
+            canvas_height,
         );
 
         for (pos, hx, hy) in &handles {
             let d = ((px_x - hx).powi(2) + (px_y - hy).powi(2)).sqrt();
-            if d <= hit_radius
-                && best.as_ref().is_none_or(|(_, _, bd)| d < *bd) {
-                    best = Some((ann.id.clone(), *pos, d));
-                }
+            if d <= hit_radius && best.as_ref().is_none_or(|(_, _, bd)| d < *bd) {
+                best = Some((ann.id.clone(), *pos, d));
+            }
         }
     }
 
@@ -224,9 +276,13 @@ pub fn hit_test_annotation_body(
 
         let (y0, y1) = match (region.freq_high, region.freq_low) {
             (Some(fh), Some(fl)) => {
-                let y0 = spectrogram_renderer::freq_to_y(fh, min_freq, max_freq, canvas_height).max(0.0);
-                let y1 = spectrogram_renderer::freq_to_y(fl, min_freq, max_freq, canvas_height).min(canvas_height);
-                if y1 <= y0 { continue; }
+                let y0 =
+                    spectrogram_renderer::freq_to_y(fh, min_freq, max_freq, canvas_height).max(0.0);
+                let y1 = spectrogram_renderer::freq_to_y(fl, min_freq, max_freq, canvas_height)
+                    .min(canvas_height);
+                if y1 <= y0 {
+                    continue;
+                }
                 (y0, y1)
             }
             _ => (0.0, canvas_height),
@@ -270,9 +326,16 @@ pub fn get_annotation_handle_positions(
     let start_time = scroll_offset;
     let px_per_sec = canvas_width / visible_time;
     annotation_handle_positions(
-        time_start, time_end, freq_low, freq_high,
-        scroll_offset, px_per_sec, start_time,
-        min_freq, max_freq, canvas_height,
+        time_start,
+        time_end,
+        freq_low,
+        freq_high,
+        scroll_offset,
+        px_per_sec,
+        start_time,
+        min_freq,
+        max_freq,
+        canvas_height,
     )
 }
 
@@ -286,8 +349,20 @@ pub fn hit_test_band_ff_body(
     max_freq: f64,
     canvas_height: f64,
 ) -> bool {
-    if band_ff_hi <= band_ff_lo { return false; }
-    let y_top = spectrogram_renderer::freq_to_y(band_ff_hi.min(max_freq), min_freq, max_freq, canvas_height);
-    let y_bottom = spectrogram_renderer::freq_to_y(band_ff_lo.max(min_freq), min_freq, max_freq, canvas_height);
+    if band_ff_hi <= band_ff_lo {
+        return false;
+    }
+    let y_top = spectrogram_renderer::freq_to_y(
+        band_ff_hi.min(max_freq),
+        min_freq,
+        max_freq,
+        canvas_height,
+    );
+    let y_bottom = spectrogram_renderer::freq_to_y(
+        band_ff_lo.max(min_freq),
+        min_freq,
+        max_freq,
+        canvas_height,
+    );
     px_y >= y_top && px_y <= y_bottom
 }

@@ -1,7 +1,7 @@
-use realfft::num_complex::Complex;
 use crate::audio::source::ChannelView;
-use crate::types::{AudioData, SpectrogramData, SpectrogramColumn};
 use crate::dsp::fft::{hann_window, plan_fft_forward};
+use crate::types::{AudioData, SpectrogramColumn, SpectrogramData};
+use realfft::num_complex::Complex;
 use std::f32::consts::PI;
 
 type Complex32 = Complex<f32>;
@@ -67,13 +67,13 @@ pub fn analyze_harmonics(audio: &AudioData, spectrogram: &SpectrogramData) -> Ha
     let flux_mean = mean_f32(&flux_per_frame);
     let flux_peak = flux_per_frame.iter().copied().fold(0.0f32, f32::max);
     let preringing_count = count_preringing(&flux_per_frame, flux_peak);
-    let staircasing_score = compute_staircasing_score(&spectrogram.columns, &flux_per_frame, flux_peak);
+    let staircasing_score =
+        compute_staircasing_score(&spectrogram.columns, &flux_per_frame, flux_peak);
 
     // Harmonic decay (cheap — uses existing SpectrogramData).
     let avg_spectrum = compute_avg_spectrum(&spectrogram.columns);
     let fundamental_bin = detect_fundamental_hps(&avg_spectrum);
-    let fundamental_freq = fundamental_bin
-        .map(|b| b as f32 * spectrogram.freq_resolution as f32);
+    let fundamental_freq = fundamental_bin.map(|b| b as f32 * spectrogram.freq_resolution as f32);
     let (harmonic_amplitudes, decay_exponent, decay_is_monotonic, decay_anomaly_indices) =
         if let Some(f_bin) = fundamental_bin {
             compute_harmonic_decay(
@@ -108,9 +108,7 @@ pub fn analyze_harmonics(audio: &AudioData, spectrogram: &SpectrogramData) -> Ha
                 .to_string(),
         );
     } else if phase_coherence_mean < 0.55 {
-        indicators.push(
-            "Moderate phase drift — possible processing artifacts".to_string(),
-        );
+        indicators.push("Moderate phase drift — possible processing artifacts".to_string());
     }
     if harmonic_coherence_ratio < 0.7 && fundamental_freq.is_some() {
         indicators.push(
@@ -161,10 +159,7 @@ pub fn analyze_harmonics(audio: &AudioData, spectrogram: &SpectrogramData) -> Ha
 
 /// Compute per-frame, per-bin phase coherence for the heatmap visualisation.
 /// Returns shape `[num_frame_transitions][num_bins]`, values in [0, 1].
-pub fn compute_coherence_frames(
-    audio: &AudioData,
-    spectrogram: &SpectrogramData,
-) -> Vec<Vec<f32>> {
+pub fn compute_coherence_frames(audio: &AudioData, spectrogram: &SpectrogramData) -> Vec<Vec<f32>> {
     let fft_size = derive_fft_size(audio.sample_rate, spectrogram.freq_resolution);
     let hop_size = derive_hop_size(audio.sample_rate, spectrogram.time_resolution);
     if (audio.source.total_samples() as usize) < fft_size {
@@ -320,10 +315,7 @@ fn detect_fundamental_hps(avg_spectrum: &[f32]) -> Option<usize> {
         let k2 = (k * 2).min(n - 1);
         let k3 = (k * 3).min(n - 1);
         let k4 = (k * 4).min(n - 1);
-        hps[k] = avg_spectrum[k]
-            * avg_spectrum[k2]
-            * avg_spectrum[k3]
-            * avg_spectrum[k4];
+        hps[k] = avg_spectrum[k] * avg_spectrum[k2] * avg_spectrum[k3] * avg_spectrum[k4];
     }
     // Skip first 1 % of bins to avoid DC / subharmonic artefacts.
     let min_bin = (hps_len / 100).max(1);
@@ -363,10 +355,7 @@ fn compute_harmonic_decay(
         // Peak within ±1 bin window for robustness.
         let lo = bin.saturating_sub(1);
         let hi = (bin + 1).min(n - 1);
-        let amp = avg_spectrum[lo..=hi]
-            .iter()
-            .copied()
-            .fold(0.0f32, f32::max);
+        let amp = avg_spectrum[lo..=hi].iter().copied().fold(0.0f32, f32::max);
         amplitudes.push(amp);
     }
 
@@ -407,7 +396,12 @@ fn compute_harmonic_decay(
         }
     }
 
-    (normalised, decay_exponent, decay_is_monotonic, anomaly_indices)
+    (
+        normalised,
+        decay_exponent,
+        decay_is_monotonic,
+        anomaly_indices,
+    )
 }
 
 /// Coherence ratio: mean coherence at harmonic bins divided by overall mean.
@@ -484,9 +478,7 @@ fn count_preringing(flux: &[f32], flux_peak: f32) -> usize {
             continue;
         }
         let window_end = (t + 1 + look_ahead).min(flux.len());
-        let has_onset_after = flux[t + 1..window_end]
-            .iter()
-            .any(|&f| f > onset_threshold);
+        let has_onset_after = flux[t + 1..window_end].iter().any(|&f| f > onset_threshold);
         if has_onset_after {
             count += 1;
         }
@@ -495,11 +487,7 @@ fn count_preringing(flux: &[f32], flux_peak: f32) -> usize {
 }
 
 /// Staircasing score: fraction of active transitions where peak bin does not move.
-fn compute_staircasing_score(
-    columns: &[SpectrogramColumn],
-    flux: &[f32],
-    flux_peak: f32,
-) -> f32 {
+fn compute_staircasing_score(columns: &[SpectrogramColumn], flux: &[f32], flux_peak: f32) -> f32 {
     if columns.len() < 2 || flux_peak < 1e-10 {
         return 0.0;
     }
@@ -590,7 +578,11 @@ pub fn compute_tile_phase_data(
         frames.push(spectrum.to_vec());
     }
 
-    let actual_cols = if frames.len() >= 2 { frames.len() - 1 } else { 0 };
+    let actual_cols = if frames.len() >= 2 {
+        frames.len() - 1
+    } else {
+        0
+    };
     let width = actual_cols.max(1) as u32;
     let height = n_bins as u32;
     let total = (width as usize) * (height as usize);
@@ -725,7 +717,10 @@ mod tests {
     use super::*;
 
     fn col(mags: Vec<f32>) -> SpectrogramColumn {
-        SpectrogramColumn { magnitudes: mags, time_offset: 0.0 }
+        SpectrogramColumn {
+            magnitudes: mags,
+            time_offset: 0.0,
+        }
     }
 
     #[test]
@@ -758,10 +753,7 @@ mod tests {
 
     #[test]
     fn compute_avg_spectrum_averages_per_bin() {
-        let cols = vec![
-            col(vec![1.0, 2.0, 3.0]),
-            col(vec![3.0, 4.0, 5.0]),
-        ];
+        let cols = vec![col(vec![1.0, 2.0, 3.0]), col(vec![3.0, 4.0, 5.0])];
         let avg = compute_avg_spectrum(&cols);
         assert_eq!(avg, vec![2.0, 3.0, 4.0]);
     }
@@ -794,11 +786,7 @@ mod tests {
         // Three columns: rising then falling.
         // t=0->1: bin 0 rises 0.0->2.0 (positive diff² = 4).
         // t=1->2: bin 0 falls 2.0->1.0 (negative diff → ignored).
-        let cols = vec![
-            col(vec![0.0]),
-            col(vec![2.0]),
-            col(vec![1.0]),
-        ];
+        let cols = vec![col(vec![0.0]), col(vec![2.0]), col(vec![1.0])];
         let flux = compute_spectral_flux_frames(&cols);
         assert_eq!(flux.len(), 2);
         assert!((flux[0] - 2.0).abs() < 1e-5); // sqrt(4)

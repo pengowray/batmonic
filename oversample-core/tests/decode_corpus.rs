@@ -37,20 +37,30 @@ fn corpus_root_override() -> Option<PathBuf> {
         let v = v.trim().trim_matches('"').trim_matches('\'').trim();
         (!v.is_empty()).then(|| v.to_string())
     }
-    let raw = std::env::var("BAT_DEMO_SOUNDS_DIR").ok().and_then(|v| clean(&v)).or_else(|| {
-        let env_file = workspace_root().join(".env");
-        let contents = std::fs::read_to_string(env_file).ok()?;
-        contents.lines().find_map(|line| {
-            let line = line.trim();
-            if line.starts_with('#') {
-                return None;
-            }
-            let rest = line.strip_prefix("BAT_DEMO_SOUNDS_DIR")?.trim_start().strip_prefix('=')?;
-            clean(rest)
-        })
-    })?;
+    let raw = std::env::var("BAT_DEMO_SOUNDS_DIR")
+        .ok()
+        .and_then(|v| clean(&v))
+        .or_else(|| {
+            let env_file = workspace_root().join(".env");
+            let contents = std::fs::read_to_string(env_file).ok()?;
+            contents.lines().find_map(|line| {
+                let line = line.trim();
+                if line.starts_with('#') {
+                    return None;
+                }
+                let rest = line
+                    .strip_prefix("BAT_DEMO_SOUNDS_DIR")?
+                    .trim_start()
+                    .strip_prefix('=')?;
+                clean(rest)
+            })
+        })?;
     let p = PathBuf::from(&raw);
-    Some(if p.is_absolute() { p } else { workspace_root().join(p) })
+    Some(if p.is_absolute() {
+        p
+    } else {
+        workspace_root().join(p)
+    })
 }
 
 /// The bat-demo-sounds `sounds/` directory. Uses the override above when set,

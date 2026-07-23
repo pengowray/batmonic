@@ -50,7 +50,11 @@ pub fn standard_scroll_bounds(duration: f64, visible_time: f64) -> (f64, f64) {
     (0.0, (duration - visible_time).max(0.0))
 }
 
-pub fn scroll_bounds_for_mode(duration: f64, visible_time: f64, from_here_mode: bool) -> (f64, f64) {
+pub fn scroll_bounds_for_mode(
+    duration: f64,
+    visible_time: f64,
+    from_here_mode: bool,
+) -> (f64, f64) {
     if uses_from_here_bounds(from_here_mode) {
         scroll_bounds(duration, visible_time)
     } else {

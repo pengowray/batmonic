@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use crate::api;
 use crate::types::{XcGroupTaxonomy, XcSpecies};
+use std::collections::HashMap;
 
 /// Build a species list for a group by paginating through all API results.
 ///
@@ -36,9 +36,9 @@ where
 
         for rec in &result.recordings {
             let key = (rec.genus.clone(), rec.sp.clone());
-            let entry = species_map.entry(key).or_insert_with(|| {
-                (rec.en.clone(), 0)
-            });
+            let entry = species_map
+                .entry(key)
+                .or_insert_with(|| (rec.en.clone(), 0));
             entry.1 += 1;
         }
 

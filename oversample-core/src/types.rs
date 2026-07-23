@@ -197,7 +197,12 @@ pub struct SpectDisplaySettings {
 
 impl Default for SpectDisplaySettings {
     fn default() -> Self {
-        Self { floor_db: -80.0, range_db: 80.0, gamma: 1.0, gain_db: 0.0 }
+        Self {
+            floor_db: -80.0,
+            range_db: 80.0,
+            gamma: 1.0,
+            gain_db: 0.0,
+        }
     }
 }
 
@@ -260,7 +265,10 @@ mod tests {
     fn time_expansion_rejects_useless_factors() {
         for factor in [f64::NAN, f64::INFINITY, 0.0, -10.0, 1.0] {
             let mut audio = dummy_audio(44_100);
-            assert!(!audio.apply_time_expansion(factor), "factor {factor} should be rejected");
+            assert!(
+                !audio.apply_time_expansion(factor),
+                "factor {factor} should be rejected"
+            );
             assert_eq!(audio.sample_rate, 44_100);
             assert_eq!(audio.duration_secs, 1.0);
         }

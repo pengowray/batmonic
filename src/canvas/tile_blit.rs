@@ -58,9 +58,19 @@ impl ViewportGeometry {
         let fc_hi = freq_crop_hi.max(freq_crop_lo + 0.001);
 
         Some(Self {
-            cw, ch, ideal_lod, ratio, vis_start, vis_end,
-            data_start, data_end,
-            first_tile, last_tile, fc_lo, fc_hi, zoom,
+            cw,
+            ch,
+            ideal_lod,
+            ratio,
+            vis_start,
+            vis_end,
+            data_start,
+            data_end,
+            first_tile,
+            last_tile,
+            fc_lo,
+            fc_hi,
+            zoom,
         })
     }
 
@@ -70,7 +80,11 @@ impl ViewportGeometry {
         let tile_lod1_end = tile_lod1_start + TILE_COLS as f64 / self.ratio;
         let clip_start = self.data_start.max(tile_lod1_start);
         let clip_end = self.data_end.min(tile_lod1_end);
-        if clip_end <= clip_start { None } else { Some((clip_start, clip_end)) }
+        if clip_end <= clip_start {
+            None
+        } else {
+            Some((clip_start, clip_end))
+        }
     }
 }
 
@@ -99,7 +113,9 @@ pub fn compute_tile_blit_coords(
     clip_lod1_start: f64,
     clip_lod1_end: f64,
 ) -> Option<TileBlitCoords> {
-    if tile_width == 0.0 || tile_height == 0.0 { return None; }
+    if tile_width == 0.0 || tile_height == 0.0 {
+        return None;
+    }
 
     let tile_ratio = tile_cache::lod_ratio(tile_lod);
 
@@ -112,7 +128,9 @@ pub fn compute_tile_blit_coords(
     // Clip to requested range
     let c_start = clip_lod1_start.max(tile_lod1_start);
     let c_end = clip_lod1_end.min(tile_lod1_end);
-    if c_end <= c_start { return None; }
+    if c_end <= c_start {
+        return None;
+    }
 
     // Source coordinates in tile pixel space
     // Each pixel in the tile image corresponds to one column at the tile's LOD,
@@ -121,7 +139,9 @@ pub fn compute_tile_blit_coords(
     let src_x = ((c_start - tile_lod1_start) * pixel_scale).max(0.0);
     let src_x_end = ((c_end - tile_lod1_start) * pixel_scale).min(tile_width);
     let src_w = (src_x_end - src_x).max(0.0);
-    if src_w <= 0.0 { return None; }
+    if src_w <= 0.0 {
+        return None;
+    }
 
     // Vertical crop — generalized to handle fc_lo < 0 or fc_hi > 1, which
     // happens when the tile doesn't cover the full view (e.g. viewport-zoom
@@ -131,7 +151,9 @@ pub fn compute_tile_blit_coords(
     let ch = vg.ch;
     let fc_lo_c = vg.fc_lo.max(0.0);
     let fc_hi_c = vg.fc_hi.min(1.0);
-    if fc_hi_c <= fc_lo_c { return None; }
+    if fc_hi_c <= fc_lo_c {
+        return None;
+    }
     let fc_span = (vg.fc_hi - vg.fc_lo).max(0.001);
     let src_y = th * (1.0 - fc_hi_c);
     let src_h = th * (fc_hi_c - fc_lo_c).max(0.001);
@@ -145,8 +167,14 @@ pub fn compute_tile_blit_coords(
     let dst_w = (dst_x_end_raw.ceil() - dst_x).max(1.0);
 
     Some(TileBlitCoords {
-        src_x, src_y, src_w, src_h,
-        dst_x, dst_y, dst_w, dst_h,
+        src_x,
+        src_y,
+        src_w,
+        src_h,
+        dst_x,
+        dst_y,
+        dst_w,
+        dst_h,
     })
 }
 
@@ -162,13 +190,15 @@ pub fn for_each_visible_tile<F, G>(
     mut borrow_fallback: G,
 ) -> bool
 where
-    F: FnMut(usize, f64, f64) -> bool,  // (tile_idx, clip_start, clip_end) -> drawn
-    G: FnMut(usize, u8, f64, f64) -> bool,  // (tile_idx, fb_lod, clip_start, clip_end) -> drawn
+    F: FnMut(usize, f64, f64) -> bool, // (tile_idx, clip_start, clip_end) -> drawn
+    G: FnMut(usize, u8, f64, f64) -> bool, // (tile_idx, fb_lod, clip_start, clip_end) -> drawn
 {
     let mut any_drawn = false;
 
     for tile_idx in vg.first_tile..=vg.last_tile {
-        let Some((clip_start, clip_end)) = vg.tile_clip_range(tile_idx) else { continue };
+        let Some((clip_start, clip_end)) = vg.tile_clip_range(tile_idx) else {
+            continue;
+        };
 
         let mut tile_drawn = false;
 
@@ -180,7 +210,8 @@ where
         // Fallback to coarser LODs
         if !tile_drawn {
             for fb_lod in (0..vg.ideal_lod).rev() {
-                let (fb_tile, _, _) = tile_cache::fallback_tile_info(vg.ideal_lod, tile_idx, fb_lod);
+                let (fb_tile, _, _) =
+                    tile_cache::fallback_tile_info(vg.ideal_lod, tile_idx, fb_lod);
                 if borrow_fallback(fb_tile, fb_lod, clip_start, clip_end) {
                     tile_drawn = true;
                     break;
@@ -188,7 +219,9 @@ where
             }
         }
 
-        if tile_drawn { any_drawn = true; }
+        if tile_drawn {
+            any_drawn = true;
+        }
     }
 
     any_drawn

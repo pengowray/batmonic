@@ -99,7 +99,10 @@ pub fn usb_start_recording(
         let seeded = buf.seed_preroll(preroll_samples.unwrap_or(0) as usize);
         s.is_recording.store(true, Ordering::Relaxed);
         if seeded > 0 {
-            eprintln!("usb_start_recording: seeded {} pre-roll samples to disk", seeded);
+            eprintln!(
+                "usb_start_recording: seeded {} pre-roll samples to disk",
+                seeded
+            );
         }
     }
 
@@ -119,7 +122,12 @@ pub fn usb_start_recording(
     };
     // USB streams are always 16-bit mono in this implementation.
     if let Some(writer) = recovery::start_writer(
-        &app, &args, NativeSampleFormat::I16, s.sample_rate, 1, "batcap",
+        &app,
+        &args,
+        NativeSampleFormat::I16,
+        s.sample_rate,
+        1,
+        "batcap",
     ) {
         if let Ok(mut guard) = s.recovery.writer.lock() {
             *guard = Some(writer);
@@ -150,7 +158,12 @@ pub fn usb_stop_recording(
 
     let (num_samples, sample_rate, shared_fd, preroll_seeded) = {
         let mut buf = s.buffer.lock().unwrap();
-        (buf.total_samples, buf.sample_rate, buf.shared_fd.take(), buf.preroll_seeded)
+        (
+            buf.total_samples,
+            buf.sample_rate,
+            buf.shared_fd.take(),
+            buf.preroll_seeded,
+        )
     };
     // RAII-own the shared-storage fd so every early return below closes it.
     let mut shared_fd = recording::SharedFdGuard::new(shared_fd);
@@ -226,9 +239,8 @@ pub fn usb_stop_recording(
         preroll_secs: (preroll_seeded > 0 && sample_rate > 0)
             .then(|| preroll_seeded as f64 / sample_rate as f64),
     };
-    let guano = recording::build_tauri_guano(
-        sample_rate, num_samples, &filename, &now, &guano_params,
-    );
+    let guano =
+        recording::build_tauri_guano(sample_rate, num_samples, &filename, &now, &guano_params);
     let guano_text = guano.to_text();
 
     let (saved_path, file_size_bytes, has_memory_samples) = if streaming_mode {
@@ -244,8 +256,9 @@ pub fn usb_stop_recording(
         // in-place finalize + shared-storage copy so it can't block
         // usb_stream_status or a concurrent USB command for the copy's duration.
         drop(usb);
-        let finalized_path = recovery::finalize_in_place_and_take(writer, &final_bytes, &guano_text)
-            .map_err(|e| format!("recovery finalize failed: {}", e))?;
+        let finalized_path =
+            recovery::finalize_in_place_and_take(writer, &final_bytes, &guano_text)
+                .map_err(|e| format!("recovery finalize failed: {}", e))?;
         let final_size = finalized_path.metadata().map(|m| m.len()).unwrap_or(0) as usize;
 
         let saved_path = if let Some(fd) = shared_fd.take() {
@@ -291,7 +304,10 @@ pub fn usb_stop_recording(
             full_path.to_string_lossy().to_string()
         };
         let has_mem = !samples_f32.is_empty();
-        *app.state::<crate::RecordedMemoryMutex>().inner().lock().unwrap() = samples_f32;
+        *app.state::<crate::RecordedMemoryMutex>()
+            .inner()
+            .lock()
+            .unwrap() = samples_f32;
         (path, file_size_bytes, has_mem)
     };
 

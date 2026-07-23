@@ -1,18 +1,21 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use js_sys;
-use wasm_bindgen_futures::JsFuture;
-use web_sys::{File, FileReader};
 use crate::audio::loader::load_audio;
-use crate::dsp::fft::compute_preview;
 use crate::canvas::spectral_store;
+use crate::dsp::fft::compute_preview;
+use crate::state::store_fields::*;
 use crate::state::{AppState, FileSettings, LoadedFile};
 use crate::types::SpectrogramData;
+use js_sys;
+use leptos::prelude::*;
 use std::sync::Arc;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{File, FileReader};
 
-use super::streaming_load::{SilenceCheck, try_streaming_wav, try_streaming_flac, try_streaming_m4a, try_streaming_mp3, try_streaming_ogg, build_streaming_overview};
+use super::streaming_load::{
+    build_streaming_overview, try_streaming_flac, try_streaming_m4a, try_streaming_mp3,
+    try_streaming_ogg, try_streaming_wav, SilenceCheck,
+};
 
 /// Maximum file size the browser can handle for full in-memory decode (~2 GB).
 /// Files above this MUST use the streaming path; if streaming fails, they're rejected.
@@ -24,13 +27,18 @@ const TOTAL_OPEN_FILE_STREAMING_THRESHOLD: u64 = 500_000_000;
 
 fn total_open_file_bytes(state: AppState) -> u64 {
     state.library.files().with_untracked(|files| {
-        files.iter()
+        files
+            .iter()
             .map(|file| file.audio.metadata.file_size as u64)
             .sum()
     })
 }
 
-pub(super) async fn read_and_load_file(file: File, state: AppState, load_id: u64) -> Result<(), String> {
+pub(super) async fn read_and_load_file(
+    file: File,
+    state: AppState,
+    load_id: u64,
+) -> Result<(), String> {
     let name = file.name();
     let size = file.size();
     let last_modified_ms = Some(file.last_modified());
@@ -48,16 +56,28 @@ pub(super) async fn read_and_load_file(file: File, state: AppState, load_id: u64
             }
         });
         // Compute file identity (Layer 1 + Layer 2 async)
-        let file_index = state.library.files().get_untracked().len().saturating_sub(1);
+        let file_index = state
+            .library
+            .files()
+            .get_untracked()
+            .len()
+            .saturating_sub(1);
         // Read data_offset/data_size from the loaded file's metadata
         let (data_offset, data_size) = state.library.files().with_untracked(|files| {
-            files.get(file_index)
+            files
+                .get(file_index)
                 .map(|f| (f.audio.metadata.data_offset, f.audio.metadata.data_size))
                 .unwrap_or((None, None))
         });
         crate::file_identity::start_identity_computation(
-            state, file_index, file_name, file_size, None,
-            data_offset, data_size, lm,
+            state,
+            file_index,
+            file_name,
+            file_size,
+            None,
+            data_offset,
+            data_size,
+            lm,
         );
     };
 
@@ -68,31 +88,46 @@ pub(super) async fn read_and_load_file(file: File, state: AppState, load_id: u64
     // decoded PCM runs into the gigabytes.
     state.loading_update(load_id, crate::state::LoadingStage::Streaming);
     match try_streaming_wav(&file, &name, state, force_streaming, load_id).await {
-        Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
+        Ok(()) => {
+            finalize_loaded_file(state, last_modified_ms);
+            return Ok(());
+        }
         Err(e) => {
             log::info!("WAV streaming not applicable for {}: {}", name, e);
         }
     }
     match try_streaming_flac(&file, &name, state, force_streaming, load_id).await {
-        Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
+        Ok(()) => {
+            finalize_loaded_file(state, last_modified_ms);
+            return Ok(());
+        }
         Err(e) => {
             log::info!("FLAC streaming not applicable for {}: {}", name, e);
         }
     }
     match try_streaming_mp3(&file, &name, state, force_streaming, load_id).await {
-        Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
+        Ok(()) => {
+            finalize_loaded_file(state, last_modified_ms);
+            return Ok(());
+        }
         Err(e) => {
             log::info!("MP3 streaming not applicable for {}: {}", name, e);
         }
     }
     match try_streaming_ogg(&file, &name, state, force_streaming, load_id).await {
-        Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
+        Ok(()) => {
+            finalize_loaded_file(state, last_modified_ms);
+            return Ok(());
+        }
         Err(e) => {
             log::info!("OGG streaming not applicable for {}: {}", name, e);
         }
     }
     match try_streaming_m4a(&file, &name, state, force_streaming, load_id).await {
-        Ok(()) => { finalize_loaded_file(state, last_modified_ms); return Ok(()); }
+        Ok(()) => {
+            finalize_loaded_file(state, last_modified_ms);
+            return Ok(());
+        }
         Err(e) => {
             log::info!("M4A streaming not applicable for {}: {}", name, e);
         }
@@ -109,7 +144,8 @@ pub(super) async fn read_and_load_file(file: File, state: AppState, load_id: u64
         return Err(msg);
     }
     let bytes = read_file_bytes(&file).await?;
-    let result = load_named_bytes(name, &bytes, None, None, None, None, state, load_id, false).await;
+    let result =
+        load_named_bytes(name, &bytes, None, None, None, None, state, load_id, false).await;
     if result.is_ok() {
         finalize_loaded_file(state, last_modified_ms);
     }
@@ -142,7 +178,9 @@ pub(crate) async fn load_named_bytes(
     // symphonia only if the browser refuses the file.
     let mut audio = if is_m4a {
         let native_rate = crate::audio::loader::parse_m4a_sample_rate(bytes);
-        match crate::audio::browser_decode::decode_via_audio_context(bytes, "M4A", native_rate).await {
+        match crate::audio::browser_decode::decode_via_audio_context(bytes, "M4A", native_rate)
+            .await
+        {
             Ok(a) => a,
             Err(browser_err) => {
                 log::info!("browser AudioContext rejected m4a ({browser_err}); trying symphonia");
@@ -178,7 +216,10 @@ pub(crate) async fn load_named_bytes(
     // scan, spectrogram geometry - is computed below.
     if let Some(te) = time_expansion {
         if audio.apply_time_expansion(te) {
-            log::info!("{name}: time expansion {te}x applied, true rate {} Hz", audio.sample_rate);
+            log::info!(
+                "{name}: time expansion {te}x applied, true rate {} Hz",
+                audio.sample_rate
+            );
         } else {
             log::warn!("{name}: ignoring unusable time expansion factor {te}");
         }
@@ -199,15 +240,18 @@ pub(crate) async fn load_named_bytes(
     let name_check = name.clone();
 
     const HOP_SIZE: usize = 512; // baseline LOD hop
-    let fft_size: usize = state.spect.fft_mode().get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
+    let fft_size: usize = state
+        .spect
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
 
     // Check for silent/quiet files — scan first 30s only
     let (silence_check, cached_peak_db) = {
         use crate::audio::source::{ChannelView, DEFAULT_ANALYSIS_WINDOW_SECS};
         let total_len = audio.source.total_samples() as usize;
-        let scan_end = total_len.min(
-            (DEFAULT_ANALYSIS_WINDOW_SECS * audio.sample_rate as f64) as usize,
-        );
+        let scan_end =
+            total_len.min((DEFAULT_ANALYSIS_WINDOW_SECS * audio.sample_rate as f64) as usize);
         let scan_samples = audio.source.read_region(ChannelView::MonoMix, 0, scan_end);
         let peak = scan_samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if peak < 0.002 {
@@ -215,7 +259,11 @@ pub(crate) async fn load_named_bytes(
         } else if peak > 1e-10 {
             let peak_db = 20.0 * (peak as f64).log10();
             let auto_db = -3.0 - peak_db;
-            let sc = if auto_db > 30.0 { Some(SilenceCheck::HighGain(auto_db)) } else { None };
+            let sc = if auto_db > 30.0 {
+                Some(SilenceCheck::HighGain(auto_db))
+            } else {
+                None
+            };
             (sc, Some(peak_db))
         } else {
             (None, None)
@@ -296,23 +344,34 @@ pub(crate) async fn load_named_bytes(
     // would render a blank canvas; the dot plot is the only correct
     // visualisation. Honour an existing ZcChart selection too.
     let is_zc_file = state.library.files().with_untracked(|files| {
-        files.get(file_index)
+        files
+            .get(file_index)
             .and_then(|f| f.audio.metadata.zc_data.as_ref())
             .is_some()
     });
     if is_zc_file && state.viewmode.main_view().get_untracked() != crate::state::MainView::ZcChart {
-        state.viewmode.main_view().set(crate::state::MainView::ZcChart);
+        state
+            .viewmode
+            .main_view()
+            .set(crate::state::MainView::ZcChart);
     }
 
     // Compute file identity (Layer 1 + Layer 2 with bytes available)
     let (data_offset, data_size) = state.library.files().with_untracked(|files| {
-        files.get(file_index)
+        files
+            .get(file_index)
             .map(|f| (f.audio.metadata.data_offset, f.audio.metadata.data_size))
             .unwrap_or((None, None))
     });
     crate::file_identity::start_identity_computation(
-        state, file_index, name_check.clone(), bytes.len() as u64, Some(bytes.to_vec()),
-        data_offset, data_size, None,
+        state,
+        file_index,
+        name_check.clone(),
+        bytes.len() as u64,
+        Some(bytes.to_vec()),
+        data_offset,
+        data_size,
+        None,
     );
 
     // Schedule async full-file peak scan (for files > 30s)
@@ -370,7 +429,10 @@ pub(crate) async fn load_named_bytes(
     ));
 
     // Signal the spectrogram canvas to start rendering visible tiles on-demand
-    state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+    state
+        .viewmode
+        .tile_ready_signal()
+        .update(|n| *n = n.wrapping_add(1));
 
     Ok(())
 }
@@ -492,7 +554,11 @@ fn parse_xc_metadata(json: &serde_json::Value) -> Vec<(String, String)> {
 /// Extract hash data from an XC sidecar JSON.
 /// Tries `json["_app"]` first (new format), then falls back to top-level keys (legacy).
 fn extract_sidecar_hashes(json: &serde_json::Value) -> crate::state::SidecarHashes {
-    let src = if json["_app"].is_object() { &json["_app"] } else { json };
+    let src = if json["_app"].is_object() {
+        &json["_app"]
+    } else {
+        json
+    };
     crate::state::SidecarHashes {
         blake3: src["blake3"].as_str().map(|s| s.to_string()),
         sha256: src["sha256"].as_str().map(|s| s.to_string()),
@@ -539,14 +605,45 @@ fn is_bat_species(species: &str) -> bool {
     let lower = species.to_lowercase();
     // Common bat genera/family fragments
     const BAT_HINTS: &[&str] = &[
-        "myotis", "eptesicus", "pipistrellus", "nyctalus", "vespertilio",
-        "plecotus", "rhinolophus", "hipposideros", "miniopterus", "barbastella",
-        "tadarida", "molossus", "pteropus", "rousettus", "nyctimene",
-        "austronomus", "chalinolobus", "vespadelus", "scotophilus", "lasiurus",
-        "artibeus", "carollia", "desmodus", "glossophaga", "phyllostomus",
-        "noctilio", "mormoops", "pteronotus", "emballonura", "taphozous",
-        "saccolaimus", "coleura", "nycteris", "megaderma", "rhinopoma",
-        "craseonycteris", "thyroptera", "furipterus", "natalus",
+        "myotis",
+        "eptesicus",
+        "pipistrellus",
+        "nyctalus",
+        "vespertilio",
+        "plecotus",
+        "rhinolophus",
+        "hipposideros",
+        "miniopterus",
+        "barbastella",
+        "tadarida",
+        "molossus",
+        "pteropus",
+        "rousettus",
+        "nyctimene",
+        "austronomus",
+        "chalinolobus",
+        "vespadelus",
+        "scotophilus",
+        "lasiurus",
+        "artibeus",
+        "carollia",
+        "desmodus",
+        "glossophaga",
+        "phyllostomus",
+        "noctilio",
+        "mormoops",
+        "pteronotus",
+        "emballonura",
+        "taphozous",
+        "saccolaimus",
+        "coleura",
+        "nycteris",
+        "megaderma",
+        "rhinopoma",
+        "craseonycteris",
+        "thyroptera",
+        "furipterus",
+        "natalus",
     ];
     BAT_HINTS.iter().any(|hint| lower.contains(hint))
 }
@@ -569,7 +666,13 @@ pub(crate) async fn fetch_demo_index() -> Result<Vec<DemoEntry>, String> {
             let en = sound["en"].as_str().map(|s| s.to_string());
             let species = sound["species"].as_str().map(|s| s.to_string());
             let group = sound["group"].as_str().map(|s| s.to_string());
-            Some(DemoEntry { filename, metadata_file, en, species, group })
+            Some(DemoEntry {
+                filename,
+                metadata_file,
+                en,
+                species,
+                group,
+            })
         })
         .collect();
 
@@ -616,19 +719,27 @@ pub(crate) async fn fetch_demo_details(metadata_file: &str) -> DemoDetails {
     let sample_rate_hz = json["smp"]
         .as_u64()
         .or_else(|| json["smp"].as_f64().map(|f| f as u64));
-    DemoDetails { duration_secs, sample_rate_hz }
+    DemoDetails {
+        duration_secs,
+        sample_rate_hz,
+    }
 }
 
 /// If a demo with this filename is already open, return its index in `state.library.files()`.
 /// Used to jump-to-existing instead of opening a duplicate when the user clicks
 /// the same demo bat suggestion twice.
 pub(crate) fn find_open_demo(state: AppState, filename: &str) -> Option<usize> {
-    state.library.files().with_untracked(|files| {
-        files.iter().position(|f| f.is_demo && f.name == filename)
-    })
+    state
+        .library
+        .files()
+        .with_untracked(|files| files.iter().position(|f| f.is_demo && f.name == filename))
 }
 
-pub(crate) async fn load_single_demo(entry: &DemoEntry, state: AppState, load_id: u64) -> Result<(), String> {
+pub(crate) async fn load_single_demo(
+    entry: &DemoEntry,
+    state: AppState,
+    load_id: u64,
+) -> Result<(), String> {
     // Fetch XC metadata sidecar if available
     let (xc_metadata, xc_hashes) = if let Some(meta_file) = &entry.metadata_file {
         let encoded = js_sys::encode_uri_component(meta_file);
@@ -638,19 +749,21 @@ pub(crate) async fn load_single_demo(entry: &DemoEntry, state: AppState, load_id
             encoded.as_string().unwrap_or_default()
         );
         match fetch_demo_text(&meta_url).await {
-            Ok(text) => {
-                match serde_json::from_str::<serde_json::Value>(&text) {
-                    Ok(json) => {
-                        let hashes = extract_sidecar_hashes(&json);
-                        let hashes = if hashes.is_empty() { None } else { Some(hashes) };
-                        (Some(parse_xc_metadata(&json)), hashes)
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to parse XC metadata for {}: {}", entry.filename, e);
-                        (None, None)
-                    }
+            Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+                Ok(json) => {
+                    let hashes = extract_sidecar_hashes(&json);
+                    let hashes = if hashes.is_empty() {
+                        None
+                    } else {
+                        Some(hashes)
+                    };
+                    (Some(parse_xc_metadata(&json)), hashes)
                 }
-            }
+                Err(e) => {
+                    log::warn!("Failed to parse XC metadata for {}: {}", entry.filename, e);
+                    (None, None)
+                }
+            },
             Err(e) => {
                 log::warn!("Failed to fetch XC metadata for {}: {}", entry.filename, e);
                 (None, None)
@@ -668,7 +781,18 @@ pub(crate) async fn load_single_demo(entry: &DemoEntry, state: AppState, load_id
     );
     log::info!("Fetching demo: {}", entry.filename);
     let bytes = fetch_demo_bytes(&audio_url).await?;
-    load_named_bytes(entry.filename.clone(), &bytes, xc_metadata, xc_hashes, None, None, state, load_id, true).await
+    load_named_bytes(
+        entry.filename.clone(),
+        &bytes,
+        xc_metadata,
+        xc_hashes,
+        None,
+        None,
+        state,
+        load_id,
+        true,
+    )
+    .await
 }
 
 async fn read_file_bytes(file: &File) -> Result<Vec<u8>, String> {
@@ -713,14 +837,22 @@ async fn read_file_bytes(file: &File) -> Result<Vec<u8>, String> {
 /// Returns indices: center, center-1, center+1, center-2, center+2, ...
 /// Load a file from a native filesystem path (Tauri only).
 /// Reads bytes via IPC, decodes in WASM, and stores the original path in FileIdentity.
-pub(crate) async fn load_native_file(path: String, state: AppState, load_id: u64) -> Result<(), String> {
+pub(crate) async fn load_native_file(
+    path: String,
+    state: AppState,
+    load_id: u64,
+) -> Result<(), String> {
     // Extract filename from path
     let name = path.rsplit(['/', '\\']).next().unwrap_or(&path).to_string();
 
     // Read bytes via Tauri IPC
     state.loading_update(load_id, crate::state::LoadingStage::Decoding);
     let args = js_sys::Object::new();
-    let _ = js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("path"), &wasm_bindgen::JsValue::from_str(&path));
+    let _ = js_sys::Reflect::set(
+        &args,
+        &wasm_bindgen::JsValue::from_str("path"),
+        &wasm_bindgen::JsValue::from_str(&path),
+    );
     let result = crate::tauri_bridge::tauri_invoke("read_file_bytes", &args.into()).await?;
 
     // Convert ArrayBuffer to Vec<u8>
@@ -731,10 +863,26 @@ pub(crate) async fn load_native_file(path: String, state: AppState, load_id: u64
     let bytes = uint8.to_vec();
 
     // Decode and add to state using existing pipeline
-    load_named_bytes(name.clone(), &bytes, None, None, None, None, state, load_id, false).await?;
+    load_named_bytes(
+        name.clone(),
+        &bytes,
+        None,
+        None,
+        None,
+        None,
+        state,
+        load_id,
+        false,
+    )
+    .await?;
 
     // The file was just added — set the native path on identity
-    let file_index = state.library.files().get_untracked().len().saturating_sub(1);
+    let file_index = state
+        .library
+        .files()
+        .get_untracked()
+        .len()
+        .saturating_sub(1);
 
     // start_identity_computation was already called inside load_named_bytes.
     // Set the native file_path on the identity so future saves write the sidecar.
@@ -748,9 +896,10 @@ pub(crate) async fn load_native_file(path: String, state: AppState, load_id: u64
 
     // Also try loading a file-adjacent sidecar (central store was already tried
     // by start_identity_computation, but it didn't have the path at that point).
-    let identity = state.library.files().with_untracked(|files| {
-        files.get(file_index).and_then(|f| f.identity.clone())
-    });
+    let identity = state
+        .library
+        .files()
+        .with_untracked(|files| files.get(file_index).and_then(|f| f.identity.clone()));
     if let Some(id) = identity {
         crate::opfs::load_annotations(state, file_index, id);
     }

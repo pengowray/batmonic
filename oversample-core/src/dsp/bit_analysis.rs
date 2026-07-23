@@ -133,12 +133,33 @@ pub fn analyze_bits(
     };
 
     if is_float && bits_per_sample == 32 {
-        analyze_float_bits(samples, &mut counts, &mut first, &mut last,
-            &mut pos_counts, &mut neg_counts, &mut pos_total, &mut neg_total, &mut zero_total, &mut pair_counts);
+        analyze_float_bits(
+            samples,
+            &mut counts,
+            &mut first,
+            &mut last,
+            &mut pos_counts,
+            &mut neg_counts,
+            &mut pos_total,
+            &mut neg_total,
+            &mut zero_total,
+            &mut pair_counts,
+        );
     } else {
-        analyze_int_bits(samples, bits_per_sample, &mut counts, &mut first, &mut last,
-            &mut pos_counts, &mut neg_counts, &mut pos_total, &mut neg_total, &mut zero_total, &mut pair_counts,
-            &mut unique_seen);
+        analyze_int_bits(
+            samples,
+            bits_per_sample,
+            &mut counts,
+            &mut first,
+            &mut last,
+            &mut pos_counts,
+            &mut neg_counts,
+            &mut pos_total,
+            &mut neg_total,
+            &mut zero_total,
+            &mut pair_counts,
+            &mut unique_seen,
+        );
     }
 
     let bit_stats: Vec<BitStat> = (0..n_bits)
@@ -151,7 +172,14 @@ pub fn analyze_bits(
 
     let effective_bits = detect_effective_bits(&bit_stats, bits_per_sample, is_float);
     let effective_bits_f64 = estimate_fractional_bits(&bit_stats, bits_per_sample, is_float, total);
-    let headroom_bits = detect_headroom(&pos_counts, &neg_counts, pos_total, neg_total, bits_per_sample, is_float);
+    let headroom_bits = detect_headroom(
+        &pos_counts,
+        &neg_counts,
+        pos_total,
+        neg_total,
+        bits_per_sample,
+        is_float,
+    );
 
     let bit_cautions = compute_cautions(
         &bit_stats,
@@ -357,8 +385,11 @@ fn analyze_float_bits(
 }
 
 fn entropy_bit(p: f64) -> f64 {
-    if p <= 0.0 || p >= 1.0 { 0.0 }
-    else { -(p * p.log2() + (1.0 - p) * (1.0 - p).log2()) }
+    if p <= 0.0 || p >= 1.0 {
+        0.0
+    } else {
+        -(p * p.log2() + (1.0 - p) * (1.0 - p).log2())
+    }
 }
 
 /// Estimate effective bit depth as a fractional value using Shannon entropy.
@@ -371,7 +402,9 @@ fn estimate_fractional_bits(
     is_float: bool,
     total: usize,
 ) -> f64 {
-    if total == 0 { return 0.0; }
+    if total == 0 {
+        return 0.0;
+    }
     let total_f = total as f64;
     let result = if is_float && bits_per_sample == 32 {
         // Sign bit (index 0) + mantissa bits (indices 9..32)
@@ -390,11 +423,7 @@ fn estimate_fractional_bits(
     result.min(bits_per_sample as f64)
 }
 
-fn detect_effective_bits(
-    stats: &[BitStat],
-    bits_per_sample: u16,
-    is_float: bool,
-) -> u16 {
+fn detect_effective_bits(stats: &[BitStat], bits_per_sample: u16, is_float: bool) -> u16 {
     if is_float {
         // For float, count how many trailing mantissa bits are unused
         // Mantissa bits are at indices 9..32 (bit_index 9 = M22, bit_index 31 = M0)
@@ -502,7 +531,8 @@ fn compute_cautions(
                 if let (Some(fi), Some(li)) = (stat.first_index, stat.last_index) {
                     let in_first_sec = fi < one_sec_samples;
                     let in_last_sec = li >= total.saturating_sub(one_sec_samples);
-                    let only_edges = in_first_sec && in_last_sec
+                    let only_edges = in_first_sec
+                        && in_last_sec
                         && li.saturating_sub(fi) < 2 * one_sec_samples
                         && stat.count < one_sec_samples * 2;
                     if only_edges && stat.count < total / 2 {
@@ -537,10 +567,7 @@ fn make_summary(
 
     if is_float {
         if effective_bits < 24 {
-            format!(
-                "~{}-bit precision in 32-bit float",
-                effective_bits
-            )
+            format!("~{}-bit precision in 32-bit float", effective_bits)
         } else {
             "32-bit float".into()
         }
@@ -563,7 +590,7 @@ pub fn is_expected_used(
 ) -> bool {
     if is_float && bits_per_sample == 32 {
         match bit_index {
-            0 => true,    // sign bit should be used (unless all positive)
+            0 => true,     // sign bit should be used (unless all positive)
             1..=8 => true, // exponent bits should generally be used
             _ => {
                 // Mantissa: only upper bits expected

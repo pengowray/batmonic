@@ -12,7 +12,9 @@ const KEY_FILENAME: &str = "xc_api_key.txt";
 fn app_config_dir() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
-        std::env::var("APPDATA").ok().map(|d| PathBuf::from(d).join(APP_IDENTIFIER))
+        std::env::var("APPDATA")
+            .ok()
+            .map(|d| PathBuf::from(d).join(APP_IDENTIFIER))
     }
     #[cfg(target_os = "macos")]
     {
@@ -35,7 +37,9 @@ fn dirs_like_home() -> Option<PathBuf> {
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn dirs_like_home_config() -> Option<PathBuf> {
-    std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config"))
+    std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".config"))
 }
 
 /// Get the path to the stored API key file (shared with Tauri app).
@@ -48,18 +52,20 @@ pub fn load_key() -> Option<String> {
     let path = key_path()?;
     let key = std::fs::read_to_string(path).ok()?;
     let key = key.trim().to_string();
-    if key.is_empty() { None } else { Some(key) }
+    if key.is_empty() {
+        None
+    } else {
+        Some(key)
+    }
 }
 
 /// Save an API key to the shared config location.
 pub fn save_key(key: &str) -> Result<PathBuf, String> {
     let path = key_path().ok_or("Could not determine config directory")?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create config dir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {e}"))?;
     }
-    std::fs::write(&path, key.trim())
-        .map_err(|e| format!("Failed to write API key: {e}"))?;
+    std::fs::write(&path, key.trim()).map_err(|e| format!("Failed to write API key: {e}"))?;
     Ok(path)
 }
 
@@ -67,8 +73,7 @@ pub fn save_key(key: &str) -> Result<PathBuf, String> {
 pub fn delete_key() -> Result<(), String> {
     if let Some(path) = key_path() {
         if path.exists() {
-            std::fs::remove_file(&path)
-                .map_err(|e| format!("Failed to remove API key: {e}"))?;
+            std::fs::remove_file(&path).map_err(|e| format!("Failed to remove API key: {e}"))?;
         }
     }
     Ok(())

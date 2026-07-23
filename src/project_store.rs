@@ -1,6 +1,8 @@
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemWritableFileStream, WritableStream};
+use web_sys::{
+    FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemWritableFileStream, WritableStream,
+};
 
 use crate::project::BatProject;
 
@@ -33,8 +35,7 @@ fn project_key(id: &str) -> String {
 
 /// Save a project to OPFS as YAML.
 pub async fn save_project(project: &BatProject) -> Result<(), String> {
-    let yaml = yaml_serde::to_string(project)
-        .map_err(|e| format!("YAML serialize: {e}"))?;
+    let yaml = yaml_serde::to_string(project).map_err(|e| format!("YAML serialize: {e}"))?;
 
     let dir = get_projects_dir().await?;
     let key = project_key(&project.id);
@@ -47,14 +48,15 @@ pub async fn save_project(project: &BatProject) -> Result<(), String> {
             .map_err(|e| format!("OPFS get file: {e:?}"))?
             .unchecked_into();
 
-    let writable: FileSystemWritableFileStream =
-        JsFuture::from(file_handle.create_writable())
-            .await
-            .map_err(|e| format!("OPFS create writable: {e:?}"))?
-            .unchecked_into();
+    let writable: FileSystemWritableFileStream = JsFuture::from(file_handle.create_writable())
+        .await
+        .map_err(|e| format!("OPFS create writable: {e:?}"))?
+        .unchecked_into();
 
     JsFuture::from(
-        writable.write_with_str(&yaml).map_err(|e| format!("OPFS write: {e:?}"))?,
+        writable
+            .write_with_str(&yaml)
+            .map_err(|e| format!("OPFS write: {e:?}"))?,
     )
     .await
     .map_err(|e| format!("OPFS write await: {e:?}"))?;
@@ -88,8 +90,8 @@ pub async fn load_project(id: &str) -> Result<Option<BatProject>, String> {
         .map_err(|e| format!("OPFS read text: {e:?}"))?;
 
     let yaml_str = text.as_string().ok_or("OPFS text not a string")?;
-    let project: BatProject = yaml_serde::from_str(&yaml_str)
-        .map_err(|e| format!("YAML deserialize: {e}"))?;
+    let project: BatProject =
+        yaml_serde::from_str(&yaml_str).map_err(|e| format!("YAML deserialize: {e}"))?;
 
     if project.version > crate::project::PROJECT_FORMAT_VERSION {
         log::warn!(
@@ -134,8 +136,8 @@ pub async fn list_projects() -> Result<Vec<ProjectSummary>, String> {
             break;
         }
 
-        let value = js_sys::Reflect::get(&next, &"value".into())
-            .map_err(|e| format!("value: {e:?}"))?;
+        let value =
+            js_sys::Reflect::get(&next, &"value".into()).map_err(|e| format!("value: {e:?}"))?;
         let arr = js_sys::Array::from(&value);
         let key_js = arr.get(0);
         let key = key_js.as_string().unwrap_or_default();
@@ -183,6 +185,5 @@ pub async fn delete_project(id: &str) -> Result<(), String> {
 
 /// Export a project as a YAML string (for download).
 pub fn export_project_yaml(project: &BatProject) -> Result<String, String> {
-    yaml_serde::to_string(project)
-        .map_err(|e| format!("YAML serialize: {e}"))
+    yaml_serde::to_string(project).map_err(|e| format!("YAML serialize: {e}"))
 }

@@ -1,6 +1,6 @@
-use leptos::prelude::*;
-use super::file_groups::{TrackInfo, SequenceInfo};
+use super::file_groups::{SequenceInfo, TrackInfo};
 use crate::format_time::format_duration_compact;
+use leptos::prelude::*;
 
 /// Parse a CC license URL/string (from XC metadata "lic" field) into a short label.
 /// e.g. "//creativecommons.org/licenses/by-nc-sa/4.0/" -> "CC BY-NC-SA 4.0"
@@ -27,7 +27,10 @@ pub(crate) fn parse_cc_license(lic: &str) -> Option<String> {
 
 /// Get XC metadata field value by key.
 pub(crate) fn get_xc_field(metadata: &[(String, String)], key: &str) -> Option<String> {
-    metadata.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    metadata
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.clone())
 }
 
 /// All data needed to render badges for a single file.

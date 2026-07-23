@@ -1,14 +1,14 @@
+use crate::annotations::AudioFileMetadata;
+use crate::format_time::format_duration_compact;
+use crate::opfs;
+use crate::project::BatProject;
+use crate::project_store;
 use crate::state::store_fields::*;
+use crate::state::AppState;
+use crate::viewport;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
-use crate::state::AppState;
-use crate::project::BatProject;
-use crate::project_store;
-use crate::annotations::AudioFileMetadata;
-use crate::opfs;
-use crate::format_time::format_duration_compact;
-use crate::viewport;
 
 /// Helper: build AudioFileMetadata from a LoadedFile.
 fn audio_meta_from_loaded(f: &crate::state::LoadedFile) -> AudioFileMetadata {
@@ -65,9 +65,11 @@ pub(crate) fn save_project_async(state: AppState) {
                         state.project.save_status().set("");
                     }
                 });
-                let _ = web_sys::window().unwrap()
+                let _ = web_sys::window()
+                    .unwrap()
                     .set_timeout_with_callback_and_timeout_and_arguments_0(
-                        cb.as_ref().unchecked_ref(), 3000,
+                        cb.as_ref().unchecked_ref(),
+                        3000,
                     );
                 cb.forget();
             }
@@ -165,7 +167,9 @@ fn NoProjectView() -> impl IntoView {
     let on_import_change = move |ev: web_sys::Event| {
         let target = ev.target().unwrap();
         let input: web_sys::HtmlInputElement = target.unchecked_into();
-        let Some(file_list) = input.files() else { return };
+        let Some(file_list) = input.files() else {
+            return;
+        };
         let Some(file) = file_list.get(0) else { return };
         spawn_local(async move {
             let text_promise = file.text();
@@ -308,26 +312,35 @@ fn ProjectView(project: BatProject) -> impl IntoView {
 
     // Track which project files are currently loaded
     let loaded_files = state.library.files().get_untracked();
-    let file_statuses: Vec<(crate::project::ProjectFile, bool)> = project.files.iter().map(|pf| {
-        let is_loaded = loaded_files.iter().any(|lf| {
-            lf.identity.as_ref().is_some_and(|id| {
-                if let (Some(a), Some(b)) = (&pf.identity.spot_hash_b3, &id.spot_hash_b3) {
-                    a == b
-                } else {
-                    pf.identity.filename == id.filename && pf.identity.file_size == id.file_size
-                }
-            })
-        });
-        (pf.clone(), is_loaded)
-    }).collect();
+    let file_statuses: Vec<(crate::project::ProjectFile, bool)> = project
+        .files
+        .iter()
+        .map(|pf| {
+            let is_loaded = loaded_files.iter().any(|lf| {
+                lf.identity.as_ref().is_some_and(|id| {
+                    if let (Some(a), Some(b)) = (&pf.identity.spot_hash_b3, &id.spot_hash_b3) {
+                        a == b
+                    } else {
+                        pf.identity.filename == id.filename && pf.identity.file_size == id.file_size
+                    }
+                })
+            });
+            (pf.clone(), is_loaded)
+        })
+        .collect();
     let loaded_count = file_statuses.iter().filter(|(_, loaded)| *loaded).count();
 
     // Check for loaded files not yet in the project
     let new_files_count = {
         let proj_clone = project.clone();
-        loaded_files.iter().filter(|lf| {
-            lf.identity.as_ref().is_some_and(|id| proj_clone.find_file(id).is_none())
-        }).count()
+        loaded_files
+            .iter()
+            .filter(|lf| {
+                lf.identity
+                    .as_ref()
+                    .is_some_and(|id| proj_clone.find_file(id).is_none())
+            })
+            .count()
     };
 
     // ── Event handlers ──
@@ -338,7 +351,11 @@ fn ProjectView(project: BatProject) -> impl IntoView {
         let new_name = input.value();
         state.project.current().update(|p| {
             if let Some(proj) = p {
-                proj.name = if new_name.is_empty() { None } else { Some(new_name) };
+                proj.name = if new_name.is_empty() {
+                    None
+                } else {
+                    Some(new_name)
+                };
                 proj.touch();
             }
         });
@@ -351,22 +368,30 @@ fn ProjectView(project: BatProject) -> impl IntoView {
         let new_notes = textarea.value();
         state.project.current().update(|p| {
             if let Some(proj) = p {
-                proj.notes = if new_notes.is_empty() { None } else { Some(new_notes) };
+                proj.notes = if new_notes.is_empty() {
+                    None
+                } else {
+                    Some(new_notes)
+                };
                 proj.touch();
             }
         });
         state.project.dirty().set(true);
     };
 
-    let on_save = move |_: web_sys::MouseEvent| { save_project_async(state); };
+    let on_save = move |_: web_sys::MouseEvent| {
+        save_project_async(state);
+    };
 
     let on_export = move |_: web_sys::MouseEvent| {
         let proj = state.project.current().get_untracked();
         if let Some(proj) = proj {
             match project_store::export_project_yaml(&proj) {
                 Ok(yaml) => {
-                    download_text(&yaml, &format!("{}.batproj",
-                        proj.name.as_deref().unwrap_or("project")));
+                    download_text(
+                        &yaml,
+                        &format!("{}.batproj", proj.name.as_deref().unwrap_or("project")),
+                    );
                 }
                 Err(e) => log::error!("Failed to export project: {e}"),
             }
@@ -376,7 +401,10 @@ fn ProjectView(project: BatProject) -> impl IntoView {
     let on_close = move |_: web_sys::MouseEvent| {
         if state.project.dirty().get_untracked() {
             let window = web_sys::window().unwrap();
-            if !window.confirm_with_message("You have unsaved changes. Close project anyway?").unwrap_or(true) {
+            if !window
+                .confirm_with_message("You have unsaved changes. Close project anyway?")
+                .unwrap_or(true)
+            {
                 return;
             }
         }
@@ -395,21 +423,31 @@ fn ProjectView(project: BatProject) -> impl IntoView {
             let mut skipped = 0u32;
 
             for f in loaded.iter() {
-                let Some(ref identity) = f.identity else { continue };
+                let Some(ref identity) = f.identity else {
+                    continue;
+                };
                 let key = opfs::opfs_key(identity);
 
                 // Check if already merged (by current key OR stable identity)
                 let already = state.project.current().with_untracked(|p| {
-                    p.as_ref().is_some_and(|proj| proj.was_merged(&key, identity))
+                    p.as_ref()
+                        .is_some_and(|proj| proj.was_merged(&key, identity))
                 });
-                if already { skipped += 1; continue; }
+                if already {
+                    skipped += 1;
+                    continue;
+                }
 
                 // Try to load the .batm
                 match opfs::load_batm_by_key(&key).await {
                     Ok(Some(set)) => {
-                        let did_merge = state.project.current().try_update(|p| {
-                            p.as_mut().is_some_and(|proj| proj.merge_batm(&set, &key))
-                        }).unwrap_or(false);
+                        let did_merge = state
+                            .project
+                            .current()
+                            .try_update(|p| {
+                                p.as_mut().is_some_and(|proj| proj.merge_batm(&set, &key))
+                            })
+                            .unwrap_or(false);
                         if did_merge {
                             merged_count += 1;
                             state.project.dirty().set(true);
@@ -454,37 +492,53 @@ fn ProjectView(project: BatProject) -> impl IntoView {
     let selected_proj_indices: RwSignal<Vec<usize>> = RwSignal::new(Vec::new());
 
     // Map project file index → runtime file index (only for loaded files)
-    let proj_to_runtime: StoredValue<Vec<Option<usize>>> = StoredValue::new(file_statuses.iter().map(|(pf, is_loaded)| {
-        if !is_loaded { return None; }
-        loaded_files.iter().position(|lf| {
-            lf.identity.as_ref().is_some_and(|id| {
-                if let (Some(a), Some(b)) = (&pf.identity.spot_hash_b3, &id.spot_hash_b3) {
-                    a == b
-                } else {
-                    pf.identity.filename == id.filename && pf.identity.file_size == id.file_size
+    let proj_to_runtime: StoredValue<Vec<Option<usize>>> = StoredValue::new(
+        file_statuses
+            .iter()
+            .map(|(pf, is_loaded)| {
+                if !is_loaded {
+                    return None;
                 }
+                loaded_files.iter().position(|lf| {
+                    lf.identity.as_ref().is_some_and(|id| {
+                        if let (Some(a), Some(b)) = (&pf.identity.spot_hash_b3, &id.spot_hash_b3) {
+                            a == b
+                        } else {
+                            pf.identity.filename == id.filename
+                                && pf.identity.file_size == id.file_size
+                        }
+                    })
+                })
             })
-        })
-    }).collect());
+            .collect(),
+    );
 
     let on_create_timeline = move |_: web_sys::MouseEvent| {
-            let sel = selected_proj_indices.get_untracked();
-            let runtime_indices: Vec<usize> = sel.iter()
-                .filter_map(|&pi| proj_to_runtime.with_value(|p2r| p2r.get(pi).copied().flatten()))
-                .collect();
-            if runtime_indices.len() < 2 { return; }
-            let files = state.library.files().get_untracked();
-            if let Some(tv) = crate::timeline::TimelineView::from_files(&runtime_indices, &files) {
-                let timeline_duration = tv.total_duration_secs;
-                let primary_time_res = tv.segments.first()
-                    .and_then(|s| files.get(s.file_index))
-                    .map(|f| f.spectrogram.time_resolution)
-                    .unwrap_or(1.0);
-                let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-                // Save to project
-                state.project.current().update(|p| {
-                    let Some(proj) = p else { return };
-                    let entries: Vec<_> = tv.segments.iter().filter_map(|seg| {
+        let sel = selected_proj_indices.get_untracked();
+        let runtime_indices: Vec<usize> = sel
+            .iter()
+            .filter_map(|&pi| proj_to_runtime.with_value(|p2r| p2r.get(pi).copied().flatten()))
+            .collect();
+        if runtime_indices.len() < 2 {
+            return;
+        }
+        let files = state.library.files().get_untracked();
+        if let Some(tv) = crate::timeline::TimelineView::from_files(&runtime_indices, &files) {
+            let timeline_duration = tv.total_duration_secs;
+            let primary_time_res = tv
+                .segments
+                .first()
+                .and_then(|s| files.get(s.file_index))
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(1.0);
+            let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
+            // Save to project
+            state.project.current().update(|p| {
+                let Some(proj) = p else { return };
+                let entries: Vec<_> = tv
+                    .segments
+                    .iter()
+                    .filter_map(|seg| {
                         let loaded = files.get(seg.file_index)?;
                         let identity = loaded.identity.as_ref()?;
                         let proj_idx = proj.find_file(identity)?;
@@ -494,34 +548,44 @@ fn ProjectView(project: BatProject) -> impl IntoView {
                             duration_secs: seg.duration_secs,
                             multitrack_group_id: None,
                         })
-                    }).collect();
-                    if !entries.is_empty() {
-                        proj.timelines.push(crate::project::TimelineDefinition {
-                            id: crate::annotations::generate_uuid(),
-                            entries,
-                            label: None,
-                        });
-                        proj.touch();
-                    }
-                });
-                state.project.dirty().set(true);
-
-                state.timeline.selected_file_indices().set(runtime_indices);
-                state.timeline.active().set(Some(tv));
-                state.timeline.active_track().set(None);
-                state.library.current_index().set(None);
-                state.suspend_follow();
-                if canvas_w > 0.0 && primary_time_res > 0.0 && timeline_duration > 0.0 {
-                    let fit_zoom = ((canvas_w * primary_time_res) / timeline_duration).clamp(viewport::MIN_ZOOM, viewport::MAX_ZOOM);
-                    state.view.zoom_level().set(fit_zoom);
-                    let visible_time = viewport::visible_time(canvas_w, fit_zoom, primary_time_res);
-                    let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
-                    state.view.scroll_offset().set(viewport::clamp_scroll_for_mode(0.0, timeline_duration, visible_time, from_here_mode));
-                } else {
-                    state.view.scroll_offset().set(0.0);
+                    })
+                    .collect();
+                if !entries.is_empty() {
+                    proj.timelines.push(crate::project::TimelineDefinition {
+                        id: crate::annotations::generate_uuid(),
+                        entries,
+                        label: None,
+                    });
+                    proj.touch();
                 }
-                selected_proj_indices.set(Vec::new());
+            });
+            state.project.dirty().set(true);
+
+            state.timeline.selected_file_indices().set(runtime_indices);
+            state.timeline.active().set(Some(tv));
+            state.timeline.active_track().set(None);
+            state.library.current_index().set(None);
+            state.suspend_follow();
+            if canvas_w > 0.0 && primary_time_res > 0.0 && timeline_duration > 0.0 {
+                let fit_zoom = ((canvas_w * primary_time_res) / timeline_duration)
+                    .clamp(viewport::MIN_ZOOM, viewport::MAX_ZOOM);
+                state.view.zoom_level().set(fit_zoom);
+                let visible_time = viewport::visible_time(canvas_w, fit_zoom, primary_time_res);
+                let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
+                state
+                    .view
+                    .scroll_offset()
+                    .set(viewport::clamp_scroll_for_mode(
+                        0.0,
+                        timeline_duration,
+                        visible_time,
+                        from_here_mode,
+                    ));
+            } else {
+                state.view.scroll_offset().set(0.0);
             }
+            selected_proj_indices.set(Vec::new());
+        }
     };
 
     // ── Build file items ──
@@ -859,15 +923,25 @@ fn ProjectView(project: BatProject) -> impl IntoView {
 
 /// Trigger a browser file download with text content.
 fn download_text(content: &str, filename: &str) {
-    let Some(window) = web_sys::window() else { return };
-    let Some(document) = window.document() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
 
     let blob_parts = js_sys::Array::new();
     blob_parts.push(&wasm_bindgen::JsValue::from_str(content));
-    let Ok(blob) = web_sys::Blob::new_with_str_sequence(&blob_parts) else { return };
-    let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else { return };
+    let Ok(blob) = web_sys::Blob::new_with_str_sequence(&blob_parts) else {
+        return;
+    };
+    let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else {
+        return;
+    };
 
-    let Ok(a) = document.create_element("a") else { return };
+    let Ok(a) = document.create_element("a") else {
+        return;
+    };
     let _ = a.set_attribute("href", &url);
     let _ = a.set_attribute("download", filename);
     let _ = a.set_attribute("style", "display:none");

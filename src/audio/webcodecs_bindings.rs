@@ -4,7 +4,7 @@
 //! for all interactions.  The mp4-muxer IIFE bundle exposes a global `Mp4Muxer`
 //! namespace (loaded via `<script src="mp4-muxer.js">`).
 
-use js_sys::{self, Object, Reflect, Uint8Array, Float32Array};
+use js_sys::{self, Float32Array, Object, Reflect, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
@@ -114,7 +114,11 @@ pub fn create_video_frame(
     timestamp_us: i64,
 ) -> Result<JsValue, JsValue> {
     let opts = Object::new();
-    Reflect::set(&opts, &"timestamp".into(), &JsValue::from_f64(timestamp_us as f64))?;
+    Reflect::set(
+        &opts,
+        &"timestamp".into(),
+        &JsValue::from_f64(timestamp_us as f64),
+    )?;
 
     let ctor = Reflect::get(&js_sys::global(), &"VideoFrame".into())?;
     let ctor: js_sys::Function = ctor.dyn_into()?;
@@ -251,8 +255,16 @@ pub fn create_audio_data(
     Reflect::set(&opts, &"format".into(), &"f32-planar".into())?;
     Reflect::set(&opts, &"sampleRate".into(), &sample_rate.into())?;
     Reflect::set(&opts, &"numberOfChannels".into(), &1u32.into())?;
-    Reflect::set(&opts, &"numberOfFrames".into(), &(samples.len() as u32).into())?;
-    Reflect::set(&opts, &"timestamp".into(), &JsValue::from_f64(timestamp_us as f64))?;
+    Reflect::set(
+        &opts,
+        &"numberOfFrames".into(),
+        &(samples.len() as u32).into(),
+    )?;
+    Reflect::set(
+        &opts,
+        &"timestamp".into(),
+        &JsValue::from_f64(timestamp_us as f64),
+    )?;
     Reflect::set(&opts, &"data".into(), &data)?;
 
     let ctor = Reflect::get(&js_sys::global(), &"AudioData".into())?;

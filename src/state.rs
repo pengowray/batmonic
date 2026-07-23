@@ -1,14 +1,14 @@
+use crate::annotations::AnnotationKind;
+use crate::annotations::{AnnotationId, AnnotationStore, FileIdentity};
+use crate::audio::source::ChannelView;
+use crate::canvas::flow::FlowAlgo;
+use crate::canvas::spectrogram_renderer::Colormap;
+use crate::dsp::filters::BandMode;
+use crate::dsp::pitch_shift::PitchFactor;
+use crate::types::{AudioData, PreviewImage, SpectrogramData};
 use leptos::prelude::*;
 use reactive_stores::Store;
 use std::collections::VecDeque;
-use crate::audio::source::ChannelView;
-use crate::canvas::spectrogram_renderer::Colormap;
-use crate::canvas::flow::FlowAlgo;
-use crate::annotations::AnnotationKind;
-use crate::types::{AudioData, PreviewImage, SpectrogramData};
-use crate::annotations::{AnnotationId, AnnotationStore, FileIdentity};
-use crate::dsp::filters::BandMode;
-use crate::dsp::pitch_shift::PitchFactor;
 
 /// Hash data extracted from an XC sidecar JSON file.
 ///
@@ -110,12 +110,21 @@ impl FileSettings {
         let hfr_on = state.viewmode.focus_stack().get_untracked().hfr_enabled();
         let g_active = state.gain.db().get_untracked();
         let g_stash = state.gain.db_stash().get_untracked();
-        let (gain_db, gain_db_stash) = if hfr_on { (g_stash, g_active) } else { (g_active, g_stash) };
+        let (gain_db, gain_db_stash) = if hfr_on {
+            (g_stash, g_active)
+        } else {
+            (g_active, g_stash)
+        };
         // The user's MANUAL bandpass (per-file): when HFR is on, the live
         // bandpass_mode is HFR's transient one, so the user's is the focus_stack's
         // stashed value; when HFR is off, the live one IS the user's.
         let user_bandpass = if hfr_on {
-            state.viewmode.focus_stack().get_untracked().saved_bandpass_mode().unwrap_or(BandpassMode::Off)
+            state
+                .viewmode
+                .focus_stack()
+                .get_untracked()
+                .saved_bandpass_mode()
+                .unwrap_or(BandpassMode::Off)
         } else {
             state.filter.bandpass_mode().get_untracked()
         };
@@ -163,11 +172,23 @@ impl FileSettings {
         state.gain.db_stash().set(g_stash);
         state.notch.enabled().set(self.notch_enabled);
         state.notch.bands().set(self.notch_bands.clone());
-        state.notch.profile_name().set(self.notch_profile_name.clone());
-        state.notch.harmonic_suppression().set(self.notch_harmonic_suppression);
+        state
+            .notch
+            .profile_name()
+            .set(self.notch_profile_name.clone());
+        state
+            .notch
+            .harmonic_suppression()
+            .set(self.notch_harmonic_suppression);
         state.noise_reduce.enabled().set(self.noise_reduce_enabled);
-        state.noise_reduce.strength().set(self.noise_reduce_strength);
-        state.noise_reduce.floor().set(self.noise_reduce_floor.clone());
+        state
+            .noise_reduce
+            .strength()
+            .set(self.noise_reduce_strength);
+        state
+            .noise_reduce
+            .floor()
+            .set(self.noise_reduce_floor.clone());
         let f = &self.filter;
         state.filter.enabled().set(f.enabled);
         state.filter.band_mode().set(f.band_mode);
@@ -280,7 +301,7 @@ pub struct LoadedFile {
     pub xc_hashes: Option<SidecarHashes>,
     /// Loaded from the bat-demo-sounds archive (not directly from XC or user's disk).
     pub is_demo: bool,
-    pub is_recording: bool,  // true = unsaved recording (show indicator on web)
+    pub is_recording: bool, // true = unsaved recording (show indicator on web)
     /// Transient listening file — auto-removed when listening stops, converted to
     /// a recording file when the user hits record.
     pub is_live_listen: bool,
@@ -344,8 +365,12 @@ impl LoadedFile {
             }
         }
         // Fallback: file last-modified minus duration ≈ recording start
-        self.last_modified_ms
-            .map(|lm| (lm - self.audio.duration_secs * 1000.0, "File modified date (approx.)"))
+        self.last_modified_ms.map(|lm| {
+            (
+                lm - self.audio.duration_secs * 1000.0,
+                "File modified date (approx.)",
+            )
+        })
     }
 }
 
@@ -355,7 +380,11 @@ impl LoadedFile {
 fn parse_iso8601_to_epoch_ms(s: &str) -> Option<f64> {
     // Use js_sys::Date.parse() which handles ISO 8601 natively
     let ms = js_sys::Date::parse(s);
-    if ms.is_nan() { None } else { Some(ms) }
+    if ms.is_nan() {
+        None
+    } else {
+        Some(ms)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -576,22 +605,22 @@ pub enum BandpassRange {
 /// Which spectrogram overlay handle is being dragged / hovered.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SpectrogramHandle {
-    BandFfUpper,       // BandFF upper boundary
-    BandFfLower,       // BandFF lower boundary
-    BandFfMiddle,      // BandFF midpoint (transpose whole range)
-    HetCenter,     // HET center freq
-    HetBandUpper,  // HET upper band edge
-    HetBandLower,  // HET lower band edge
+    BandFfUpper,  // BandFF upper boundary
+    BandFfLower,  // BandFF lower boundary
+    BandFfMiddle, // BandFF midpoint (transpose whole range)
+    HetCenter,    // HET center freq
+    HetBandUpper, // HET upper band edge
+    HetBandLower, // HET lower band edge
 }
 
 /// How the Play button initiates playback.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum PlayStartMode {
     #[default]
-    Auto,      // automatically choose: Selected > FromHere > All
-    All,       // play from start of file
-    FromHere,  // play from current scroll position
-    Selected,  // play selection (falls back to All if no selection)
+    Auto, // automatically choose: Selected > FromHere > All
+    All,      // play from start of file
+    FromHere, // play from current scroll position
+    Selected, // play selection (falls back to All if no selection)
 }
 
 impl PlayStartMode {
@@ -604,9 +633,9 @@ impl PlayStartMode {
 /// What happens when the Record button is pressed.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RecordMode {
-    ToFile,      // save to filesystem (Tauri only)
-    ToMemory,    // keep in browser memory
-    ListenOnly,  // grey out record, user can only listen
+    ToFile,     // save to filesystem (Tauri only)
+    ToMemory,   // keep in browser memory
+    ListenOnly, // grey out record, user can only listen
 }
 
 /// Waveform sub-view mode.
@@ -649,7 +678,7 @@ impl WaveformView {
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum CanvasTool {
     #[default]
-    Hand,      // drag to pan
+    Hand, // drag to pan
     Selection, // drag to select
 }
 
@@ -670,9 +699,14 @@ pub enum ActiveFocus {
 /// Position of a resize handle on an annotation bounding box.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ResizeHandlePosition {
-    TopLeft, Top, TopRight,
-    Left, Right,
-    BottomLeft, Bottom, BottomRight,
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
 }
 
 /// Where a dragged annotation will be dropped relative to the target tree row.
@@ -731,7 +765,10 @@ impl MainView {
 
     /// Whether this view mode uses the spectrogram renderer.
     pub fn is_spectrogram(self) -> bool {
-        matches!(self, Self::Spectrogram | Self::Flow | Self::Chromagram | Self::Resonators)
+        matches!(
+            self,
+            Self::Spectrogram | Self::Flow | Self::Chromagram | Self::Resonators
+        )
     }
 
     /// Views that make sense for an Anabat .zc file. The recording has no
@@ -826,8 +863,7 @@ pub fn resonator_bw_to_slider(bw: f32) -> f32 {
 /// Convert a slider position 0..RESONATOR_BW_SLIDER_MAX back to a bandwidth in Hz.
 pub fn resonator_slider_to_bw(pos: f32) -> f32 {
     let pos = pos.clamp(0.0, RESONATOR_BW_SLIDER_MAX);
-    RESONATOR_BW_MIN
-        * (RESONATOR_BW_MAX / RESONATOR_BW_MIN).powf(pos / RESONATOR_BW_SLIDER_MAX)
+    RESONATOR_BW_MIN * (RESONATOR_BW_MAX / RESONATOR_BW_MIN).powf(pos / RESONATOR_BW_SLIDER_MAX)
 }
 
 // ── Resonator FFT mode ───────────────────────────────────────────────────────
@@ -1078,7 +1114,10 @@ impl LayerPanel {
             | LayerPanel::ListenMode
             | LayerPanel::OutputRange => Bar::Hearing,
             LayerPanel::MainView | LayerPanel::Tool | LayerPanel::Xform => Bar::View,
-            LayerPanel::PlayMode | LayerPanel::RecordMode | LayerPanel::Channel | LayerPanel::Mic => Bar::Transport,
+            LayerPanel::PlayMode
+            | LayerPanel::RecordMode
+            | LayerPanel::Channel
+            | LayerPanel::Mic => Bar::Transport,
             // FreqRange floats over the canvas — not anchored to a bar.
             LayerPanel::FreqRange => Bar::Floating,
         }
@@ -1138,7 +1177,6 @@ pub struct Bookmark {
     pub time: f64,
 }
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum ChromaColormap {
     Warm,
@@ -1191,28 +1229,24 @@ impl ChromaRange {
     /// (min_octave, num_octaves) — which octave indices to include.
     pub fn octave_params(self) -> (usize, usize) {
         match self {
-            Self::Full       => (0, 16),   // oct 0–15
-            Self::Audible    => (0, 11),   // oct 0–10 (~16 Hz – 31.6 kHz)
-            Self::Musical    => (0, 9),    // oct 0–8  (~16 Hz – 8.4 kHz)
-            Self::Ultrasound => (10, 6),   // oct 10–15 (~16.7 kHz – max)
+            Self::Full => (0, 16),       // oct 0–15
+            Self::Audible => (0, 11),    // oct 0–10 (~16 Hz – 31.6 kHz)
+            Self::Musical => (0, 9),     // oct 0–8  (~16 Hz – 8.4 kHz)
+            Self::Ultrasound => (10, 6), // oct 10–15 (~16.7 kHz – max)
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Full       => "Full",
-            Self::Audible    => "Audible (20\u{2013}20k)",
-            Self::Musical    => "Musical (A0\u{2013}D8)",
+            Self::Full => "Full",
+            Self::Audible => "Audible (20\u{2013}20k)",
+            Self::Musical => "Musical (A0\u{2013}D8)",
             Self::Ultrasound => "Ultrasound (18k+)",
         }
     }
 
-    pub const ALL: &'static [ChromaRange] = &[
-        Self::Full,
-        Self::Audible,
-        Self::Musical,
-        Self::Ultrasound,
-    ];
+    pub const ALL: &'static [ChromaRange] =
+        &[Self::Full, Self::Audible, Self::Musical, Self::Ultrasound];
 }
 
 /// Backend used to compute chromagram columns.
@@ -1717,33 +1751,15 @@ pub struct GainState {
 /// `FooStateStoreFields` trait individually. Extend as more groups migrate.
 pub mod store_fields {
     pub use super::{
-        FlowStateStoreFields,
-        ChromaStateStoreFields,
-        ResonatorStateStoreFields,
-        NotchStateStoreFields,
-        NoiseReduceStateStoreFields,
-        PulseStateStoreFields,
-        PsdStateStoreFields,
-        ProjectStateStoreFields,
-        TimelineStateStoreFields,
-        BatBookStateStoreFields,
-        ExportStateStoreFields,
-        TransformStateStoreFields,
-        ViewStateStoreFields,
-        FilterStateStoreFields,
-        GainStateStoreFields,
-        MicStateStoreFields,
-        RecordingMetaStateStoreFields,
-        SpectStateStoreFields,
-        AnnotationsStateStoreFields,
-        DisplayStateStoreFields,
-        PanelsStateStoreFields,
-        DialogsStateStoreFields,
-        LibraryStateStoreFields,
-        PlaybackStateStoreFields,
-        StatusStateStoreFields,
-        InteractionStateStoreFields,
-        ViewModeStateStoreFields,
+        AnnotationsStateStoreFields, BatBookStateStoreFields, ChromaStateStoreFields,
+        DialogsStateStoreFields, DisplayStateStoreFields, ExportStateStoreFields,
+        FilterStateStoreFields, FlowStateStoreFields, GainStateStoreFields,
+        InteractionStateStoreFields, LibraryStateStoreFields, MicStateStoreFields,
+        NoiseReduceStateStoreFields, NotchStateStoreFields, PanelsStateStoreFields,
+        PlaybackStateStoreFields, ProjectStateStoreFields, PsdStateStoreFields,
+        PulseStateStoreFields, RecordingMetaStateStoreFields, ResonatorStateStoreFields,
+        SpectStateStoreFields, StatusStateStoreFields, TimelineStateStoreFields,
+        TransformStateStoreFields, ViewModeStateStoreFields, ViewStateStoreFields,
     };
 }
 
@@ -2176,19 +2192,30 @@ pub struct AppState {
 }
 
 fn detect_tauri() -> bool {
-    let Some(window) = web_sys::window() else { return false };
-    js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI_INTERNALS__"))
-        .map(|v| !v.is_undefined())
-        .unwrap_or(false)
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    js_sys::Reflect::get(
+        &window,
+        &wasm_bindgen::JsValue::from_str("__TAURI_INTERNALS__"),
+    )
+    .map(|v| !v.is_undefined())
+    .unwrap_or(false)
 }
 
 /// Returns true if the user-agent string indicates a mobile device.
 /// This is a one-time check (UA doesn't change during the session).
 fn detect_mobile_ua() -> bool {
-    let Some(window) = web_sys::window() else { return false };
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
     if let Ok(ua) = window.navigator().user_agent() {
         let ua_lower = ua.to_lowercase();
-        if ua_lower.contains("android") || ua_lower.contains("iphone") || ua_lower.contains("ipad") || ua_lower.contains("mobile") {
+        if ua_lower.contains("android")
+            || ua_lower.contains("iphone")
+            || ua_lower.contains("ipad")
+            || ua_lower.contains("mobile")
+        {
             return true;
         }
     }
@@ -2197,7 +2224,9 @@ fn detect_mobile_ua() -> bool {
 
 /// Returns true if the viewport width is below the mobile breakpoint.
 pub fn is_mobile_viewport() -> bool {
-    let Some(window) = web_sys::window() else { return false };
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
     if let Ok(w) = window.inner_width() {
         if let Some(w) = w.as_f64() {
             return w < 768.0;
@@ -2311,7 +2340,11 @@ impl AppState {
                 playhead_time: 0.0,
                 active_selection: None,
                 start_mode: PlayStartMode::Auto,
-                record_mode: if detect_tauri() { RecordMode::ToFile } else { RecordMode::ToMemory },
+                record_mode: if detect_tauri() {
+                    RecordMode::ToFile
+                } else {
+                    RecordMode::ToMemory
+                },
                 from_here_time: 0.0,
             }),
             status: Store::new(StatusState {
@@ -2339,7 +2372,6 @@ impl AppState {
             // focus range. Toggle "A" off in the Carriers row to pick a
             // fixed count manually.
 
-
             // New
             mic: Store::new(MicState {
                 listening: false,
@@ -2349,7 +2381,11 @@ impl AppState {
                 bits_per_sample: 16,
                 max_sample_rate: 0,
                 preroll_buffer_secs: 10,
-                mode: if detect_tauri() { MicMode::Auto } else { MicMode::Browser },
+                mode: if detect_tauri() {
+                    MicMode::Auto
+                } else {
+                    MicMode::Browser
+                },
                 supported_rates: Vec::new(),
                 live_file_idx: None,
                 processing_gen: 0,
@@ -2363,7 +2399,11 @@ impl AppState {
                 connection_type: None,
                 manufacturer: None,
                 usb_connected: false,
-                effective_mode: if detect_tauri() { MicMode::Cpal } else { MicMode::Browser },
+                effective_mode: if detect_tauri() {
+                    MicMode::Cpal
+                } else {
+                    MicMode::Browser
+                },
                 recording_target_scroll: 0.0,
                 scroll_user_pan_until: 0.0,
                 live_data_cols: 0,
@@ -2374,7 +2414,11 @@ impl AppState {
                 hotplug_seq: 0,
                 pending_shared_uri: None,
                 peak_level: 0.0,
-                strategy: if detect_tauri() { MicStrategy::Ask } else { MicStrategy::Browser },
+                strategy: if detect_tauri() {
+                    MicStrategy::Ask
+                } else {
+                    MicStrategy::Browser
+                },
                 backend: None,
                 acquisition_state: MicAcquisitionState::Idle,
                 pending_action: None,
@@ -2468,7 +2512,6 @@ impl AppState {
                 detecting: false,
             }),
 
-
             annotations: Store::new(AnnotationsState {
                 store: AnnotationStore::default(),
                 dirty: false,
@@ -2560,7 +2603,9 @@ impl AppState {
                 favourites: crate::settings::get_raw(crate::settings::keys::BAT_BOOK_FAVOURITES)
                     .map(|v| {
                         v.split(',')
-                            .filter_map(|k| crate::bat_book::types::BatBookRegion::from_storage_key(k.trim()))
+                            .filter_map(|k| {
+                                crate::bat_book::types::BatBookRegion::from_storage_key(k.trim())
+                            })
                             .collect()
                     })
                     .unwrap_or_default(),
@@ -2637,7 +2682,6 @@ impl AppState {
                 video_audio_codec: AudioCodecOption::default(),
                 video_view_mode: VideoViewMode::default(),
             }),
-
         };
 
         // On mobile, start with sidebar collapsed
@@ -2651,7 +2695,11 @@ impl AppState {
     /// Returns the single selected annotation ID, or None if zero or multiple are selected.
     pub fn selected_annotation_id(&self) -> Option<AnnotationId> {
         let ids = self.annotations.selected_ids().get();
-        if ids.len() == 1 { Some(ids[0].clone()) } else { None }
+        if ids.len() == 1 {
+            Some(ids[0].clone())
+        } else {
+            None
+        }
     }
 
     pub fn current_file(&self) -> Option<LoadedFile> {
@@ -2666,9 +2714,12 @@ impl AppState {
     /// sense on a dot-plot recording (the underlying samples are a
     /// synthesised reconstruction, not the original data).
     pub fn current_is_zc(&self) -> bool {
-        let Some(idx) = self.library.current_index().get() else { return false };
+        let Some(idx) = self.library.current_index().get() else {
+            return false;
+        };
         self.library.files().with(|files| {
-            files.get(idx)
+            files
+                .get(idx)
                 .map(|f| f.audio.metadata.zc_data.is_some())
                 .unwrap_or(false)
         })
@@ -2744,7 +2795,11 @@ impl AppState {
         let idx = self.viewmode.nav_index().get_untracked();
         self.viewmode.nav_history().update(|hist| {
             hist.truncate(idx + 1);
-            if hist.back().map(|e: &NavEntry| (e.scroll_offset - entry.scroll_offset).abs() < 0.05).unwrap_or(false) {
+            if hist
+                .back()
+                .map(|e: &NavEntry| (e.scroll_offset - entry.scroll_offset).abs() < 0.05)
+                .unwrap_or(false)
+            {
                 return;
             }
             hist.push_back(entry);
@@ -2758,12 +2813,16 @@ impl AppState {
 
     /// Stable annotation key for the file at list position `idx` (untracked).
     pub fn file_id_at(&self, idx: usize) -> Option<u64> {
-        self.library.files().with_untracked(|files| files.get(idx).map(|f| f.id))
+        self.library
+            .files()
+            .with_untracked(|files| files.get(idx).map(|f| f.id))
     }
 
     /// List position of the file with stable id `id`, if it's still loaded.
     pub fn file_idx_for_id(&self, id: u64) -> Option<usize> {
-        self.library.files().with_untracked(|files| files.iter().position(|f| f.id == id))
+        self.library
+            .files()
+            .with_untracked(|files| files.iter().position(|f| f.id == id))
     }
 
     /// Stable annotation key for the currently-selected file (untracked).
@@ -2777,16 +2836,22 @@ impl AppState {
     /// active file changes.
     pub fn current_file_id_tracked(&self) -> Option<u64> {
         let idx = self.library.current_index().get()?;
-        self.library.files().with(|files| files.get(idx).map(|f| f.id))
+        self.library
+            .files()
+            .with(|files| files.get(idx).map(|f| f.id))
     }
 
     /// Apply a snapshot to the annotation store: `Some` inserts/replaces,
     /// `None` clears the file's entry. Used by undo/redo restore.
-    fn restore_annotation_snapshot(&self, file_id: u64, snapshot: Option<crate::annotations::AnnotationSet>) {
-        self.annotations.store().update(|store| {
-            match snapshot {
-                Some(set) => store.insert(file_id, set),
-                None => { store.remove(file_id); }
+    fn restore_annotation_snapshot(
+        &self,
+        file_id: u64,
+        snapshot: Option<crate::annotations::AnnotationSet>,
+    ) {
+        self.annotations.store().update(|store| match snapshot {
+            Some(set) => store.insert(file_id, set),
+            None => {
+                store.remove(file_id);
             }
         });
         // Persist the file we actually mutated. The global autosave Effect only
@@ -2817,14 +2882,26 @@ impl AppState {
     /// the active BandFF/focus range if any, else the current display range
     /// (falling back to the file's max frequency). Shared by `toggle_q_freq_bounds`.
     fn region_freq_bounds(&self, file_idx: usize) -> (f64, f64) {
-        let ff = self.viewmode.focus_stack().get_untracked().effective_range_ignoring_hfr();
+        let ff = self
+            .viewmode
+            .focus_stack()
+            .get_untracked()
+            .effective_range_ignoring_hfr();
         if ff.is_active() {
             (ff.lo, ff.hi)
         } else {
             let files = self.library.files().get_untracked();
-            let file_max = files.get(file_idx).map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
-            (self.view.min_display_freq().get_untracked().unwrap_or(0.0),
-             self.view.max_display_freq().get_untracked().unwrap_or(file_max))
+            let file_max = files
+                .get(file_idx)
+                .map(|f| f.spectrogram.max_freq)
+                .unwrap_or(96_000.0);
+            (
+                self.view.min_display_freq().get_untracked().unwrap_or(0.0),
+                self.view
+                    .max_display_freq()
+                    .get_untracked()
+                    .unwrap_or(file_max),
+            )
         }
     }
 
@@ -2889,7 +2966,10 @@ impl AppState {
                             if let AnnotationKind::Region(ref mut r) = ann.kind {
                                 r.freq_low = None;
                                 r.freq_high = None;
-                                ann.modified_at = js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_default();
+                                ann.modified_at = js_sys::Date::new_0()
+                                    .to_iso_string()
+                                    .as_string()
+                                    .unwrap_or_default();
                             }
                         }
                     }
@@ -2908,7 +2988,10 @@ impl AppState {
                                 if r.freq_low.is_none() || r.freq_high.is_none() {
                                     r.freq_low = Some(lo);
                                     r.freq_high = Some(hi);
-                                    ann.modified_at = js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_default();
+                                    ann.modified_at = js_sys::Date::new_0()
+                                        .to_iso_string()
+                                        .as_string()
+                                        .unwrap_or_default();
                                 }
                             }
                         }
@@ -2938,7 +3021,10 @@ impl AppState {
         let store = self.annotations.store().get_untracked();
         let current = store.get(entry.file_id).cloned();
         self.annotations.undo_stack().update(|stack| {
-            stack.redo.push_back(UndoEntry { file_id: entry.file_id, snapshot: current });
+            stack.redo.push_back(UndoEntry {
+                file_id: entry.file_id,
+                snapshot: current,
+            });
         });
 
         // Restore the snapshot
@@ -2963,7 +3049,10 @@ impl AppState {
         let store = self.annotations.store().get_untracked();
         let current = store.get(entry.file_id).cloned();
         self.annotations.undo_stack().update(|stack| {
-            stack.undo.push_back(UndoEntry { file_id: entry.file_id, snapshot: current });
+            stack.undo.push_back(UndoEntry {
+                file_id: entry.file_id,
+                snapshot: current,
+            });
         });
 
         // Restore the snapshot
@@ -3045,7 +3134,9 @@ impl AppState {
         }
         if self.view.follow_cursor().get_untracked() && self.playback.is_playing().get_untracked() {
             self.view.follow_suspended().set(true);
-            self.view.follow_visible_since().set(Some(js_sys::Date::now()));
+            self.view
+                .follow_visible_since()
+                .set(Some(js_sys::Date::now()));
         }
     }
 
@@ -3084,7 +3175,9 @@ impl AppState {
 
     fn compute_auto_gain_inner(&self, files: &[LoadedFile], idx: Option<usize>) -> f64 {
         let Some(file_index) = idx else { return 0.0 };
-        let Some(file) = files.get(file_index) else { return 0.0 };
+        let Some(file) = files.get(file_index) else {
+            return 0.0;
+        };
 
         let peak_db = match self.gain.peak_source().get() {
             PeakSource::First30s => file.cached_peak_db,
@@ -3092,15 +3185,16 @@ impl AppState {
                 // Fall back to 30s peak while full scan is in progress.
                 // If playing, prefer the 30s peak to avoid mid-play gain jumps
                 // when the full scan completes.
-                if self.playback.is_playing().get_untracked() && file.cached_full_peak_db.is_none() {
+                if self.playback.is_playing().get_untracked() && file.cached_full_peak_db.is_none()
+                {
                     file.cached_peak_db
                 } else {
                     file.cached_full_peak_db.or(file.cached_peak_db)
                 }
             }
-            PeakSource::Selection => {
-                self.lookup_selection_peak(file_index, file).or(file.cached_peak_db)
-            }
+            PeakSource::Selection => self
+                .lookup_selection_peak(file_index, file)
+                .or(file.cached_peak_db),
             PeakSource::Processed => {
                 // Post-DSP peak: for now fall back to raw peak.
                 // Full implementation requires running the DSP chain on a sample window.
@@ -3120,7 +3214,9 @@ impl AppState {
         let sr = file.audio.sample_rate as f64;
         let start_sample = (sel.time_start * sr) as u64;
         let end_sample = (sel.time_end * sr) as u64;
-        if end_sample <= start_sample { return None; }
+        if end_sample <= start_sample {
+            return None;
+        }
 
         let key = (file_index, start_sample, end_sample);
 
@@ -3135,9 +3231,7 @@ impl AppState {
         }
 
         // Not cached — kick off async scan
-        crate::audio::peak::start_selection_peak_scan(
-            *self, file_index, start_sample, end_sample,
-        );
+        crate::audio::peak::start_selection_peak_scan(*self, file_index, start_sample, end_sample);
 
         // Return None for now; will re-run when cache is updated
         None
@@ -3195,12 +3289,24 @@ impl AppState {
         });
         // Ensure playback mode is not Normal when HFR is on
         if self.playback.mode().get_untracked() == PlaybackMode::Normal {
-            let saved = self.viewmode.focus_stack().get_untracked().saved_playback_mode();
-            self.playback.mode().set(saved.unwrap_or(PlaybackMode::PitchShift));
+            let saved = self
+                .viewmode
+                .focus_stack()
+                .get_untracked()
+                .saved_playback_mode();
+            self.playback
+                .mode()
+                .set(saved.unwrap_or(PlaybackMode::PitchShift));
         }
         if self.filter.bandpass_mode().get_untracked() == BandpassMode::Off {
-            let saved = self.viewmode.focus_stack().get_untracked().saved_bandpass_mode();
-            self.filter.bandpass_mode().set(saved.unwrap_or(BandpassMode::Auto));
+            let saved = self
+                .viewmode
+                .focus_stack()
+                .get_untracked()
+                .saved_bandpass_mode();
+            self.filter
+                .bandpass_mode()
+                .set(saved.unwrap_or(BandpassMode::Auto));
         }
         self.sync_focus_outputs();
     }
@@ -3215,7 +3321,9 @@ impl AppState {
         if let Some(range) = restore {
             if !range.is_active() {
                 // No active focus to restore — turn off HFR
-                self.viewmode.focus_stack().update(|s| s.set_hfr_enabled(false));
+                self.viewmode
+                    .focus_stack()
+                    .update(|s| s.set_hfr_enabled(false));
                 self.playback.mode().set(PlaybackMode::Normal);
                 self.filter.bandpass_mode().set(BandpassMode::Off);
             }
@@ -3234,12 +3342,24 @@ impl AppState {
             }
         });
         if self.playback.mode().get_untracked() == PlaybackMode::Normal {
-            let saved = self.viewmode.focus_stack().get_untracked().saved_playback_mode();
-            self.playback.mode().set(saved.unwrap_or(PlaybackMode::PitchShift));
+            let saved = self
+                .viewmode
+                .focus_stack()
+                .get_untracked()
+                .saved_playback_mode();
+            self.playback
+                .mode()
+                .set(saved.unwrap_or(PlaybackMode::PitchShift));
         }
         if self.filter.bandpass_mode().get_untracked() == BandpassMode::Off {
-            let saved = self.viewmode.focus_stack().get_untracked().saved_bandpass_mode();
-            self.filter.bandpass_mode().set(saved.unwrap_or(BandpassMode::Auto));
+            let saved = self
+                .viewmode
+                .focus_stack()
+                .get_untracked()
+                .saved_bandpass_mode();
+            self.filter
+                .bandpass_mode()
+                .set(saved.unwrap_or(BandpassMode::Auto));
         }
         self.sync_focus_outputs();
     }
@@ -3252,8 +3372,16 @@ impl AppState {
             restore = s.pop_override(FocusSource::Annotation);
         });
         if let Some(range) = restore {
-            if !range.is_active() && !self.viewmode.focus_stack().get_untracked().has_override(FocusSource::BatBook) {
-                self.viewmode.focus_stack().update(|s| s.set_hfr_enabled(false));
+            if !range.is_active()
+                && !self
+                    .viewmode
+                    .focus_stack()
+                    .get_untracked()
+                    .has_override(FocusSource::BatBook)
+            {
+                self.viewmode
+                    .focus_stack()
+                    .update(|s| s.set_hfr_enabled(false));
                 self.playback.mode().set(PlaybackMode::Normal);
                 self.filter.bandpass_mode().set(BandpassMode::Off);
             }
@@ -3353,7 +3481,8 @@ impl AppState {
                     if self.playback.mode().get_untracked() == PlaybackMode::Normal {
                         // For ≤48 kHz files, keep 1:1 — HF is used for bandpass only.
                         let sample_rate = self.library.files().with_untracked(|files| {
-                            self.library.current_index()
+                            self.library
+                                .current_index()
                                 .get_untracked()
                                 .and_then(|i| files.get(i))
                                 .map(|f| f.audio.sample_rate)
@@ -3365,9 +3494,9 @@ impl AppState {
                     }
                 }
             }
-            self.filter.bandpass_mode().set(
-                stack.saved_bandpass_mode().unwrap_or(BandpassMode::Auto),
-            );
+            self.filter
+                .bandpass_mode()
+                .set(stack.saved_bandpass_mode().unwrap_or(BandpassMode::Auto));
         }
         self.sync_focus_outputs();
     }

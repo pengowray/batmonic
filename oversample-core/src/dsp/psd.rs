@@ -57,7 +57,12 @@ pub struct PsdPeak {
 /// - `nfft`: FFT size (e.g. 256, 512, 1024, 2048, 4096)
 ///
 /// Uses 50% overlap and Hann window.
-pub fn compute_psd(samples: &[f32], sample_rate: u32, nfft: usize, peak_freq_range: Option<(f64, f64)>) -> PsdResult {
+pub fn compute_psd(
+    samples: &[f32],
+    sample_rate: u32,
+    nfft: usize,
+    peak_freq_range: Option<(f64, f64)>,
+) -> PsdResult {
     let n_bins = nfft / 2 + 1;
     let hop = nfft / 2;
     let window = hann_window(nfft);
@@ -227,7 +232,11 @@ const MIN_PROMINENCE_DB: f64 = 3.0;
 
 /// Find all significant local maxima in the PSD, sorted by power (strongest first).
 /// If `freq_range` is Some, only bins within that Hz range are considered for peaks.
-fn find_peaks(power_db: &[f64], freq_resolution: f64, freq_range: Option<(f64, f64)>) -> Vec<PsdPeak> {
+fn find_peaks(
+    power_db: &[f64],
+    freq_resolution: f64,
+    freq_range: Option<(f64, f64)>,
+) -> Vec<PsdPeak> {
     if power_db.len() < 3 {
         return Vec::new();
     }
@@ -292,7 +301,10 @@ fn find_peaks(power_db: &[f64], freq_resolution: f64, freq_range: Option<(f64, f
 
     // If no peaks passed prominence filter, use the single strongest candidate
     if peaks.is_empty() {
-        if let Some(&(bin, power)) = candidates.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()) {
+        if let Some(&(bin, power)) = candidates
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        {
             peaks.push((bin, power, 0.0));
         }
     }
@@ -395,7 +407,10 @@ mod tests {
         assert_eq!(result.sample_rate, sr);
         assert_eq!(result.nfft, nfft);
         assert!(result.frame_count > 0);
-        assert!(!result.peaks.is_empty(), "expected at least one detected peak");
+        assert!(
+            !result.peaks.is_empty(),
+            "expected at least one detected peak"
+        );
 
         // The strongest peak should be within one bin of the true tone frequency.
         let top = &result.peaks[0];
@@ -424,7 +439,11 @@ mod tests {
         // Mix of 4 kHz and 12 kHz tones at equal amplitude.
         let s4: Vec<f32> = sine_wave(4_000.0, sr, sr as usize);
         let s12: Vec<f32> = sine_wave(12_000.0, sr, sr as usize);
-        let samples: Vec<f32> = s4.iter().zip(s12.iter()).map(|(a, b)| (a + b) * 0.5).collect();
+        let samples: Vec<f32> = s4
+            .iter()
+            .zip(s12.iter())
+            .map(|(a, b)| (a + b) * 0.5)
+            .collect();
 
         // Restrict to 10-14 kHz — the 12 kHz tone should dominate the peak list.
         let result = compute_psd(&samples, sr, nfft, Some((10_000.0, 14_000.0)));

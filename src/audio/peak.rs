@@ -1,7 +1,7 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use crate::state::AppState;
 use crate::audio::source::ChannelView;
+use crate::state::store_fields::*;
+use crate::state::AppState;
+use leptos::prelude::*;
 use std::collections::HashMap;
 
 const CHUNK_SIZE: usize = 256 * 1024; // 256K samples per chunk
@@ -52,7 +52,9 @@ impl PeakCache {
 /// known from the initial scan, so we just copy `cached_peak_db`.
 pub fn start_full_peak_scan(state: AppState, file_index: usize) {
     let files = state.library.files().get_untracked();
-    let Some(file) = files.get(file_index) else { return };
+    let Some(file) = files.get(file_index) else {
+        return;
+    };
     let duration = file.audio.duration_secs;
     let sr = file.audio.sample_rate;
 
@@ -97,11 +99,17 @@ pub fn start_full_peak_scan(state: AppState, file_index: usize) {
 
             // Check file is still at same index (user may have removed it)
             let still_valid = state.library.files().with_untracked(|files| {
-                files.get(file_index)
-                    .map(|f| f.audio.sample_rate == sr && f.audio.source.total_samples() as usize == total_samples)
+                files
+                    .get(file_index)
+                    .map(|f| {
+                        f.audio.sample_rate == sr
+                            && f.audio.source.total_samples() as usize == total_samples
+                    })
                     .unwrap_or(false)
             });
-            if !still_valid { return; }
+            if !still_valid {
+                return;
+            }
         }
 
         let peak_db = if peak > 1e-10 {
@@ -130,12 +138,18 @@ pub fn start_selection_peak_scan(
     let key: SelectionPeakKey = (file_index, start_sample, end_sample);
 
     // Already cached?
-    if state.gain.selection_peak_cache().with_untracked(|c| c.get(&key).is_some()) {
+    if state
+        .gain
+        .selection_peak_cache()
+        .with_untracked(|c| c.get(&key).is_some())
+    {
         return;
     }
 
     let files = state.library.files().get_untracked();
-    let Some(file) = files.get(file_index) else { return };
+    let Some(file) = files.get(file_index) else {
+        return;
+    };
     let sr = file.audio.sample_rate;
     let source = file.audio.source.clone();
     let total_file_samples = source.total_samples();
@@ -152,7 +166,10 @@ pub fn start_selection_peak_scan(
         } else {
             None
         };
-        state.gain.selection_peak_cache().update(|c| c.insert(key, peak_db));
+        state
+            .gain
+            .selection_peak_cache()
+            .update(|c| c.insert(key, peak_db));
         return;
     }
 
@@ -182,11 +199,17 @@ pub fn start_selection_peak_scan(
 
             // Verify file is still valid
             let still_valid = state.library.files().with_untracked(|files| {
-                files.get(file_index)
-                    .map(|f| f.audio.sample_rate == sr && f.audio.source.total_samples() == total_file_samples)
+                files
+                    .get(file_index)
+                    .map(|f| {
+                        f.audio.sample_rate == sr
+                            && f.audio.source.total_samples() == total_file_samples
+                    })
                     .unwrap_or(false)
             });
-            if !still_valid { return; }
+            if !still_valid {
+                return;
+            }
         }
 
         let peak_db = if peak > 1e-10 {
@@ -195,6 +218,9 @@ pub fn start_selection_peak_scan(
             None
         };
 
-        state.gain.selection_peak_cache().update(|c| c.insert(key, peak_db));
+        state
+            .gain
+            .selection_peak_cache()
+            .update(|c| c.insert(key, peak_db));
     });
 }

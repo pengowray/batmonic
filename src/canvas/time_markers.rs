@@ -5,13 +5,13 @@ use web_sys::CanvasRenderingContext2d;
 
 /// Nice 1-2-5 progression of tick intervals in seconds, from 0.1 ms to 10 min.
 const TICK_INTERVALS: &[f64] = &[
-    0.0001, 0.0002, 0.0005,         // sub-ms
-    0.001, 0.002, 0.005,             // 1–5 ms
-    0.01, 0.02, 0.05,               // 10–50 ms
-    0.1, 0.2, 0.5,                  // 100–500 ms
-    1.0, 2.0, 5.0,                  // 1–5 s
-    10.0, 30.0, 60.0,               // 10 s – 1 min
-    120.0, 300.0, 600.0,            // 2–10 min
+    0.0001, 0.0002, 0.0005, // sub-ms
+    0.001, 0.002, 0.005, // 1–5 ms
+    0.01, 0.02, 0.05, // 10–50 ms
+    0.1, 0.2, 0.5, // 100–500 ms
+    1.0, 2.0, 5.0, // 1–5 s
+    10.0, 30.0, 60.0, // 10 s – 1 min
+    120.0, 300.0, 600.0, // 2–10 min
 ];
 
 /// Configuration for clock-time display on the timeline.
@@ -183,8 +183,14 @@ pub fn draw_time_markers(
         let x = (t - scaled_scroll) * px_per_sec;
         if x >= 0.0 && x <= canvas_width {
             let is_key = !use_relative || is_key_tick(t, key_interval);
-            if is_key { key_drawn = true; }
-            let current_tick_h = if use_relative && is_key { key_tick_h } else { tick_h };
+            if is_key {
+                key_drawn = true;
+            }
+            let current_tick_h = if use_relative && is_key {
+                key_tick_h
+            } else {
+                tick_h
+            };
 
             // Bottom tick
             let tick_alpha = if is_key { "0.5" } else { "0.3" };
@@ -253,19 +259,15 @@ pub fn draw_time_markers(
     if use_relative && !key_drawn && !use_clock {
         let preceding_key = (scaled_scroll / key_interval).floor() * key_interval;
         if preceding_key >= 0.0 {
-            let label = format_time::format_time_label(preceding_key, key_interval.max(interval), use_ms);
+            let label =
+                format_time::format_time_label(preceding_key, key_interval.max(interval), use_ms);
             ctx.set_font("bold 10px sans-serif");
             if let Ok(metrics) = ctx.measure_text(&label) {
                 let tw = metrics.width();
                 let lx = 3.0;
                 if lx + tw < canvas_width - 2.0 {
                     ctx.set_fill_style_str("rgba(0,0,0,0.75)");
-                    ctx.fill_rect(
-                        lx - 1.0,
-                        canvas_height - key_tick_h - 12.0,
-                        tw + 2.0,
-                        12.0,
-                    );
+                    ctx.fill_rect(lx - 1.0, canvas_height - key_tick_h - 12.0, tw + 2.0, 12.0);
                     ctx.set_fill_style_str("rgba(255,255,255,0.9)");
                     let _ = ctx.fill_text(&label, lx, canvas_height - key_tick_h - 1.0);
                 }

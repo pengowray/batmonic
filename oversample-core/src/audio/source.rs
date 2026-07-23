@@ -44,10 +44,12 @@ impl TimelineAudioSource {
         let mut total_samples = 0u64;
 
         for (source, timeline_offset_secs, duration_secs) in segments {
-            let timeline_start_sample = (timeline_offset_secs * sample_rate as f64).round().max(0.0) as u64;
+            let timeline_start_sample =
+                (timeline_offset_secs * sample_rate as f64).round().max(0.0) as u64;
             let duration_samples = (duration_secs * sample_rate as f64).round().max(0.0) as u64;
             channels = channels.max(source.channel_count());
-            total_samples = total_samples.max(timeline_start_sample.saturating_add(duration_samples));
+            total_samples =
+                total_samples.max(timeline_start_sample.saturating_add(duration_samples));
             mapped_segments.push(TimelineSourceSegment {
                 source,
                 timeline_start_sample,
@@ -77,12 +79,7 @@ impl AudioSource for TimelineAudioSource {
         self.channels
     }
 
-    fn read_samples(
-        &self,
-        channel: ChannelView,
-        start: u64,
-        buf: &mut [f32],
-    ) -> usize {
+    fn read_samples(&self, channel: ChannelView, start: u64, buf: &mut [f32]) -> usize {
         if start >= self.total_samples || buf.is_empty() {
             return 0;
         }
@@ -105,7 +102,9 @@ impl AudioSource for TimelineAudioSource {
             let dst_start = (overlap_start - start) as usize;
             let len = (overlap_end - overlap_start) as usize;
             let local_start = overlap_start - seg_start;
-            let _ = seg.source.read_samples(channel, local_start, &mut buf[dst_start..dst_start + len]);
+            let _ =
+                seg.source
+                    .read_samples(channel, local_start, &mut buf[dst_start..dst_start + len]);
         }
 
         n
@@ -174,12 +173,7 @@ pub trait AudioSource: Send + Sync {
     /// `start` is a sample-frame index (not a byte offset).
     /// Returns the number of samples actually written to `buf` (may be less
     /// than `buf.len()` if the region extends past the end of the file).
-    fn read_samples(
-        &self,
-        channel: ChannelView,
-        start: u64,
-        buf: &mut [f32],
-    ) -> usize;
+    fn read_samples(&self, channel: ChannelView, start: u64, buf: &mut [f32]) -> usize;
 
     /// Convenience: read a region and return a Vec.
     fn read_region(&self, channel: ChannelView, start: u64, len: usize) -> Vec<f32> {
@@ -261,7 +255,9 @@ impl InMemorySource {
         let avail = frames.saturating_sub(start);
         if ch >= channels {
             // Invalid channel index — return silence
-            for s in buf.iter_mut() { *s = 0.0; }
+            for s in buf.iter_mut() {
+                *s = 0.0;
+            }
             return (buf.len() as u64).min(avail) as usize;
         }
         let n = (buf.len() as u64).min(avail) as usize;
@@ -308,12 +304,7 @@ impl AudioSource for InMemorySource {
         true
     }
 
-    fn read_samples(
-        &self,
-        channel: ChannelView,
-        start: u64,
-        buf: &mut [f32],
-    ) -> usize {
+    fn read_samples(&self, channel: ChannelView, start: u64, buf: &mut [f32]) -> usize {
         match channel {
             ChannelView::Stereo | ChannelView::MonoMix => self.read_mono(start, buf),
             ChannelView::Channel(ch) => {
@@ -326,8 +317,12 @@ impl AudioSource for InMemorySource {
             ChannelView::Difference => {
                 if self.channels < 2 || self.raw_samples.is_none() {
                     // Mono: difference is silence
-                    let n = buf.len().min(self.frame_count().saturating_sub(start as usize));
-                    for s in buf[..n].iter_mut() { *s = 0.0; }
+                    let n = buf
+                        .len()
+                        .min(self.frame_count().saturating_sub(start as usize));
+                    for s in buf[..n].iter_mut() {
+                        *s = 0.0;
+                    }
                     return n;
                 }
                 let raw = self.raw_samples.as_ref().unwrap();

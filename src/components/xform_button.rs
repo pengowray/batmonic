@@ -12,9 +12,9 @@ use crate::state::store_fields::*;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 
+use crate::components::app::{disable_xform, enable_xform};
 use crate::components::combo_button::ComboButton;
 use crate::components::display_filter_button::DspFilterRow;
-use crate::components::app::{enable_xform, disable_xform};
 use crate::state::{AppState, DisplayFilterMode, GainMode, LayerPanel, PlaybackMode};
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {
@@ -27,7 +27,8 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
 pub fn XformButton() -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::Xform));
+    let is_open =
+        Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::Xform));
     let no_file = move || {
         state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
     };
@@ -37,7 +38,9 @@ pub fn XformButton() -> impl IntoView {
 
     // Toggle XForm on/off (no-op when no file or on a non-spectro view).
     let toggle_xform = move || {
-        if no_file() || !supported() { return; }
+        if no_file() || !supported() {
+            return;
+        }
         if state.display.xform_enabled().get_untracked() {
             disable_xform(&state);
         } else {
@@ -47,12 +50,18 @@ pub fn XformButton() -> impl IntoView {
 
     // ── Combo-button chrome ──
     let left_class = Signal::derive(move || {
-        if no_file() || !supported() { "layer-btn combo-btn-left disabled" }
-        else if enabled.get() { "layer-btn combo-btn-left active" }
-        else { "layer-btn combo-btn-left" }
+        if no_file() || !supported() {
+            "layer-btn combo-btn-left disabled"
+        } else if enabled.get() {
+            "layer-btn combo-btn-left active"
+        } else {
+            "layer-btn combo-btn-left"
+        }
     });
     let right_class = Signal::derive(move || {
-        if no_file() || !supported() { return "layer-btn combo-btn-right disabled"; }
+        if no_file() || !supported() {
+            return "layer-btn combo-btn-right disabled";
+        }
         let dim = !enabled.get();
         match (is_open.get(), dim) {
             (true, false) => "layer-btn combo-btn-right open",
@@ -64,10 +73,16 @@ pub fn XformButton() -> impl IntoView {
 
     // Compact summary of the active stages, shown on the left value line.
     let left_value = Signal::derive(move || {
-        if !enabled.get() || !supported() { return String::new(); }
+        if !enabled.get() || !supported() {
+            return String::new();
+        }
         let mut parts: Vec<&'static str> = Vec::new();
-        if state.display.eq().get() { parts.push("EQ"); }
-        if state.display.noise_filter().get() { parts.push("NF"); }
+        if state.display.eq().get() {
+            parts.push("EQ");
+        }
+        if state.display.noise_filter().get() {
+            parts.push("NF");
+        }
         if state.display.transform().get() {
             parts.push(match state.playback.mode().get() {
                 PlaybackMode::Heterodyne => "HET",
@@ -78,14 +93,30 @@ pub fn XformButton() -> impl IntoView {
                 PlaybackMode::Normal => "XF",
             });
         }
-        if state.display.gain_boost().get().abs() >= 0.5 { parts.push("G"); }
-        if state.display.decimate_effective().get() > 0 { parts.push("RS"); }
-        if parts.is_empty() { "raw".to_string() } else { parts.join("+") }
+        if state.display.gain_boost().get().abs() >= 0.5 {
+            parts.push("G");
+        }
+        if state.display.decimate_effective().get() > 0 {
+            parts.push("RS");
+        }
+        if parts.is_empty() {
+            "raw".to_string()
+        } else {
+            parts.join("+")
+        }
     });
-    let right_value = Signal::derive(move || if enabled.get() { "ON".to_string() } else { "OFF".to_string() });
+    let right_value = Signal::derive(move || {
+        if enabled.get() {
+            "ON".to_string()
+        } else {
+            "OFF".to_string()
+        }
+    });
 
     let toggle_menu = Callback::new(move |()| {
-        if no_file() || !supported() { return; }
+        if no_file() || !supported() {
+            return;
+        }
         toggle_panel(&state, LayerPanel::Xform);
     });
     let left_click = Callback::new(move |_ev: web_sys::MouseEvent| toggle_xform());
@@ -94,17 +125,25 @@ pub fn XformButton() -> impl IntoView {
     let eq_active = Signal::derive(move || state.filter.enabled().get());
     let notch_active = Signal::derive(move || state.notch.enabled().get());
     let nr_active = Signal::derive(move || state.noise_reduce.enabled().get());
-    let transform_active = Signal::derive(move || state.playback.mode().get() != PlaybackMode::Normal);
+    let transform_active =
+        Signal::derive(move || state.playback.mode().get() != PlaybackMode::Normal);
     let gain_active = Signal::derive(move || state.gain.mode().get() != GainMode::Off);
     let decim_active = Signal::derive(move || false);
 
     let browser_is_resampling = Signal::derive(move || {
         let bsr = state.display.browser_sample_rate().get();
-        if bsr == 0 { return false; }
+        if bsr == 0 {
+            return false;
+        }
         let files = state.library.files().get();
         let idx = state.library.current_index().get();
-        let file_rate = idx.and_then(|i| files.get(i)).map(|f| f.audio.sample_rate).unwrap_or(0);
-        if file_rate == 0 { return false; }
+        let file_rate = idx
+            .and_then(|i| files.get(i))
+            .map(|f| f.audio.sample_rate)
+            .unwrap_or(0);
+        if file_rate == 0 {
+            return false;
+        }
         let decim = state.display.decimate_effective().get();
         let effective = if decim > 0 && decim < file_rate {
             crate::dsp::filters::decimated_rate(file_rate, decim)
@@ -116,11 +155,18 @@ pub fn XformButton() -> impl IntoView {
 
     let resam_tooltip = Signal::derive(move || {
         let bsr = state.display.browser_sample_rate().get();
-        if bsr == 0 { return String::new(); }
+        if bsr == 0 {
+            return String::new();
+        }
         let files = state.library.files().get();
         let idx = state.library.current_index().get();
-        let file_rate = idx.and_then(|i| files.get(i)).map(|f| f.audio.sample_rate).unwrap_or(0);
-        if file_rate == 0 { return String::new(); }
+        let file_rate = idx
+            .and_then(|i| files.get(i))
+            .map(|f| f.audio.sample_rate)
+            .unwrap_or(0);
+        if file_rate == 0 {
+            return String::new();
+        }
         let decim = state.display.decimate_effective().get();
         let effective = if decim > 0 && decim < file_rate {
             crate::dsp::filters::decimated_rate(file_rate, decim)
@@ -135,10 +181,12 @@ pub fn XformButton() -> impl IntoView {
     });
 
     let show_nr_custom = Signal::derive(move || {
-        state.display.xform_enabled().get() && state.display.filter_nr().get() == DisplayFilterMode::Custom
+        state.display.xform_enabled().get()
+            && state.display.filter_nr().get() == DisplayFilterMode::Custom
     });
     let show_decim_custom = Signal::derive(move || {
-        state.display.xform_enabled().get() && state.display.filter_decimate().get() == DisplayFilterMode::Custom
+        state.display.xform_enabled().get()
+            && state.display.filter_decimate().get() == DisplayFilterMode::Custom
     });
 
     // Dynamic blurb describing what the transformed spectrogram is showing,
@@ -151,8 +199,12 @@ pub fn XformButton() -> impl IntoView {
                 .to_string();
         }
         let mut parts: Vec<String> = Vec::new();
-        if state.display.eq().get() { parts.push("bandpass/EQ".to_string()); }
-        if state.display.noise_filter().get() { parts.push("noise filtering".to_string()); }
+        if state.display.eq().get() {
+            parts.push("bandpass/EQ".to_string());
+        }
+        if state.display.noise_filter().get() {
+            parts.push("noise filtering".to_string());
+        }
         if state.display.transform().get() {
             match state.playback.mode().get() {
                 PlaybackMode::Heterodyne => {
@@ -170,12 +222,17 @@ pub fn XformButton() -> impl IntoView {
             }
         }
         let boost = state.display.gain_boost().get();
-        if boost.abs() >= 0.5 { parts.push(format!("{:+.0} dB gain", boost)); }
+        if boost.abs() >= 0.5 {
+            parts.push(format!("{:+.0} dB gain", boost));
+        }
         let decim = state.display.decimate_effective().get();
         if decim > 0 {
             let files = state.library.files().get();
             let idx = state.library.current_index().get();
-            let file_rate = idx.and_then(|i| files.get(i)).map(|f| f.audio.sample_rate).unwrap_or(0);
+            let file_rate = idx
+                .and_then(|i| files.get(i))
+                .map(|f| f.audio.sample_rate)
+                .unwrap_or(0);
             let effective = if file_rate > 0 && decim < file_rate {
                 crate::dsp::filters::decimated_rate(file_rate, decim)
             } else {

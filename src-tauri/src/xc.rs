@@ -1,7 +1,7 @@
+use oversample_ipc::xc::XcCachedFile;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use xc_lib::{api, cache, key_store, taxonomy, XcGroupTaxonomy, XcRecording, XcSearchResult};
-use oversample_ipc::xc::XcCachedFile;
 
 /// Shared state for XC operations.
 pub struct XcState {
@@ -49,14 +49,8 @@ pub async fn xc_browse_group(
     }
 
     // Fetch from API
-    let result = taxonomy::build_species_list(
-        &client,
-        &api_key,
-        &group,
-        country_ref,
-        |_, _| {},
-    )
-    .await?;
+    let result =
+        taxonomy::build_species_list(&client, &api_key, &group, country_ref, |_, _| {}).await?;
 
     // Cache result
     let _ = cache::save_taxonomy(&cache_root, &group, country_ref, &result);
@@ -78,14 +72,8 @@ pub async fn xc_refresh_taxonomy(
 
     let country_ref = country.as_deref();
 
-    let result = taxonomy::build_species_list(
-        &client,
-        &api_key,
-        &group,
-        country_ref,
-        |_, _| {},
-    )
-    .await?;
+    let result =
+        taxonomy::build_species_list(&client, &api_key, &group, country_ref, |_, _| {}).await?;
 
     let _ = cache::save_taxonomy(&cache_root, &group, country_ref, &result);
 
@@ -102,7 +90,11 @@ pub fn xc_taxonomy_age(
         let s = state.lock().map_err(|e| e.to_string())?;
         s.cache_root.clone()
     };
-    Ok(cache::taxonomy_age_string(&cache_root, &group, country.as_deref()))
+    Ok(cache::taxonomy_age_string(
+        &cache_root,
+        &group,
+        country.as_deref(),
+    ))
 }
 
 // ── Search ────────────────────────────────────────────────────────────
@@ -212,10 +204,7 @@ pub async fn xc_download(
 }
 
 #[tauri::command]
-pub fn xc_is_cached(
-    state: tauri::State<'_, Mutex<XcState>>,
-    id: u64,
-) -> bool {
+pub fn xc_is_cached(state: tauri::State<'_, Mutex<XcState>>, id: u64) -> bool {
     let cache_root = match state.lock() {
         Ok(s) => s.cache_root.clone(),
         Err(_) => return false,
@@ -231,7 +220,10 @@ fn recording_to_metadata(rec: &XcRecording) -> Vec<(String, String)> {
         fields.push(("Species".into(), rec.en.clone()));
     }
     if !rec.genus.is_empty() && !rec.sp.is_empty() {
-        fields.push(("Scientific name".into(), format!("{} {}", rec.genus, rec.sp)));
+        fields.push((
+            "Scientific name".into(),
+            format!("{} {}", rec.genus, rec.sp),
+        ));
     }
     for (val, label) in [
         (&rec.rec, "Recordist"),
@@ -266,12 +258,18 @@ fn recording_to_metadata(rec: &XcRecording) -> Vec<(String, String)> {
     if !rec.url.is_empty() {
         fields.push(("URL".into(), rec.url.clone()));
     } else {
-        fields.push(("URL".into(), format!("https://www.xeno-canto.org/{}", rec.id)));
+        fields.push((
+            "URL".into(),
+            format!("https://www.xeno-canto.org/{}", rec.id),
+        ));
     }
     fields
 }
 
-fn load_sidecar_metadata_and_hashes(cache_root: &std::path::Path, id: u64) -> (Vec<(String, String)>, Option<xc_lib::cache::SidecarHashes>) {
+fn load_sidecar_metadata_and_hashes(
+    cache_root: &std::path::Path,
+    id: u64,
+) -> (Vec<(String, String)>, Option<xc_lib::cache::SidecarHashes>) {
     let sounds_dir = cache_root.join("sounds");
     let prefix = format!("XC{id} -");
     if let Ok(entries) = std::fs::read_dir(&sounds_dir) {
@@ -281,7 +279,11 @@ fn load_sidecar_metadata_and_hashes(cache_root: &std::path::Path, id: u64) -> (V
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
                         let hashes = cache::extract_sidecar_hashes(&json);
-                        let hashes = if hashes.is_empty() { None } else { Some(hashes) };
+                        let hashes = if hashes.is_empty() {
+                            None
+                        } else {
+                            Some(hashes)
+                        };
                         return (parse_xc_json_metadata(&json), hashes);
                     }
                 }

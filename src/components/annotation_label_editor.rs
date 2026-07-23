@@ -1,12 +1,10 @@
+use crate::annotations::{AnnotationId, AnnotationKind};
+use crate::canvas::spectrogram_renderer::freq_to_y;
+use crate::components::file_sidebar::settings_panel::{delete_annotation, update_annotation_label};
 use crate::state::store_fields::*;
+use crate::state::AppState;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::state::AppState;
-use crate::annotations::{AnnotationKind, AnnotationId};
-use crate::canvas::spectrogram_renderer::freq_to_y;
-use crate::components::file_sidebar::settings_panel::{
-    delete_annotation, update_annotation_label,
-};
 
 /// Floating label editor anchored to the selected annotation's top-left corner on the spectrogram.
 /// Shown when `state.annotations.editing()` is true and exactly one annotation is selected.
@@ -16,9 +14,13 @@ pub fn AnnotationLabelEditor() -> impl IntoView {
 
     // Position + initial label, reactive.
     let editor_state = Signal::derive(move || {
-        if !state.annotations.editing().get() { return None; }
+        if !state.annotations.editing().get() {
+            return None;
+        }
         let ids = state.annotations.selected_ids().get();
-        if ids.len() != 1 { return None; }
+        if ids.len() != 1 {
+            return None;
+        }
         let id = ids[0].clone();
         let idx = state.library.current_index().get()?;
         let file_id = state.current_file_id_tracked()?;
@@ -42,7 +44,11 @@ pub fn AnnotationLabelEditor() -> impl IntoView {
         let max_freq = state.view.max_display_freq().get().unwrap_or(file_max_freq);
         let canvas_h = web_sys::window()
             .and_then(|w| w.document())
-            .and_then(|d| d.query_selector(".spectrogram-container canvas").ok().flatten())
+            .and_then(|d| {
+                d.query_selector(".spectrogram-container canvas")
+                    .ok()
+                    .flatten()
+            })
             .map(|el| el.get_bounding_client_rect().height())
             .unwrap_or(400.0);
 

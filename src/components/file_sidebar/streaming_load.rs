@@ -1,13 +1,19 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use web_sys::File;
-use std::sync::Arc;
-use crate::web_util::sleep_ms;
-use crate::audio::loader::{id3v2_tag_size, is_m4a, is_mp3, is_ogg, parse_flac_header, parse_m4a_chapters, parse_mp3_header, parse_ogg_header, parse_wav_header_with_file_size};
-use crate::audio::streaming_source::{FileHandle, StreamingFlacSource, StreamingM4aSource, StreamingMp3Source, StreamingOggSource, StreamingWavSource, read_blob_range};
+use crate::audio::loader::{
+    id3v2_tag_size, is_m4a, is_mp3, is_ogg, parse_flac_header, parse_m4a_chapters,
+    parse_mp3_header, parse_ogg_header, parse_wav_header_with_file_size,
+};
+use crate::audio::streaming_source::{
+    read_blob_range, FileHandle, StreamingFlacSource, StreamingM4aSource, StreamingMp3Source,
+    StreamingOggSource, StreamingWavSource,
+};
 use crate::dsp::fft::compute_preview;
+use crate::state::store_fields::*;
 use crate::state::{AppState, FileSettings, LoadedFile};
 use crate::types::{AudioData, SpectrogramData};
+use crate::web_util::sleep_ms;
+use leptos::prelude::*;
+use std::sync::Arc;
+use web_sys::File;
 
 pub(super) enum SilenceCheck {
     Silent,
@@ -17,7 +23,10 @@ pub(super) enum SilenceCheck {
 /// Decoded size threshold for streaming (512 MB of f32 samples).
 const STREAMING_DECODED_THRESHOLD: u64 = 512 * 1024 * 1024;
 
-fn should_stream_from_decoded_size(decoded_bytes: u64, force_streaming: bool) -> Result<(), String> {
+fn should_stream_from_decoded_size(
+    decoded_bytes: u64,
+    force_streaming: bool,
+) -> Result<(), String> {
     if force_streaming || decoded_bytes >= STREAMING_DECODED_THRESHOLD {
         Ok(())
     } else {
@@ -71,11 +80,20 @@ fn streaming_total_cols(total_frames: u64, fft_size: usize) -> usize {
 /// timeline length, scrubbing map, and spectrogram width could be wrong (audit
 /// lows #8/#12). Reconcile the cached values to the truth and repaint. No-op
 /// when the estimate already matched.
-fn reconcile_streaming_length(state: &AppState, expected_id: u64, real_total: u64, sample_rate: u32) {
-    let Some(file_index) = state.file_idx_for_id(expected_id) else { return };
+fn reconcile_streaming_length(
+    state: &AppState,
+    expected_id: u64,
+    real_total: u64,
+    sample_rate: u32,
+) {
+    let Some(file_index) = state.file_idx_for_id(expected_id) else {
+        return;
+    };
     // FFT size the spectrogram was built with (recover from the store so the
     // width formula matches the setup path's).
-    let Some(fft_size) = crate::canvas::spectral_store::fft_size(file_index) else { return };
+    let Some(fft_size) = crate::canvas::spectral_store::fft_size(file_index) else {
+        return;
+    };
     let real_cols = streaming_total_cols(real_total, fft_size);
     let real_duration = real_total as f64 / sample_rate.max(1) as f64;
 
@@ -85,7 +103,9 @@ fn reconcile_streaming_length(state: &AppState, expected_id: u64, real_total: u6
                 || (f.audio.duration_secs - real_duration).abs() > 1e-3
         })
     });
-    if !changed { return; }
+    if !changed {
+        return;
+    }
 
     // Grow the spectral store if the true length exceeds the estimate (grows
     // only; an over-estimate just leaves unused trailing column slots).
@@ -96,17 +116,31 @@ fn reconcile_streaming_length(state: &AppState, expected_id: u64, real_total: u6
             f.audio.duration_secs = real_duration;
         }
     });
-    state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+    state
+        .viewmode
+        .tile_ready_signal()
+        .update(|n| *n = n.wrapping_add(1));
     log::info!(
         "Reconciled streaming length (file {}): {} cols, {:.3}s (was bitrate-estimated)",
-        file_index, real_cols, real_duration,
+        file_index,
+        real_cols,
+        real_duration,
     );
 }
 
 pub(super) fn push_streaming_file(state: AppState, f: NewStreamingFile) -> usize {
     let NewStreamingFile {
-        name, audio, spectrogram, preview, cached_peak_db, wav_markers, file,
-        load_id, total_cols, fft_size, silence_check,
+        name,
+        audio,
+        spectrogram,
+        preview,
+        cached_peak_db,
+        wav_markers,
+        file,
+        load_id,
+        total_cols,
+        fft_size,
+        silence_check,
     } = f;
     let file_index;
     {
@@ -176,7 +210,11 @@ pub(crate) fn prefetch_window(state: AppState, sample_rate: u32, fft_size: usize
     let zoom = state.view.zoom_level().get_untracked();
     let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
     let time_res = HOP_SIZE as f64 / sample_rate as f64;
-    let visible_time = if zoom > 0.0 { canvas_w / zoom * time_res } else { 1.0 };
+    let visible_time = if zoom > 0.0 {
+        canvas_w / zoom * time_res
+    } else {
+        1.0
+    };
     let start_sample = (scroll / time_res * HOP_SIZE as f64) as u64;
     let visible_samples = (visible_time * sample_rate as f64) as usize;
     (start_sample, visible_samples + fft_size)
@@ -184,16 +222,34 @@ pub(crate) fn prefetch_window(state: AppState, sample_rate: u32, fft_size: usize
 
 /// Schedule the initial visible tiles, bump the tile-ready signal, and spawn the
 /// background overview build. Call after the per-decoder prefetch.
-pub(super) fn finish_streaming_file(state: AppState, file_index: usize, name: &str, total_cols: usize) {
+pub(super) fn finish_streaming_file(
+    state: AppState,
+    file_index: usize,
+    name: &str,
+    total_cols: usize,
+) {
     crate::canvas::tile_cache::schedule_visible_tiles_from_store(state, file_index, total_cols);
-    state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
-    wasm_bindgen_futures::spawn_local(build_streaming_overview(state, file_index, name.to_string()));
+    state
+        .viewmode
+        .tile_ready_signal()
+        .update(|n| *n = n.wrapping_add(1));
+    wasm_bindgen_futures::spawn_local(build_streaming_overview(
+        state,
+        file_index,
+        name.to_string(),
+    ));
 }
 
 /// Attempt to open a large WAV file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming
 /// (not WAV, decoded size below threshold, unsupported format).
-pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, force_streaming: bool, load_id: u64) -> Result<(), String> {
+pub(super) async fn try_streaming_wav(
+    file: &File,
+    name: &str,
+    state: AppState,
+    force_streaming: bool,
+    load_id: u64,
+) -> Result<(), String> {
     // Read first 64KB for header parsing
     let header_size = 65536.0f64.min(file.size());
     let header_bytes = read_blob_range(file, 0.0, header_size).await?;
@@ -243,7 +299,8 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
     let head_byte_start = header.data_offset;
     let head_byte_end = head_byte_start + head_byte_len;
 
-    let head_pcm_bytes = read_blob_range(file, head_byte_start as f64, head_byte_end as f64).await?;
+    let head_pcm_bytes =
+        read_blob_range(file, head_byte_start as f64, head_byte_end as f64).await?;
 
     // Decode PCM to f32
     let head_interleaved = decode_head_pcm(
@@ -319,16 +376,26 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
     // Check for silence/quiet in head
     let (silence_check, cached_peak_db) = {
         use crate::audio::source::ChannelView;
-        let scan = audio.source.read_region(ChannelView::MonoMix, 0, audio.source.total_samples().min(
-            (DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64,
-        ) as usize);
+        let scan = audio.source.read_region(
+            ChannelView::MonoMix,
+            0,
+            audio
+                .source
+                .total_samples()
+                .min((DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64)
+                as usize,
+        );
         let peak = scan.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if peak < 0.002 {
             (Some(SilenceCheck::Silent), None)
         } else if peak > 1e-10 {
             let peak_db = 20.0 * (peak as f64).log10();
             let auto_db = -3.0 - peak_db;
-            let sc = if auto_db > 30.0 { Some(SilenceCheck::HighGain(auto_db)) } else { None };
+            let sc = if auto_db > 30.0 {
+                Some(SilenceCheck::HighGain(auto_db))
+            } else {
+                None
+            };
             (sc, Some(peak_db))
         } else {
             (None, None)
@@ -337,7 +404,11 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
 
     // Build placeholder spectrogram metadata (tiles computed on demand)
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect.fft_mode().get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
+    let fft_size: usize = state
+        .spect
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1
@@ -355,23 +426,31 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
     };
 
     let wav_markers = header.wav_markers.clone();
-    let file_index = push_streaming_file(state, NewStreamingFile {
-        name: name.to_string(),
-        audio,
-        spectrogram,
-        preview,
-        cached_peak_db,
-        wav_markers,
-        file: file.clone(),
-        load_id,
-        total_cols,
-        fft_size,
-        silence_check,
-    });
+    let file_index = push_streaming_file(
+        state,
+        NewStreamingFile {
+            name: name.to_string(),
+            audio,
+            spectrogram,
+            preview,
+            cached_peak_db,
+            wav_markers,
+            file: file.clone(),
+            load_id,
+            total_cols,
+            fft_size,
+            silence_check,
+        },
+    );
 
     // WAV is random-access: prefetch the initial viewport via the file's source.
     let (start_sample, count) = prefetch_window(state, sample_rate, fft_size);
-    let audio_ref = state.library.files().get_untracked().get(file_index).cloned();
+    let audio_ref = state
+        .library
+        .files()
+        .get_untracked()
+        .get(file_index)
+        .cloned();
     if let Some(f) = audio_ref {
         if let Some(streaming) = f.audio.source.as_any().downcast_ref::<StreamingWavSource>() {
             streaming.prefetch_region(start_sample, count).await;
@@ -384,7 +463,13 @@ pub(super) async fn try_streaming_wav(file: &File, name: &str, state: AppState, 
 
 /// Attempt to open a large FLAC file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming.
-pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState, force_streaming: bool, load_id: u64) -> Result<(), String> {
+pub(super) async fn try_streaming_flac(
+    file: &File,
+    name: &str,
+    state: AppState,
+    force_streaming: bool,
+    load_id: u64,
+) -> Result<(), String> {
     // Read first 64KB for header parsing
     let header_size = 65536.0f64.min(file.size());
     let header_bytes = read_blob_range(file, 0.0, header_size).await?;
@@ -436,8 +521,8 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
 
     // Decode using FlacReader (which parses the STREAMINFO from the beginning)
     let cursor = std::io::Cursor::new(&initial_bytes[..]);
-    let mut reader = claxon::FlacReader::new(cursor)
-        .map_err(|e| format!("FLAC reader error: {}", e))?;
+    let mut reader =
+        claxon::FlacReader::new(cursor).map_err(|e| format!("FLAC reader error: {}", e))?;
 
     let channels = header.channels as usize;
     let max_val = (1u32 << (header.bits_per_sample - 1)) as f32;
@@ -550,16 +635,26 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
     // Check for silence/quiet in head
     let (silence_check, cached_peak_db) = {
         use crate::audio::source::ChannelView;
-        let scan = audio.source.read_region(ChannelView::MonoMix, 0, audio.source.total_samples().min(
-            (DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64,
-        ) as usize);
+        let scan = audio.source.read_region(
+            ChannelView::MonoMix,
+            0,
+            audio
+                .source
+                .total_samples()
+                .min((DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64)
+                as usize,
+        );
         let peak = scan.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if peak < 0.002 {
             (Some(SilenceCheck::Silent), None)
         } else if peak > 1e-10 {
             let peak_db = 20.0 * (peak as f64).log10();
             let auto_db = -3.0 - peak_db;
-            let sc = if auto_db > 30.0 { Some(SilenceCheck::HighGain(auto_db)) } else { None };
+            let sc = if auto_db > 30.0 {
+                Some(SilenceCheck::HighGain(auto_db))
+            } else {
+                None
+            };
             (sc, Some(peak_db))
         } else {
             (None, None)
@@ -568,7 +663,11 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
 
     // Build placeholder spectrogram metadata
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect.fft_mode().get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
+    let fft_size: usize = state
+        .spect
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1
@@ -585,19 +684,22 @@ pub(super) async fn try_streaming_flac(file: &File, name: &str, state: AppState,
         sample_rate,
     };
 
-    let file_index = push_streaming_file(state, NewStreamingFile {
-        name: name.to_string(),
-        audio,
-        spectrogram,
-        preview,
-        cached_peak_db,
-        wav_markers: Vec::new(),
-        file: file.clone(),
-        load_id,
-        total_cols,
-        fft_size,
-        silence_check,
-    });
+    let file_index = push_streaming_file(
+        state,
+        NewStreamingFile {
+            name: name.to_string(),
+            audio,
+            spectrogram,
+            preview,
+            cached_peak_db,
+            wav_markers: Vec::new(),
+            file: file.clone(),
+            load_id,
+            total_cols,
+            fft_size,
+            silence_check,
+        },
+    );
 
     let (start_sample, count) = prefetch_window(state, sample_rate, fft_size);
     source.prefetch_region(start_sample, count).await;
@@ -625,14 +727,24 @@ async fn background_flac_decode(
     // datasets and the index shifts if another file is closed mid-decode, so a
     // name/index check could bind to the wrong file. Decoding writes into the
     // shared `source` Arc, so we only need a liveness check here.
-    let Some(expected_id) = state.library.files().get_untracked().get(file_index).map(|f| f.id) else { return };
+    let Some(expected_id) = state
+        .library
+        .files()
+        .get_untracked()
+        .get(file_index)
+        .map(|f| f.id)
+    else {
+        return;
+    };
 
     // Initial delay — let the UI settle
     sleep_ms(200).await;
 
     while !source.is_fully_decoded() {
         // Still loaded?
-        if state.file_idx_for_id(expected_id).is_none() { return; }
+        if state.file_idx_for_id(expected_id).is_none() {
+            return;
+        }
 
         // Defer while playing or loading
         let is_busy = state.playback.is_playing().get_untracked()
@@ -655,7 +767,13 @@ async fn background_flac_decode(
 
 /// Attempt to open a large MP3 file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming.
-pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, force_streaming: bool, load_id: u64) -> Result<(), String> {
+pub(super) async fn try_streaming_mp3(
+    file: &File,
+    name: &str,
+    state: AppState,
+    force_streaming: bool,
+    load_id: u64,
+) -> Result<(), String> {
     // Read first 64KB for initial detection
     let initial_size = 65536.0f64.min(file.size());
     let initial_bytes = read_blob_range(file, 0.0, initial_size).await?;
@@ -726,7 +844,12 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
     hint.with_extension("mp3");
 
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| format!("MP3 probe error: {e}"))?;
 
     let track = format
@@ -855,16 +978,26 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
     // Check for silence/quiet in head
     let (silence_check, cached_peak_db) = {
         use crate::audio::source::ChannelView;
-        let scan = audio.source.read_region(ChannelView::MonoMix, 0, audio.source.total_samples().min(
-            (DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64,
-        ) as usize);
+        let scan = audio.source.read_region(
+            ChannelView::MonoMix,
+            0,
+            audio
+                .source
+                .total_samples()
+                .min((DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64)
+                as usize,
+        );
         let peak = scan.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if peak < 0.002 {
             (Some(SilenceCheck::Silent), None)
         } else if peak > 1e-10 {
             let peak_db = 20.0 * (peak as f64).log10();
             let auto_db = -3.0 - peak_db;
-            let sc = if auto_db > 30.0 { Some(SilenceCheck::HighGain(auto_db)) } else { None };
+            let sc = if auto_db > 30.0 {
+                Some(SilenceCheck::HighGain(auto_db))
+            } else {
+                None
+            };
             (sc, Some(peak_db))
         } else {
             (None, None)
@@ -873,7 +1006,11 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
 
     // Build placeholder spectrogram metadata
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect.fft_mode().get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
+    let fft_size: usize = state
+        .spect
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1
@@ -890,19 +1027,22 @@ pub(super) async fn try_streaming_mp3(file: &File, name: &str, state: AppState, 
         sample_rate,
     };
 
-    let file_index = push_streaming_file(state, NewStreamingFile {
-        name: name.to_string(),
-        audio,
-        spectrogram,
-        preview,
-        cached_peak_db,
-        wav_markers: Vec::new(),
-        file: file.clone(),
-        load_id,
-        total_cols,
-        fft_size,
-        silence_check,
-    });
+    let file_index = push_streaming_file(
+        state,
+        NewStreamingFile {
+            name: name.to_string(),
+            audio,
+            spectrogram,
+            preview,
+            cached_peak_db,
+            wav_markers: Vec::new(),
+            file: file.clone(),
+            load_id,
+            total_cols,
+            fft_size,
+            silence_check,
+        },
+    );
 
     let (start_sample, count) = prefetch_window(state, sample_rate, fft_size);
     source.prefetch_region(start_sample, count).await;
@@ -931,7 +1071,15 @@ async fn background_mp3_decode(
     // Pin to the file's stable id; this decode schedules tiles by index, so
     // re-resolve the index from the id each hop (duplicate names / index shift
     // would otherwise schedule tiles against the wrong file).
-    let Some(expected_id) = state.library.files().get_untracked().get(file_index).map(|f| f.id) else { return };
+    let Some(expected_id) = state
+        .library
+        .files()
+        .get_untracked()
+        .get(file_index)
+        .map(|f| f.id)
+    else {
+        return;
+    };
 
     // Initial delay — let the UI settle
     sleep_ms(200).await;
@@ -942,7 +1090,9 @@ async fn background_mp3_decode(
 
     while !source.is_fully_decoded() {
         // Re-resolve our index by id (used below for tile scheduling).
-        let Some(file_index) = state.file_idx_for_id(expected_id) else { return };
+        let Some(file_index) = state.file_idx_for_id(expected_id) else {
+            return;
+        };
 
         // Defer while playing or loading
         let is_busy = state.playback.is_playing().get_untracked()
@@ -966,7 +1116,10 @@ async fn background_mp3_decode(
                 tile_cache::schedule_tile_on_demand(state, file_index, t);
             }
             last_tile_scheduled = Some(last_tile);
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
         }
 
         // Yield to browser
@@ -978,12 +1131,23 @@ async fn background_mp3_decode(
     // Length was a bitrate estimate until decode reached EOF — reconcile the
     // cached duration + spectrogram width to the true frame count (lows #8/#12).
     use crate::audio::source::AudioSource;
-    reconcile_streaming_length(&state, expected_id, source.total_samples(), source.sample_rate());
+    reconcile_streaming_length(
+        &state,
+        expected_id,
+        source.total_samples(),
+        source.sample_rate(),
+    );
 }
 
 /// Attempt to open a large OGG file using the streaming path.
 /// Returns Ok(()) if successful, Err if the file is not suitable for streaming.
-pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, force_streaming: bool, load_id: u64) -> Result<(), String> {
+pub(super) async fn try_streaming_ogg(
+    file: &File,
+    name: &str,
+    state: AppState,
+    force_streaming: bool,
+    load_id: u64,
+) -> Result<(), String> {
     // Read first 64KB for header probing
     let header_size = 65536.0f64.min(file.size());
     let header_bytes = read_blob_range(file, 0.0, header_size).await?;
@@ -1043,7 +1207,12 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
     hint.with_extension("ogg");
 
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| format!("OGG probe error: {e}"))?;
 
     let track = format
@@ -1171,16 +1340,26 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
     // Check for silence/quiet in head
     let (silence_check, cached_peak_db) = {
         use crate::audio::source::ChannelView;
-        let scan = audio.source.read_region(ChannelView::MonoMix, 0, audio.source.total_samples().min(
-            (DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64,
-        ) as usize);
+        let scan = audio.source.read_region(
+            ChannelView::MonoMix,
+            0,
+            audio
+                .source
+                .total_samples()
+                .min((DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64)
+                as usize,
+        );
         let peak = scan.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if peak < 0.002 {
             (Some(SilenceCheck::Silent), None)
         } else if peak > 1e-10 {
             let peak_db = 20.0 * (peak as f64).log10();
             let auto_db = -3.0 - peak_db;
-            let sc = if auto_db > 30.0 { Some(SilenceCheck::HighGain(auto_db)) } else { None };
+            let sc = if auto_db > 30.0 {
+                Some(SilenceCheck::HighGain(auto_db))
+            } else {
+                None
+            };
             (sc, Some(peak_db))
         } else {
             (None, None)
@@ -1189,7 +1368,11 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
 
     // Build placeholder spectrogram metadata
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect.fft_mode().get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
+    let fft_size: usize = state
+        .spect
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
     let total_cols = if total_len >= fft_size {
         (total_len - fft_size) / HOP_SIZE + 1
@@ -1206,19 +1389,22 @@ pub(super) async fn try_streaming_ogg(file: &File, name: &str, state: AppState, 
         sample_rate,
     };
 
-    let file_index = push_streaming_file(state, NewStreamingFile {
-        name: name.to_string(),
-        audio,
-        spectrogram,
-        preview,
-        cached_peak_db,
-        wav_markers: Vec::new(),
-        file: file.clone(),
-        load_id,
-        total_cols,
-        fft_size,
-        silence_check,
-    });
+    let file_index = push_streaming_file(
+        state,
+        NewStreamingFile {
+            name: name.to_string(),
+            audio,
+            spectrogram,
+            preview,
+            cached_peak_db,
+            wav_markers: Vec::new(),
+            file: file.clone(),
+            load_id,
+            total_cols,
+            fft_size,
+            silence_check,
+        },
+    );
 
     let (start_sample, count) = prefetch_window(state, sample_rate, fft_size);
     source.prefetch_region(start_sample, count).await;
@@ -1243,14 +1429,24 @@ async fn background_ogg_decode(
 ) {
     // Pin to the file's stable id (see background_flac_decode); decoding writes
     // into the shared `source` Arc, so a liveness check is all we need.
-    let Some(expected_id) = state.library.files().get_untracked().get(file_index).map(|f| f.id) else { return };
+    let Some(expected_id) = state
+        .library
+        .files()
+        .get_untracked()
+        .get(file_index)
+        .map(|f| f.id)
+    else {
+        return;
+    };
 
     // Initial delay — let the UI settle
     sleep_ms(200).await;
 
     while !source.is_fully_decoded() {
         // Still loaded?
-        if state.file_idx_for_id(expected_id).is_none() { return; }
+        if state.file_idx_for_id(expected_id).is_none() {
+            return;
+        }
 
         // Defer while playing or loading
         let is_busy = state.playback.is_playing().get_untracked()
@@ -1273,7 +1469,12 @@ async fn background_ogg_decode(
     // Length was a bitrate estimate until decode reached EOF — reconcile the
     // cached duration + spectrogram width to the true frame count (lows #8/#12).
     use crate::audio::source::AudioSource;
-    reconcile_streaming_length(&state, expected_id, source.total_samples(), source.sample_rate());
+    reconcile_streaming_length(
+        &state,
+        expected_id,
+        source.total_samples(),
+        source.sample_rate(),
+    );
 }
 
 /// Build a high-res overview spectrogram image for a streaming file in the background.
@@ -1293,19 +1494,37 @@ pub(crate) async fn build_streaming_overview(
     // Pin to the file's stable id before any await: the index shifts if another
     // file is closed, and duplicate filenames (common in bat datasets) make a
     // name check ambiguous. Re-resolve the index from the id at each use.
-    let Some(expected_id) = state.library.files().get_untracked().get(file_index).map(|f| f.id) else { return };
+    let Some(expected_id) = state
+        .library
+        .files()
+        .get_untracked()
+        .get(file_index)
+        .map(|f| f.id)
+    else {
+        return;
+    };
 
     // Initial delay — let the UI settle after loading
     sleep_ms(500).await;
 
-    let Some(file_index) = state.file_idx_for_id(expected_id) else { return };
-    let file = match state.library.files().get_untracked().get(file_index).cloned() {
+    let Some(file_index) = state.file_idx_for_id(expected_id) else {
+        return;
+    };
+    let file = match state
+        .library
+        .files()
+        .get_untracked()
+        .get(file_index)
+        .cloned()
+    {
         Some(f) => f,
         _ => return,
     };
 
     // Skip if an overview already exists (non-streaming path already built one)
-    if file.overview_image.is_some() { return; }
+    if file.overview_image.is_some() {
+        return;
+    }
 
     let source = &file.audio.source;
     let sample_rate = file.audio.sample_rate;
@@ -1317,9 +1536,19 @@ pub(crate) async fn build_streaming_overview(
     const COLS_PER_BATCH: usize = 8;
 
     let hop = (total_samples / TARGET_COLS).max(FFT_SIZE);
-    let n_cols = if total_samples >= FFT_SIZE { (total_samples - FFT_SIZE) / hop + 1 } else { 0 };
+    let n_cols = if total_samples >= FFT_SIZE {
+        (total_samples - FFT_SIZE) / hop + 1
+    } else {
+        0
+    };
     if n_cols == 0 {
-        state.log_debug("rec", format!("overview skipped: n_cols=0 (total_samples={})", total_samples));
+        state.log_debug(
+            "rec",
+            format!(
+                "overview skipped: n_cols=0 (total_samples={})",
+                total_samples
+            ),
+        );
         return;
     }
 
@@ -1336,7 +1565,9 @@ pub(crate) async fn build_streaming_overview(
     let mut col = 0;
     while col < n_cols {
         // Re-resolve our index by id (the file can be closed or shift mid-build).
-        let Some(file_index) = state.file_idx_for_id(expected_id) else { return };
+        let Some(file_index) = state.file_idx_for_id(expected_id) else {
+            return;
+        };
 
         // Defer while playing, loading new files, or if this isn't the current file
         let is_busy = state.playback.is_playing().get_untracked()
@@ -1354,22 +1585,34 @@ pub(crate) async fn build_streaming_overview(
             let sample_start = c * hop;
             let sample_end = (sample_start + FFT_SIZE).min(total_samples);
             let read_len = sample_end - sample_start;
-            if read_len < FFT_SIZE { break; }
+            if read_len < FFT_SIZE {
+                break;
+            }
 
             // Prefetch for streaming source (WAV, FLAC, or MP3)
             if is_streaming_source {
                 crate::audio::streaming_source::prefetch_streaming(
-                    source.as_ref(), sample_start as u64, read_len,
-                ).await;
+                    source.as_ref(),
+                    sample_start as u64,
+                    read_len,
+                )
+                .await;
             }
 
             let samples = source.read_region(ChannelView::MonoMix, sample_start as u64, read_len);
             let cols = crate::dsp::fft::compute_stft_columns(
-                &samples, sample_rate, FFT_SIZE, FFT_SIZE, 0, 1,
+                &samples,
+                sample_rate,
+                FFT_SIZE,
+                FFT_SIZE,
+                0,
+                1,
             );
             if let Some(column) = cols.into_iter().next() {
                 let col_max = column.magnitudes.iter().copied().fold(0.0f32, f32::max);
-                if col_max > global_max { global_max = col_max; }
+                if col_max > global_max {
+                    global_max = col_max;
+                }
                 all_mags.push(column.magnitudes);
             }
         }
@@ -1381,10 +1624,14 @@ pub(crate) async fn build_streaming_overview(
     }
 
     if all_mags.is_empty() || global_max <= 0.0 {
-        state.log_debug("rec", format!(
-            "overview aborted: cols={}, global_max={:.4} (streaming source reads empty?)",
-            all_mags.len(), global_max,
-        ));
+        state.log_debug(
+            "rec",
+            format!(
+                "overview aborted: cols={}, global_max={:.4} (streaming source reads empty?)",
+                all_mags.len(),
+                global_max,
+            ),
+        );
         return;
     }
 
@@ -1398,7 +1645,11 @@ pub(crate) async fn build_streaming_overview(
         let mags = &all_mags[src_col.min(src_w - 1)];
         for y in 0..out_h {
             let src_bin = src_h - 1 - ((y as usize * src_h) / out_h as usize).min(src_h - 1);
-            let mag = if src_bin < mags.len() { mags[src_bin] } else { 0.0 };
+            let mag = if src_bin < mags.len() {
+                mags[src_bin]
+            } else {
+                0.0
+            };
             let grey = magnitude_to_greyscale(mag, global_max);
             let idx = (y * out_w + x) as usize * 4;
             pixels[idx] = grey;
@@ -1415,7 +1666,9 @@ pub(crate) async fn build_streaming_overview(
     };
 
     // Update the file's overview image (re-resolve by id).
-    let Some(file_index) = state.file_idx_for_id(expected_id) else { return };
+    let Some(file_index) = state.file_idx_for_id(expected_id) else {
+        return;
+    };
     state.library.files().update(|files| {
         if let Some(f) = files.get_mut(file_index) {
             f.overview_image = Some(overview);
@@ -1423,43 +1676,68 @@ pub(crate) async fn build_streaming_overview(
     });
 
     // Signal redraw so the overview panel picks up the new image
-    state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
-    state.log_debug("rec", format!("overview built: {} cols for {}", src_w, expected_name));
-    log::info!("Background overview complete for {} ({} columns)", expected_name, src_w);
+    state
+        .viewmode
+        .tile_ready_signal()
+        .update(|n| *n = n.wrapping_add(1));
+    state.log_debug(
+        "rec",
+        format!("overview built: {} cols for {}", src_w, expected_name),
+    );
+    log::info!(
+        "Background overview complete for {} ({} columns)",
+        expected_name,
+        src_w
+    );
 }
 
 /// Decode raw PCM bytes to f32 samples (used for head region during streaming load).
-pub(crate) fn decode_head_pcm(bytes: &[u8], bits_per_sample: u16, is_float: bool, _channels: u16) -> Vec<f32> {
+pub(crate) fn decode_head_pcm(
+    bytes: &[u8],
+    bits_per_sample: u16,
+    is_float: bool,
+    _channels: u16,
+) -> Vec<f32> {
     match (is_float, bits_per_sample) {
-        (true, 32) => {
-            bytes.chunks_exact(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-                .collect()
-        }
+        (true, 32) => bytes
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .collect(),
         (false, 16) => {
             let max = 32768.0f32;
-            bytes.chunks_exact(2)
+            bytes
+                .chunks_exact(2)
                 .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / max)
                 .collect()
         }
         (false, 24) => {
             let max = 8388608.0f32;
-            bytes.chunks_exact(3)
+            bytes
+                .chunks_exact(3)
                 .map(|b| {
                     let val = (b[0] as i32) | ((b[1] as i32) << 8) | ((b[2] as i32) << 16);
-                    let val = if val & 0x800000 != 0 { val | !0xFFFFFF } else { val };
+                    let val = if val & 0x800000 != 0 {
+                        val | !0xFFFFFF
+                    } else {
+                        val
+                    };
                     val as f32 / max
                 })
                 .collect()
         }
         (false, 32) => {
             let max = 2147483648.0f32;
-            bytes.chunks_exact(4)
+            bytes
+                .chunks_exact(4)
                 .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / max)
                 .collect()
         }
         _ => {
-            log::warn!("Unsupported PCM format for streaming: {}-bit {}", bits_per_sample, if is_float { "float" } else { "int" });
+            log::warn!(
+                "Unsupported PCM format for streaming: {}-bit {}",
+                bits_per_sample,
+                if is_float { "float" } else { "int" }
+            );
             vec![0.0; bytes.len() / (bits_per_sample as usize / 8)]
         }
     }
@@ -1470,9 +1748,7 @@ pub(crate) fn scan_tail_for_guano(tail_bytes: &[u8]) -> Option<crate::audio::gua
     let mut pos = 0usize;
     while pos + 8 <= tail_bytes.len() {
         let chunk_id = &tail_bytes[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes(
-            tail_bytes[pos + 4..pos + 8].try_into().ok()?,
-        ) as usize;
+        let chunk_size = u32::from_le_bytes(tail_bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
         let body_start = pos + 8;
         let body_end = body_start + chunk_size;
 
@@ -1488,7 +1764,13 @@ pub(crate) fn scan_tail_for_guano(tail_bytes: &[u8]) -> Option<crate::audio::gua
 /// Attempt to open a large M4A file using the streaming path.
 /// Unlike MP3/OGG, M4A streaming requires the full compressed bytes in RAM
 /// (moov sample table). Refuses files larger than ~1.5 GB compressed.
-pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, force_streaming: bool, load_id: u64) -> Result<(), String> {
+pub(super) async fn try_streaming_m4a(
+    file: &File,
+    name: &str,
+    state: AppState,
+    force_streaming: bool,
+    load_id: u64,
+) -> Result<(), String> {
     let file_size = file.size() as u64;
 
     // Fast-path probe: read up to 2 MB to find moov at the start of the file.
@@ -1530,7 +1812,12 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
     let mut hint = Hint::new();
     hint.with_extension("m4a");
     let mut format = symphonia::default::get_probe()
-        .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
+        .probe(
+            &hint,
+            mss,
+            FormatOptions::default(),
+            MetadataOptions::default(),
+        )
         .map_err(|e| format!("M4A probe error: {e}"))?;
 
     let track = format
@@ -1546,7 +1833,8 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
     // (and sometimes sample_rate) unset. Fall back to reading the mp4a sample
     // entry directly so we can still stream them.
     let atom_entry = crate::audio::loader::parse_m4a_audio_entry(&all_bytes);
-    let sample_rate = track_audio.sample_rate
+    let sample_rate = track_audio
+        .sample_rate
         .or_else(|| atom_entry.map(|(_, sr)| sr).filter(|&sr| sr > 0))
         .or_else(|| crate::audio::loader::parse_m4a_sample_rate(&all_bytes))
         .ok_or("M4A missing sample rate")?;
@@ -1558,7 +1846,8 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
             .ok_or("M4A missing channel info (not in codec_params nor mp4a atom)")?,
     };
     let track_id = track.id;
-    let total_frames = track.num_frames
+    let total_frames = track
+        .num_frames
         .ok_or("M4A missing total frame count (sample table incomplete)")?;
 
     // Decoded size check — only stream if the decoded PCM would be large.
@@ -1567,7 +1856,10 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
 
     log::info!(
         "Streaming M4A: {} — {} frames, {} ch, {} Hz, {:.1}s, decoded {:.0} MB",
-        name, total_frames, channels, sample_rate,
+        name,
+        total_frames,
+        channels,
+        sample_rate,
         total_frames as f64 / sample_rate as f64,
         decoded_bytes as f64 / 1_048_576.0,
     );
@@ -1609,8 +1901,8 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
 
     // Decode head (first ~30s).
     use crate::audio::source::DEFAULT_ANALYSIS_WINDOW_SECS;
-    let head_target_frames = ((DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64)
-        .min(total_frames);
+    let head_target_frames =
+        ((DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64).min(total_frames);
 
     use symphonia::core::errors::Error as SymphoniaError;
 
@@ -1629,10 +1921,15 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
         let packet = match format.next_packet() {
             Ok(Some(p)) => p,
             Ok(None) => break,
-            Err(SymphoniaError::ResetRequired) => { decoder.reset(); continue; }
+            Err(SymphoniaError::ResetRequired) => {
+                decoder.reset();
+                continue;
+            }
             Err(_) => break,
         };
-        if packet.track_id != track_id { continue; }
+        if packet.track_id != track_id {
+            continue;
+        }
         match decoder.decode(&packet) {
             Ok(decoded) => {
                 if actual_rate.is_none() {
@@ -1659,7 +1956,9 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
                     frames_since_yield = 0;
                     crate::canvas::tile_cache::yield_to_browser().await;
                 }
-                if head_frame_count >= head_target_frames { break; }
+                if head_frame_count >= head_target_frames {
+                    break;
+                }
             }
             Err(SymphoniaError::DecodeError(_)) => continue,
             Err(_) => break,
@@ -1683,7 +1982,8 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
         // ~sample_rate/2 is missing. For voice/audiobooks this is mostly OK.
         state.show_info_toast(format!(
             "HE-AAC detected: decoded at {} kHz without SBR (container reports {} kHz).",
-            sample_rate / 1000, pre_decode_rate / 1000,
+            sample_rate / 1000,
+            pre_decode_rate / 1000,
         ));
     }
     let total_frames = if pre_decode_rate > 0 && pre_decode_rate != sample_rate {
@@ -1736,7 +2036,11 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
             format: "M4A",
             bits_per_sample: 16,
             is_float: false,
-            guano: if tags.fields.is_empty() { None } else { Some(tags) },
+            guano: if tags.fields.is_empty() {
+                None
+            } else {
+                Some(tags)
+            },
             data_offset: None,
             data_size: None,
             zc_data: None,
@@ -1747,16 +2051,26 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
 
     let (silence_check, cached_peak_db) = {
         use crate::audio::source::ChannelView;
-        let scan = audio.source.read_region(ChannelView::MonoMix, 0, audio.source.total_samples().min(
-            (DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64,
-        ) as usize);
+        let scan = audio.source.read_region(
+            ChannelView::MonoMix,
+            0,
+            audio
+                .source
+                .total_samples()
+                .min((DEFAULT_ANALYSIS_WINDOW_SECS * sample_rate as f64) as u64)
+                as usize,
+        );
         let peak = scan.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         if peak < 0.002 {
             (Some(SilenceCheck::Silent), None)
         } else if peak > 1e-10 {
             let peak_db = 20.0 * (peak as f64).log10();
             let auto_db = -3.0 - peak_db;
-            let sc = if auto_db > 30.0 { Some(SilenceCheck::HighGain(auto_db)) } else { None };
+            let sc = if auto_db > 30.0 {
+                Some(SilenceCheck::HighGain(auto_db))
+            } else {
+                None
+            };
             (sc, Some(peak_db))
         } else {
             (None, None)
@@ -1764,9 +2078,17 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
     };
 
     const HOP_SIZE: usize = 512;
-    let fft_size: usize = state.spect.fft_mode().get_untracked().fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
+    let fft_size: usize = state
+        .spect
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(crate::canvas::tile_cache::LOD_BASELINE);
     let total_len = total_frames as usize;
-    let total_cols = if total_len >= fft_size { (total_len - fft_size) / HOP_SIZE + 1 } else { 0 };
+    let total_cols = if total_len >= fft_size {
+        (total_len - fft_size) / HOP_SIZE + 1
+    } else {
+        0
+    };
 
     let spectrogram = SpectrogramData {
         columns: Arc::new(Vec::new()),
@@ -1777,19 +2099,22 @@ pub(super) async fn try_streaming_m4a(file: &File, name: &str, state: AppState, 
         sample_rate,
     };
 
-    let file_index = push_streaming_file(state, NewStreamingFile {
-        name: name.to_string(),
-        audio,
-        spectrogram,
-        preview,
-        cached_peak_db,
-        wav_markers,
-        file: file.clone(),
-        load_id,
-        total_cols,
-        fft_size,
-        silence_check,
-    });
+    let file_index = push_streaming_file(
+        state,
+        NewStreamingFile {
+            name: name.to_string(),
+            audio,
+            spectrogram,
+            preview,
+            cached_peak_db,
+            wav_markers,
+            file: file.clone(),
+            load_id,
+            total_cols,
+            fft_size,
+            silence_check,
+        },
+    );
 
     let (start_sample, count) = prefetch_window(state, sample_rate, fft_size);
     source.prefetch_region(start_sample, count).await;
@@ -1818,7 +2143,15 @@ async fn background_m4a_decode(
     // Pin to the file's stable id before any await; this decode schedules tiles
     // by index, so re-resolve the index from the id each hop (see
     // background_mp3_decode).
-    let Some(expected_id) = state.library.files().get_untracked().get(file_index).map(|f| f.id) else { return };
+    let Some(expected_id) = state
+        .library
+        .files()
+        .get_untracked()
+        .get(file_index)
+        .map(|f| f.id)
+    else {
+        return;
+    };
 
     // Initial delay.
     sleep_ms(200).await;
@@ -1837,7 +2170,9 @@ async fn background_m4a_decode(
 
     while bg_cursor < total_frames && !source.is_fully_decoded() {
         // Re-resolve our index by id (used below for tile scheduling).
-        let Some(file_index) = state.file_idx_for_id(expected_id) else { return };
+        let Some(file_index) = state.file_idx_for_id(expected_id) else {
+            return;
+        };
 
         let is_busy = state.playback.is_playing().get_untracked()
             || state.library.loading().with_untracked(|v| !v.is_empty());
@@ -1859,7 +2194,10 @@ async fn background_m4a_decode(
                     tile_cache::schedule_tile_on_demand(state, file_index, t);
                 }
                 last_tile_scheduled = Some(last_tile);
-                state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+                state
+                    .viewmode
+                    .tile_ready_signal()
+                    .update(|n| *n = n.wrapping_add(1));
             }
         }
 

@@ -37,7 +37,11 @@ fn main() {
     } else {
         samples
     };
-    println!("  {} mono samples ({:.2} s)\n", mono.len(), mono.len() as f64 / spec.sample_rate as f64);
+    println!(
+        "  {} mono samples ({:.2} s)\n",
+        mono.len(),
+        mono.len() as f64 / spec.sample_rate as f64
+    );
 
     let is_float = matches!(spec.sample_format, hound::SampleFormat::Float);
 

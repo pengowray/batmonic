@@ -12,14 +12,14 @@
 use std::cell::Cell;
 use std::f64::consts::TAU;
 
-use leptos::prelude::*;
-use crate::state::store_fields::*;
 use crate::audio::live_recording::{
     cleanup_listen_file, spawn_live_processing_loop, spawn_smooth_scroll_animation,
     start_live_listening,
 };
 use crate::audio::mic_backend::with_live_samples_mut;
+use crate::state::store_fields::*;
 use crate::state::{AppState, MainView};
+use leptos::prelude::*;
 
 /// Which synthetic signal to generate.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -140,11 +140,17 @@ pub fn signal_from_str(s: &str) -> SynthSignal {
 /// hooks just call the same `start`/`stop` the buttons do.
 pub fn install_test_hooks(state: AppState) {
     use wasm_bindgen::prelude::*;
-    let Some(window) = web_sys::window() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
 
     let start_cb = Closure::wrap(Box::new(move |sig: JsValue, rate: JsValue| {
         let s = sig.as_string().unwrap_or_else(|| "chirp".to_string());
-        let r = rate.as_f64().map(|v| v as u32).filter(|&v| v >= 8_000).unwrap_or(256_000);
+        let r = rate
+            .as_f64()
+            .map(|v| v as u32)
+            .filter(|&v| v >= 8_000)
+            .unwrap_or(256_000);
         start(state, signal_from_str(&s), r);
     }) as Box<dyn Fn(JsValue, JsValue)>);
     let _ = js_sys::Reflect::set(
@@ -176,7 +182,13 @@ struct GenState {
 
 impl GenState {
     fn new() -> Self {
-        GenState { phase: 0.0, phases: [0.0; 3], chirp_t: 0.0, pulse_t: 0.0, rng: 0x9E3779B9 }
+        GenState {
+            phase: 0.0,
+            phases: [0.0; 3],
+            chirp_t: 0.0,
+            pulse_t: 0.0,
+            rng: 0x9E3779B9,
+        }
     }
 
     #[inline]
@@ -192,7 +204,14 @@ impl GenState {
 }
 
 /// Append `n` generated samples for `signal` to `out`, advancing `gs`.
-fn generate(signal: SynthSignal, sr: f64, nyq: f64, n: usize, gs: &mut GenState, out: &mut Vec<f32>) {
+fn generate(
+    signal: SynthSignal,
+    sr: f64,
+    nyq: f64,
+    n: usize,
+    gs: &mut GenState,
+    out: &mut Vec<f32>,
+) {
     match signal {
         SynthSignal::Noise => {
             for _ in 0..n {
@@ -204,7 +223,9 @@ fn generate(signal: SynthSignal, sr: f64, nyq: f64, n: usize, gs: &mut GenState,
             let dphi = TAU * f / sr;
             for _ in 0..n {
                 gs.phase += dphi;
-                if gs.phase > TAU { gs.phase -= TAU; }
+                if gs.phase > TAU {
+                    gs.phase -= TAU;
+                }
                 out.push((gs.phase.sin() * 0.5) as f32);
             }
         }
@@ -214,12 +235,18 @@ fn generate(signal: SynthSignal, sr: f64, nyq: f64, n: usize, gs: &mut GenState,
                 45_000.0_f64.min(nyq * 0.9),
                 80_000.0_f64.min(nyq * 0.9),
             ];
-            let dphi = [TAU * freqs[0] / sr, TAU * freqs[1] / sr, TAU * freqs[2] / sr];
+            let dphi = [
+                TAU * freqs[0] / sr,
+                TAU * freqs[1] / sr,
+                TAU * freqs[2] / sr,
+            ];
             for _ in 0..n {
                 let mut s = 0.0;
                 for k in 0..3 {
                     gs.phases[k] += dphi[k];
-                    if gs.phases[k] > TAU { gs.phases[k] -= TAU; }
+                    if gs.phases[k] > TAU {
+                        gs.phases[k] -= TAU;
+                    }
                     s += gs.phases[k].sin();
                 }
                 out.push((s * 0.3 / 3.0) as f32);
@@ -231,10 +258,14 @@ fn generate(signal: SynthSignal, sr: f64, nyq: f64, n: usize, gs: &mut GenState,
             let hi = nyq * 0.95;
             for _ in 0..n {
                 gs.chirp_t += 1.0 / sr;
-                if gs.chirp_t >= period { gs.chirp_t -= period; }
+                if gs.chirp_t >= period {
+                    gs.chirp_t -= period;
+                }
                 let f = lo + (hi - lo) * (gs.chirp_t / period);
                 gs.phase += TAU * f / sr; // continuous instantaneous phase
-                if gs.phase > TAU { gs.phase -= TAU; }
+                if gs.phase > TAU {
+                    gs.phase -= TAU;
+                }
                 out.push((gs.phase.sin() * 0.5) as f32);
             }
         }
@@ -253,7 +284,9 @@ fn generate(signal: SynthSignal, sr: f64, nyq: f64, n: usize, gs: &mut GenState,
                     let frac = gs.pulse_t / dur; // 0..1 across the pulse
                     let f = f_start + (f_end - f_start) * frac; // downward sweep
                     gs.phase += TAU * f / sr;
-                    if gs.phase > TAU { gs.phase -= TAU; }
+                    if gs.phase > TAU {
+                        gs.phase -= TAU;
+                    }
                     // Raised-cosine envelope to avoid harsh edges.
                     let env = (std::f64::consts::PI * frac).sin();
                     gs.phase.sin() * env * 0.7
@@ -310,9 +343,11 @@ fn spawn_feeder(state: AppState, signal: SynthSignal, sample_rate: u32, gen: u64
                 let ksps = (fed_since_report as f64 / secs) / 1000.0;
                 state.log_debug(
                     "info",
-                    format!("Synth feed: {:.0} kS/s ({} total cols)",
+                    format!(
+                        "Synth feed: {:.0} kS/s ({} total cols)",
                         ksps,
-                        crate::canvas::live_waterfall::total_columns()),
+                        crate::canvas::live_waterfall::total_columns()
+                    ),
                 );
                 report_ms = now;
                 fed_since_report = 0;

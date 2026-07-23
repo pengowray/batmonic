@@ -38,7 +38,12 @@ fn adaptive_threshold(filtered: &[f32]) -> (f32, f32) {
 ///
 /// The output amplitude tracks the input envelope so that louder bat calls
 /// produce louder clicks, matching the behavior of analog FD detectors.
-pub fn zc_divide(samples: &[f32], sample_rate: u32, division_factor: u32, skip_bandpass: bool) -> Vec<f32> {
+pub fn zc_divide(
+    samples: &[f32],
+    sample_rate: u32,
+    division_factor: u32,
+    skip_bandpass: bool,
+) -> Vec<f32> {
     if samples.len() < 2 || division_factor == 0 {
         return vec![0.0; samples.len()];
     }
@@ -137,11 +142,10 @@ pub fn zc_rate_per_bin(
         }
 
         let curr_positive = filtered[i] >= 0.0;
-        if prev_positive != curr_positive
-            && armed {
-                bin_crossings += 1;
-                bin_armed = true;
-            }
+        if prev_positive != curr_positive && armed {
+            bin_crossings += 1;
+            bin_armed = true;
+        }
         prev_positive = curr_positive;
 
         // End of bin?
@@ -165,7 +169,12 @@ pub fn zc_rate_per_bin(
     bins
 }
 
-pub(crate) fn cascaded_lp(samples: &[f32], cutoff: f64, sample_rate: u32, passes: usize) -> Vec<f32> {
+pub(crate) fn cascaded_lp(
+    samples: &[f32],
+    cutoff: f64,
+    sample_rate: u32,
+    passes: usize,
+) -> Vec<f32> {
     let mut result = samples.to_vec();
     for _ in 0..passes {
         result = lowpass_filter(&result, cutoff, sample_rate);
@@ -231,7 +240,10 @@ mod tests {
             .collect();
         let output = zc_divide(&input, sr, 8, false);
         let peak = output.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
-        assert!(peak > 0.001, "Quiet bat calls should still produce clicks, peak={peak}");
+        assert!(
+            peak > 0.001,
+            "Quiet bat calls should still produce clicks, peak={peak}"
+        );
     }
 
     #[test]

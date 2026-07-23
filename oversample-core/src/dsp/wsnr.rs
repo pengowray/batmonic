@@ -73,7 +73,10 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
             grade: WsnrGrade::E,
             signal_db: f64::NEG_INFINITY,
             noise_db: 0.0,
-            fade: FadeInfo { fade_in_secs: 0.0, fade_out_secs: 0.0 },
+            fade: FadeInfo {
+                fade_in_secs: 0.0,
+                fade_out_secs: 0.0,
+            },
             is_clipped: false,
             clipping_samples: 0,
             is_ultrasonic: false,
@@ -86,13 +89,19 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
 
     // Guard: too low sample rate
     if sample_rate < 30000 {
-        warnings.push(format!("Sample rate too low for wSNR ({} Hz, need >= 30kHz)", sample_rate));
+        warnings.push(format!(
+            "Sample rate too low for wSNR ({} Hz, need >= 30kHz)",
+            sample_rate
+        ));
         return WsnrResult {
             snr_db: 0.0,
             grade: WsnrGrade::E,
             signal_db: f64::NEG_INFINITY,
             noise_db: 0.0,
-            fade: FadeInfo { fade_in_secs: 0.0, fade_out_secs: 0.0 },
+            fade: FadeInfo {
+                fade_in_secs: 0.0,
+                fade_out_secs: 0.0,
+            },
             is_clipped: false,
             clipping_samples: 0,
             is_ultrasonic: false,
@@ -106,7 +115,11 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
     // Step 1: Clipping detection
     let (is_clipped, clipping_samples, peak_amplitude) = detect_clipping(samples);
     if is_clipped {
-        warnings.push(format!("Recording clipped ({} samples at {:.1} dB)", clipping_samples, linear_to_db(peak_amplitude)));
+        warnings.push(format!(
+            "Recording clipped ({} samples at {:.1} dB)",
+            clipping_samples,
+            linear_to_db(peak_amplitude)
+        ));
     }
 
     // Step 2: Ultrasonic content detection
@@ -124,7 +137,10 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
             grade: WsnrGrade::E,
             signal_db: f64::NEG_INFINITY,
             noise_db: 0.0,
-            fade: FadeInfo { fade_in_secs: 0.0, fade_out_secs: 0.0 },
+            fade: FadeInfo {
+                fade_in_secs: 0.0,
+                fade_out_secs: 0.0,
+            },
             is_clipped,
             clipping_samples,
             is_ultrasonic,
@@ -146,8 +162,16 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
     let (fade_in_secs, fade_out_secs) = detect_fades(&hp_samples, sample_rate);
 
     // Use the larger of fade vs transient exclusion (as the plugin does)
-    let start_exclude = if start_transient { fade_in_secs.max(0.2) } else { fade_in_secs };
-    let end_exclude = if end_transient { fade_out_secs.max(0.7) } else { fade_out_secs };
+    let start_exclude = if start_transient {
+        fade_in_secs.max(0.2)
+    } else {
+        fade_in_secs
+    };
+    let end_exclude = if end_transient {
+        fade_out_secs.max(0.7)
+    } else {
+        fade_out_secs
+    };
 
     if start_transient && start_exclude <= 0.2 {
         warnings.push("Start transient removed (0.2s)".into());
@@ -156,15 +180,23 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
         warnings.push("End transient removed (0.7s)".into());
     }
     if fade_in_secs > 0.0 {
-        warnings.push(format!("Fade-in detected and excluded ({:.1}s)", start_exclude));
+        warnings.push(format!(
+            "Fade-in detected and excluded ({:.1}s)",
+            start_exclude
+        ));
     }
     if fade_out_secs > 0.0 {
-        warnings.push(format!("Fade-out detected and excluded ({:.1}s)", end_exclude));
+        warnings.push(format!(
+            "Fade-out detected and excluded ({:.1}s)",
+            end_exclude
+        ));
     }
 
     // Step 7: Extract analysis region
     let start_sample = (start_exclude * sample_rate as f64) as usize;
-    let end_sample = samples.len().saturating_sub((end_exclude * sample_rate as f64) as usize);
+    let end_sample = samples
+        .len()
+        .saturating_sub((end_exclude * sample_rate as f64) as usize);
 
     if end_sample <= start_sample + (sample_rate as usize / 10) {
         warnings.push("Usable region too short after fade/transient removal".into());
@@ -173,7 +205,10 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
             grade: WsnrGrade::E,
             signal_db: f64::NEG_INFINITY,
             noise_db: 0.0,
-            fade: FadeInfo { fade_in_secs, fade_out_secs },
+            fade: FadeInfo {
+                fade_in_secs,
+                fade_out_secs,
+            },
             is_clipped,
             clipping_samples,
             is_ultrasonic,
@@ -193,7 +228,12 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
     let (noise_db, has_silent_gaps) = noise_floor_db(&itu_filtered, noise_window);
 
     // Step 9: ISO 226 @ 80 phon signal measurement
-    let iso_filtered = apply_weighting(analysis_region, sample_rate, iso_226_80phon_gain, sample_rate);
+    let iso_filtered = apply_weighting(
+        analysis_region,
+        sample_rate,
+        iso_226_80phon_gain,
+        sample_rate,
+    );
     let signal_db = peak_amplitude_db(&iso_filtered);
 
     // Step 10: Dense soundscape detection
@@ -212,13 +252,15 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
     if has_silent_gaps {
         warnings.push(
             "Silent gaps detected \u{2014} noise floor estimated from active audio only; \
-             SNR may be overestimated in files with very low ITU-band noise".into()
+             SNR may be overestimated in files with very low ITU-band noise"
+                .into(),
         );
     }
     if is_ultrasonic && grade == WsnrGrade::A {
         warnings.push(
             "A grade reflects low audible-band noise (expected for ultrasonic equipment); \
-             does not assess bat call quality".into()
+             does not assess bat call quality"
+                .into(),
         );
     }
 
@@ -227,7 +269,10 @@ pub fn analyze_wsnr(samples: &[f32], sample_rate: u32) -> WsnrResult {
         grade,
         signal_db,
         noise_db,
-        fade: FadeInfo { fade_in_secs, fade_out_secs },
+        fade: FadeInfo {
+            fade_in_secs,
+            fade_out_secs,
+        },
         is_clipped,
         clipping_samples,
         is_ultrasonic,
@@ -280,7 +325,9 @@ fn detect_ultrasonic(samples: &[f32], sample_rate: u32) -> (bool, Option<String>
     let fft = planner.plan_fft_forward(fft_size);
 
     let window: Vec<f32> = (0..fft_size)
-        .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (fft_size - 1) as f32).cos()))
+        .map(|i| {
+            0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (fft_size - 1) as f32).cos())
+        })
         .collect();
 
     let mid = samples.len() / 2;
@@ -371,7 +418,10 @@ fn detect_end_transient(samples: &[f32], sample_rate: u32) -> bool {
 fn peak_in_range(samples: &[f32], start: usize, end: usize) -> f32 {
     let end = end.min(samples.len());
     let start = start.min(end);
-    samples[start..end].iter().map(|s| s.abs()).fold(0.0f32, f32::max)
+    samples[start..end]
+        .iter()
+        .map(|s| s.abs())
+        .fold(0.0f32, f32::max)
 }
 
 // ---------------------------------------------------------------------------
@@ -439,11 +489,7 @@ fn detect_fades(hp_samples: &[f32], sample_rate: u32) -> (f64, f64) {
 
     // Check if the very first 0-0.1s slice is more than 10dB below middle
     // If not, there's no fade (matches the plugin's initial guard)
-    let first_slice_rms = rms_of_range(
-        hp_samples,
-        0,
-        (0.1 * sample_rate as f64) as usize,
-    );
+    let first_slice_rms = rms_of_range(hp_samples, 0, (0.1 * sample_rate as f64) as usize);
 
     let fade_in = if first_slice_rms - mid_rms_db > -10.0 {
         0.0
@@ -453,15 +499,23 @@ fn detect_fades(hp_samples: &[f32], sample_rate: u32) -> (f64, f64) {
             if duration < min_dur {
                 break;
             }
-            let prev_t = t - checkpoints.iter().find(|&&(ct, _)| ct == t).map(|_| {
-                // Get the slice: from prev checkpoint to this one
-                // But for simplicity, just measure from (t - slice_width) to t
-                0.0
-            }).unwrap_or(0.0);
+            let prev_t = t - checkpoints
+                .iter()
+                .find(|&&(ct, _)| ct == t)
+                .map(|_| {
+                    // Get the slice: from prev checkpoint to this one
+                    // But for simplicity, just measure from (t - slice_width) to t
+                    0.0
+                })
+                .unwrap_or(0.0);
             let _ = prev_t; // not needed with the simpler approach below
-            // Measure RMS in a slice around this checkpoint from the start
+                            // Measure RMS in a slice around this checkpoint from the start
             let slice_end = (t * sample_rate as f64) as usize;
-            let slice_start = if t >= 0.1 { ((t - 0.1) * sample_rate as f64) as usize } else { 0 };
+            let slice_start = if t >= 0.1 {
+                ((t - 0.1) * sample_rate as f64) as usize
+            } else {
+                0
+            };
             if slice_end >= hp_samples.len() {
                 break;
             }
@@ -476,7 +530,9 @@ fn detect_fades(hp_samples: &[f32], sample_rate: u32) -> (f64, f64) {
     // Same for fade-out (from end)
     let last_slice_rms = rms_of_range(
         hp_samples,
-        hp_samples.len().saturating_sub((0.1 * sample_rate as f64) as usize),
+        hp_samples
+            .len()
+            .saturating_sub((0.1 * sample_rate as f64) as usize),
         hp_samples.len(),
     );
 
@@ -488,8 +544,12 @@ fn detect_fades(hp_samples: &[f32], sample_rate: u32) -> (f64, f64) {
             if duration < min_dur {
                 break;
             }
-            let from_end = hp_samples.len().saturating_sub((t * sample_rate as f64) as usize);
-            let slice_to = hp_samples.len().saturating_sub(((t - 0.1) * sample_rate as f64) as usize);
+            let from_end = hp_samples
+                .len()
+                .saturating_sub((t * sample_rate as f64) as usize);
+            let slice_to = hp_samples
+                .len()
+                .saturating_sub(((t - 0.1) * sample_rate as f64) as usize);
             if from_end >= slice_to || from_end >= hp_samples.len() {
                 break;
             }
@@ -512,7 +572,10 @@ fn rms_of_range(samples: &[f32], start: usize, end: usize) -> f64 {
     if count == 0 {
         return -120.0;
     }
-    let sum_sq: f64 = samples[start..end].iter().map(|&s| (s as f64) * (s as f64)).sum();
+    let sum_sq: f64 = samples[start..end]
+        .iter()
+        .map(|&s| (s as f64) * (s as f64))
+        .sum();
     let rms = (sum_sq / count as f64).sqrt();
     linear_to_db(rms as f32)
 }
@@ -563,7 +626,9 @@ fn apply_weighting(
     let len = samples.len();
 
     let window: Vec<f32> = (0..fft_size)
-        .map(|i| 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (fft_size - 1) as f32).cos()))
+        .map(|i| {
+            0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (fft_size - 1) as f32).cos())
+        })
         .collect();
 
     // Build per-bin gain table
@@ -593,7 +658,9 @@ fn apply_weighting(
         }
 
         let mut spectrum = fft_fwd.make_output_vec();
-        fft_fwd.process(&mut frame, &mut spectrum).expect("FFT forward failed");
+        fft_fwd
+            .process(&mut frame, &mut spectrum)
+            .expect("FFT forward failed");
 
         for (bin, gain) in gains.iter().enumerate() {
             if bin < spectrum.len() {
@@ -602,7 +669,9 @@ fn apply_weighting(
         }
 
         let mut time_out = fft_inv.make_output_vec();
-        fft_inv.process(&mut spectrum, &mut time_out).expect("FFT inverse failed");
+        fft_inv
+            .process(&mut spectrum, &mut time_out)
+            .expect("FFT inverse failed");
 
         let norm = 1.0 / fft_size as f32;
 
@@ -791,7 +860,11 @@ fn noise_floor_db(samples: &[f32], window_size: usize) -> (f64, bool) {
             // (e.g. ultrasonic recording with nothing in audible ITU band).
             // Fall back to absolute minimum; has_silent_gaps is false because
             // there are no "gaps between calls", just uniform silence in this band.
-            let fallback = if min_all_rms < f64::MAX { min_all_rms } else { 0.0 };
+            let fallback = if min_all_rms < f64::MAX {
+                min_all_rms
+            } else {
+                0.0
+            };
             (linear_to_db(fallback as f32), false)
         }
     }
@@ -821,7 +894,10 @@ fn detect_dense_soundscape(itu_filtered: &[f32], noise_db: f64) -> (bool, f64) {
     let mut total_windows = 0usize;
     let threshold_db = noise_db + 3.0;
 
-    let mut sum_sq: f64 = itu_filtered[..ws].iter().map(|&s| (s as f64) * (s as f64)).sum();
+    let mut sum_sq: f64 = itu_filtered[..ws]
+        .iter()
+        .map(|&s| (s as f64) * (s as f64))
+        .sum();
 
     let check = |sum: f64| -> bool {
         let rms = (sum.max(0.0) / ws as f64).sqrt();
@@ -837,7 +913,10 @@ fn detect_dense_soundscape(itu_filtered: &[f32], noise_db: f64) -> (bool, f64) {
     let step = ws;
     let mut pos = ws;
     while pos + ws <= itu_filtered.len() {
-        sum_sq = itu_filtered[pos..pos + ws].iter().map(|&s| (s as f64) * (s as f64)).sum();
+        sum_sq = itu_filtered[pos..pos + ws]
+            .iter()
+            .map(|&s| (s as f64) * (s as f64))
+            .sum();
         if check(sum_sq) {
             count_near_floor += 1;
         }
@@ -886,7 +965,13 @@ mod tests {
 
     #[test]
     fn grade_labels_round_trip() {
-        for (db, expected) in [(60.0, "A"), (40.0, "B"), (25.0, "C"), (10.0, "D"), (0.0, "E")] {
+        for (db, expected) in [
+            (60.0, "A"),
+            (40.0, "B"),
+            (25.0, "C"),
+            (10.0, "D"),
+            (0.0, "E"),
+        ] {
             assert_eq!(WsnrGrade::from_snr(db).label(), expected);
         }
     }

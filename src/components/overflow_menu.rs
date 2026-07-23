@@ -1,16 +1,17 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use crate::state::{ActiveFocus, AppState, Selection};
-use crate::annotations::{Annotation, AnnotationKind, AnnotationSet, Marker, Region, generate_default_label, AnnotationId, now_iso8601};
-use crate::canvas::spectrogram_renderer::freq_to_y;
-use crate::components::file_sidebar::settings_panel::{
-    toggle_annotation_lock, delete_annotation,
+use crate::annotations::{
+    generate_default_label, now_iso8601, Annotation, AnnotationId, AnnotationKind, AnnotationSet,
+    Marker, Region,
 };
+use crate::canvas::spectrogram_renderer::freq_to_y;
+use crate::components::file_sidebar::settings_panel::{delete_annotation, toggle_annotation_lock};
+use crate::state::store_fields::*;
+use crate::state::{ActiveFocus, AppState, Selection};
+use leptos::prelude::*;
 
 // Icons for the expand/contract freq buttons.
 // Expand = "remove frequency bounds" (treat as full range).
 // Contract = "snap frequency to current view/focus".
-const ICON_EXPAND: &str = "\u{26F6}";   // ⛶ square four corners — full range / remove bounds
+const ICON_EXPAND: &str = "\u{26F6}"; // ⛶ square four corners — full range / remove bounds
 const ICON_CONTRACT: &str = "\u{25AD}"; // ▭ white rectangle — snap to current view
 
 /// Creates an annotation from the current transient selection and enters label-edit mode.
@@ -19,16 +20,28 @@ pub fn annotate_selection(state: &AppState) {
     let file_idx = state.library.current_index().get_untracked();
     if let (Some(sel), Some(idx)) = (selection, file_idx) {
         let has_freq = sel.freq_low.is_some() && sel.freq_high.is_some();
-        let Some(file_id) = state.file_id_at(idx) else { return; };
+        let Some(file_id) = state.file_id_at(idx) else {
+            return;
+        };
         let new_set = state.library.files().with_untracked(|files| {
             files.get(idx).map(|f| {
                 let id = f.identity.clone().unwrap_or_else(|| {
-                    crate::file_identity::identity_layer1(&f.name, f.audio.metadata.file_size as u64)
+                    crate::file_identity::identity_layer1(
+                        &f.name,
+                        f.audio.metadata.file_size as u64,
+                    )
                 });
-                AnnotationSet::new_with_metadata(id, &f.audio, f.cached_peak_db, f.cached_full_peak_db)
+                AnnotationSet::new_with_metadata(
+                    id,
+                    &f.audio,
+                    f.cached_peak_db,
+                    f.cached_full_peak_db,
+                )
             })
         });
-        let Some(new_set) = new_set else { return; };
+        let Some(new_set) = new_set else {
+            return;
+        };
         state.snapshot_annotations();
         let ann_id = AnnotationId::new();
         state.annotations.store().update(|store| {
@@ -64,25 +77,39 @@ pub fn annotate_selection(state: &AppState) {
         state.annotations.visible().set(true);
         state.interaction.selection().set(None);
         state.annotations.selected_ids().set(vec![ann_id]);
-        state.interaction.active_focus().set(Some(ActiveFocus::Annotations));
+        state
+            .interaction
+            .active_focus()
+            .set(Some(ActiveFocus::Annotations));
         // Auto-enter label editing for the new annotation (floating editor)
         state.annotations.editing().set(true);
         state.annotations.is_new_edit().set(true);
-        state.show_info_toast(if has_freq { "Region annotated" } else { "Segment annotated" });
+        state.show_info_toast(if has_freq {
+            "Region annotated"
+        } else {
+            "Segment annotated"
+        });
     }
 }
 
 /// Drop an annotation marker at the given time on the current file, open label
 /// edit. Called from the keyboard shortcut (M) and the overflow menu.
 pub fn add_marker_at_time(state: &AppState, time: f64) {
-    let Some(idx) = state.library.current_index().get_untracked() else { return; };
-    let duration = state.library.files().with_untracked(|files| {
-        files.get(idx).map(|f| f.audio.duration_secs).unwrap_or(0.0)
-    });
-    if duration <= 0.0 { return; }
+    let Some(idx) = state.library.current_index().get_untracked() else {
+        return;
+    };
+    let duration = state
+        .library
+        .files()
+        .with_untracked(|files| files.get(idx).map(|f| f.audio.duration_secs).unwrap_or(0.0));
+    if duration <= 0.0 {
+        return;
+    }
     let time = time.clamp(0.0, duration);
 
-    let Some(file_id) = state.file_id_at(idx) else { return; };
+    let Some(file_id) = state.file_id_at(idx) else {
+        return;
+    };
     let new_set = state.library.files().with_untracked(|files| {
         files.get(idx).map(|f| {
             let id = f.identity.clone().unwrap_or_else(|| {
@@ -91,7 +118,9 @@ pub fn add_marker_at_time(state: &AppState, time: f64) {
             AnnotationSet::new_with_metadata(id, &f.audio, f.cached_peak_db, f.cached_full_peak_db)
         })
     });
-    let Some(new_set) = new_set else { return; };
+    let Some(new_set) = new_set else {
+        return;
+    };
     state.snapshot_annotations();
     let ann_id = AnnotationId::new();
     state.annotations.store().update(|store| {
@@ -122,7 +151,10 @@ pub fn add_marker_at_time(state: &AppState, time: f64) {
     state.annotations.dirty().set(true);
     state.annotations.visible().set(true);
     state.annotations.selected_ids().set(vec![ann_id]);
-    state.interaction.active_focus().set(Some(ActiveFocus::Annotations));
+    state
+        .interaction
+        .active_focus()
+        .set(Some(ActiveFocus::Annotations));
     state.annotations.editing().set(true);
     state.annotations.is_new_edit().set(true);
     state.show_info_toast("Marker added");
@@ -130,16 +162,27 @@ pub fn add_marker_at_time(state: &AppState, time: f64) {
 
 /// Get frequency bounds from focus stack or display range.
 fn get_freq_bounds(state: &AppState) -> (f64, f64) {
-    let ff = state.viewmode.focus_stack().get_untracked().effective_range_ignoring_hfr();
+    let ff = state
+        .viewmode
+        .focus_stack()
+        .get_untracked()
+        .effective_range_ignoring_hfr();
     if ff.is_active() {
         (ff.lo, ff.hi)
     } else {
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked().unwrap_or(0);
-        let file_max = files.get(idx).map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
+        let file_max = files
+            .get(idx)
+            .map(|f| f.spectrogram.max_freq)
+            .unwrap_or(96_000.0);
         (
             state.view.min_display_freq().get_untracked().unwrap_or(0.0),
-            state.view.max_display_freq().get_untracked().unwrap_or(file_max),
+            state
+                .view
+                .max_display_freq()
+                .get_untracked()
+                .unwrap_or(file_max),
         )
     }
 }
@@ -196,8 +239,16 @@ fn selection_top_left(
     max_freq: f64,
 ) -> Option<(f64, f64)> {
     corner_top_left(
-        sel.time_start, sel.time_end, sel.freq_high,
-        scroll_offset, time_resolution, zoom, canvas_width, canvas_height, min_freq, max_freq,
+        sel.time_start,
+        sel.time_end,
+        sel.freq_high,
+        scroll_offset,
+        time_resolution,
+        zoom,
+        canvas_width,
+        canvas_height,
+        min_freq,
+        max_freq,
     )
 }
 
@@ -215,8 +266,16 @@ fn annotation_top_left(
     max_freq: f64,
 ) -> Option<(f64, f64)> {
     corner_top_left(
-        time_start, time_end, freq_high,
-        scroll_offset, time_resolution, zoom, canvas_width, canvas_height, min_freq, max_freq,
+        time_start,
+        time_end,
+        freq_high,
+        scroll_offset,
+        time_resolution,
+        zoom,
+        canvas_width,
+        canvas_height,
+        min_freq,
+        max_freq,
     )
 }
 
@@ -339,7 +398,11 @@ fn SelectionOverflowMenu() -> impl IntoView {
 
         let canvas_h = web_sys::window()
             .and_then(|w| w.document())
-            .and_then(|d| d.query_selector(".spectrogram-container canvas").ok().flatten())
+            .and_then(|d| {
+                d.query_selector(".spectrogram-container canvas")
+                    .ok()
+                    .flatten()
+            })
             .map(|el| el.get_bounding_client_rect().height())
             .unwrap_or(400.0);
 
@@ -351,7 +414,9 @@ fn SelectionOverflowMenu() -> impl IntoView {
     let sel_details = Signal::derive(move || {
         let sel = state.interaction.selection().get()?;
         let d = sel.time_end - sel.time_start;
-        if d < 0.0001 { return None; }
+        if d < 0.0001 {
+            return None;
+        }
         let dur = crate::format_time::format_duration(d, 3);
         let freq_text = match (sel.freq_low, sel.freq_high) {
             (Some(fl), Some(fh)) => format!("{:.0} \u{2013} {:.0} kHz", fl / 1000.0, fh / 1000.0),
@@ -362,22 +427,38 @@ fn SelectionOverflowMenu() -> impl IntoView {
     });
 
     let has_freq_sig = Signal::derive(move || {
-        state.interaction.selection().get().is_some_and(|s| s.freq_low.is_some() && s.freq_high.is_some())
+        state
+            .interaction
+            .selection()
+            .get()
+            .is_some_and(|s| s.freq_low.is_some() && s.freq_high.is_some())
     });
 
     let freq_text_sig = Signal::derive(move || {
-        state.interaction.selection().get()
+        state
+            .interaction
+            .selection()
+            .get()
             .and_then(|s| match (s.freq_low, s.freq_high) {
-                (Some(fl), Some(fh)) => Some(format!("{:.0} \u{2013} {:.0} kHz", fl / 1000.0, fh / 1000.0)),
+                (Some(fl), Some(fh)) => Some(format!(
+                    "{:.0} \u{2013} {:.0} kHz",
+                    fl / 1000.0,
+                    fh / 1000.0
+                )),
                 _ => None,
             })
             .unwrap_or_else(|| "\u{2014}".to_string())
     });
 
     let matches_view_sig = Signal::derive(move || {
-        let sel = match state.interaction.selection().get() { Some(s) => s, None => return false };
+        let sel = match state.interaction.selection().get() {
+            Some(s) => s,
+            None => return false,
+        };
         let (tlo, thi) = get_freq_bounds(&state);
-        if thi <= tlo { return false; }
+        if thi <= tlo {
+            return false;
+        }
         match (sel.freq_low, sel.freq_high) {
             (Some(sl), Some(sh)) => (sl - tlo).abs() < 1.0 && (sh - thi).abs() < 1.0,
             _ => false,
@@ -386,7 +467,11 @@ fn SelectionOverflowMenu() -> impl IntoView {
 
     let contract_target_sig = Signal::derive(move || {
         let (lo, hi) = get_freq_bounds(&state);
-        if hi > lo { fmt_freq_range(lo, hi) } else { String::new() }
+        if hi > lo {
+            fmt_freq_range(lo, hi)
+        } else {
+            String::new()
+        }
     });
 
     let on_expand = Callback::new(move |_: ()| {
@@ -496,7 +581,9 @@ fn AnnotationOverflowMenu() -> impl IntoView {
     // Reactive position: top-right corner of first selected annotation
     let pos = Signal::derive(move || {
         let ids = state.annotations.selected_ids().get();
-        if ids.is_empty() { return None; }
+        if ids.is_empty() {
+            return None;
+        }
         let idx = state.library.current_index().get()?;
         let file_id = state.current_file_id_tracked()?;
         let store = state.annotations.store().get();
@@ -521,20 +608,34 @@ fn AnnotationOverflowMenu() -> impl IntoView {
 
         let canvas_h = web_sys::window()
             .and_then(|w| w.document())
-            .and_then(|d| d.query_selector(".spectrogram-container canvas").ok().flatten())
+            .and_then(|d| {
+                d.query_selector(".spectrogram-container canvas")
+                    .ok()
+                    .flatten()
+            })
             .map(|el| el.get_bounding_client_rect().height())
             .unwrap_or(400.0);
 
         annotation_top_left(
-            region.time_start, region.time_end, region.freq_high,
-            scroll, time_res, zoom, canvas_w, canvas_h, min_freq, max_freq,
+            region.time_start,
+            region.time_end,
+            region.freq_high,
+            scroll,
+            time_res,
+            zoom,
+            canvas_w,
+            canvas_h,
+            min_freq,
+            max_freq,
         )
     });
 
     // Get annotation info for display
     let ann_info = Signal::derive(move || {
         let ids = state.annotations.selected_ids().get();
-        if ids.len() != 1 { return None; }
+        if ids.len() != 1 {
+            return None;
+        }
         let file_id = state.current_file_id_tracked()?;
         let store = state.annotations.store().get();
         let set = store.get(file_id)?;
@@ -543,9 +644,15 @@ fn AnnotationOverflowMenu() -> impl IntoView {
         match &ann.kind {
             AnnotationKind::Region(r) => {
                 let d = r.time_end - r.time_start;
-                let dur = if d > 0.0001 { Some(crate::format_time::format_duration(d, 3)) } else { None };
+                let dur = if d > 0.0001 {
+                    Some(crate::format_time::format_duration(d, 3))
+                } else {
+                    None
+                };
                 let freq_text = match (r.freq_low, r.freq_high) {
-                    (Some(fl), Some(fh)) => format!("{:.0} \u{2013} {:.0} kHz", fl / 1000.0, fh / 1000.0),
+                    (Some(fl), Some(fh)) => {
+                        format!("{:.0} \u{2013} {:.0} kHz", fl / 1000.0, fh / 1000.0)
+                    }
                     _ => "\u{2014}".to_string(),
                 };
                 let has_freq = r.freq_low.is_some() && r.freq_high.is_some();
@@ -561,27 +668,54 @@ fn AnnotationOverflowMenu() -> impl IntoView {
                     has_freq,
                 ))
             }
-            _ => Some((ann.id.clone(), None, false, false, is_default, ann.tags.clone(), None, "\u{2014}".to_string(), false)),
+            _ => Some((
+                ann.id.clone(),
+                None,
+                false,
+                false,
+                is_default,
+                ann.tags.clone(),
+                None,
+                "\u{2014}".to_string(),
+                false,
+            )),
         }
     });
 
-    let has_freq_sig = Signal::derive(move || {
-        ann_info.get().is_some_and(|info| info.8)
-    });
+    let has_freq_sig = Signal::derive(move || ann_info.get().is_some_and(|info| info.8));
     let freq_text_sig = Signal::derive(move || {
-        ann_info.get().map(|info| info.7).unwrap_or_else(|| "\u{2014}".to_string())
+        ann_info
+            .get()
+            .map(|info| info.7)
+            .unwrap_or_else(|| "\u{2014}".to_string())
     });
 
     let matches_view_sig = Signal::derive(move || {
-        let info = match ann_info.get() { Some(i) => i, None => return false };
-        if !info.8 { return false; }
+        let info = match ann_info.get() {
+            Some(i) => i,
+            None => return false,
+        };
+        if !info.8 {
+            return false;
+        }
         let (tlo, thi) = get_freq_bounds(&state);
-        if thi <= tlo { return false; }
+        if thi <= tlo {
+            return false;
+        }
         // Re-read annotation freq
-        let file_id = match state.current_file_id() { Some(i) => i, None => return false };
+        let file_id = match state.current_file_id() {
+            Some(i) => i,
+            None => return false,
+        };
         let store = state.annotations.store().get_untracked();
-        let set = match store.get(file_id) { Some(s) => s, None => return false };
-        let ann = match set.annotations.iter().find(|a| a.id == info.0) { Some(a) => a, None => return false };
+        let set = match store.get(file_id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let ann = match set.annotations.iter().find(|a| a.id == info.0) {
+            Some(a) => a,
+            None => return false,
+        };
         if let AnnotationKind::Region(r) = &ann.kind {
             if let (Some(fl), Some(fh)) = (r.freq_low, r.freq_high) {
                 return (fl - tlo).abs() < 1.0 && (fh - thi).abs() < 1.0;
@@ -592,13 +726,22 @@ fn AnnotationOverflowMenu() -> impl IntoView {
 
     let contract_target_sig = Signal::derive(move || {
         let (lo, hi) = get_freq_bounds(&state);
-        if hi > lo { fmt_freq_range(lo, hi) } else { String::new() }
+        if hi > lo {
+            fmt_freq_range(lo, hi)
+        } else {
+            String::new()
+        }
     });
 
     let on_expand = Callback::new(move |_: ()| {
         let ids = state.annotations.selected_ids().get_untracked();
-        let file_id = match state.current_file_id() { Some(i) => i, None => return };
-        if ids.is_empty() { return; }
+        let file_id = match state.current_file_id() {
+            Some(i) => i,
+            None => return,
+        };
+        if ids.is_empty() {
+            return;
+        }
         state.snapshot_annotations();
         state.annotations.store().update(|store| {
             if let Some(set) = store.get_mut(file_id) {
@@ -618,10 +761,17 @@ fn AnnotationOverflowMenu() -> impl IntoView {
 
     let on_contract = Callback::new(move |_: ()| {
         let ids = state.annotations.selected_ids().get_untracked();
-        let file_id = match state.current_file_id() { Some(i) => i, None => return };
-        if ids.is_empty() { return; }
+        let file_id = match state.current_file_id() {
+            Some(i) => i,
+            None => return,
+        };
+        if ids.is_empty() {
+            return;
+        }
         let (lo, hi) = get_freq_bounds(&state);
-        if hi <= lo { return; }
+        if hi <= lo {
+            return;
+        }
         state.snapshot_annotations();
         state.annotations.store().update(|store| {
             if let Some(set) = store.get_mut(file_id) {
@@ -759,4 +909,3 @@ fn AnnotationOverflowMenu() -> impl IntoView {
         }}
     }
 }
-

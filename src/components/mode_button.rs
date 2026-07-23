@@ -17,11 +17,14 @@
 // live in this component because they're playback-mode-coupled. They
 // were previously inside `ModeButton`.
 
-use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::components::popup::{Align, PopupPanel, Side};
-use crate::state::{AppState, BandpassMode, BandpassRange, FilterQuality, LayerPanel, PlaybackMode, SpectrogramHandle};
 use crate::dsp::pitch_shift::PitchFactor;
+use crate::state::store_fields::*;
+use crate::state::{
+    AppState, BandpassMode, BandpassRange, FilterQuality, LayerPanel, PlaybackMode,
+    SpectrogramHandle,
+};
+use leptos::prelude::*;
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {
     state.panels.layer_panel_open().update(|p| {
@@ -33,7 +36,9 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
 /// Prefers 8x, then other 2^n, then 10, then best integer, then exact ratio.
 fn smart_auto_factor(band_ff_lo: f64, band_ff_hi: f64, max_factor: f64) -> f64 {
     let band_ff_center = (band_ff_lo + band_ff_hi) / 2.0;
-    if band_ff_center <= 0.0 { return 10.0; }
+    if band_ff_center <= 0.0 {
+        return 10.0;
+    }
 
     let target = 3000.0;
     let shifting_down = band_ff_center > target;
@@ -48,11 +53,15 @@ fn smart_auto_factor(band_ff_lo: f64, band_ff_hi: f64, max_factor: f64) -> f64 {
         };
 
         for &f in preferred {
-            if f <= max_factor && comfortable(f) { return f; }
+            if f <= max_factor && comfortable(f) {
+                return f;
+            }
         }
 
         let best_int = ideal.round().clamp(2.0, max_factor);
-        if comfortable(best_int) { return best_int; }
+        if comfortable(best_int) {
+            return best_int;
+        }
         ideal.clamp(2.0, max_factor)
     } else {
         let ideal = target / band_ff_center;
@@ -63,20 +72,28 @@ fn smart_auto_factor(band_ff_lo: f64, band_ff_hi: f64, max_factor: f64) -> f64 {
         };
 
         for &f in preferred {
-            if f <= max_factor && comfortable(f) { return -f; }
+            if f <= max_factor && comfortable(f) {
+                return -f;
+            }
         }
 
         let best_int = ideal.round().clamp(2.0, max_factor);
-        if comfortable(best_int) { return -best_int; }
+        if comfortable(best_int) {
+            return -best_int;
+        }
 
         -(ideal.clamp(2.0, max_factor))
     }
 }
 
 pub(crate) fn output_freq(input: f64, factor: f64) -> f64 {
-    if factor > 0.0 { input / factor }
-    else if factor < 0.0 { input * factor.abs() }
-    else { input }
+    if factor > 0.0 {
+        input / factor
+    } else if factor < 0.0 {
+        input * factor.abs()
+    } else {
+        input
+    }
 }
 
 pub(crate) fn format_freq_khz(f: f64) -> String {
@@ -192,18 +209,15 @@ pub fn ModeRadioGroup() -> impl IntoView {
                 let files = state.library.files().get();
                 let idx = state.library.current_index().get();
                 let file = idx.and_then(|i| files.get(i));
-                let nyquist = file
-                    .map(|f| f.spectrogram.max_freq)
-                    .unwrap_or(96_000.0);
+                let nyquist = file.map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
 
                 let species_range = file.and_then(|f| {
                     use crate::bat_book::auto_resolve;
                     let favourites = state.bat_book.favourites().get_untracked();
                     let resolved = auto_resolve::resolve_auto(Some(f), &favourites);
                     let species_id = resolved.matched_species_id?;
-                    let entry = auto_resolve::find_entry_in_manifest(
-                        resolved.region, &species_id,
-                    ).or_else(|| auto_resolve::find_entry_any_book(&species_id))?;
+                    let entry = auto_resolve::find_entry_in_manifest(resolved.region, &species_id)
+                        .or_else(|| auto_resolve::find_entry_any_book(&species_id))?;
                     if entry.freq_lo_hz > 0.0 && entry.freq_hi_hz > entry.freq_lo_hz {
                         Some((entry.freq_lo_hz, entry.freq_hi_hz.min(nyquist)))
                     } else {
@@ -253,11 +267,17 @@ pub fn ModeRadioGroup() -> impl IntoView {
         }
         if state.transform.ps_factor_auto().get_untracked() {
             let ps = smart_auto_factor(band_ff_lo, band_ff_hi, 20.0);
-            state.transform.ps_factor().set(PitchFactor::from_signed(ps));
+            state
+                .transform
+                .ps_factor()
+                .set(PitchFactor::from_signed(ps));
         }
         if state.transform.pv_factor_auto().get_untracked() {
             let pv = smart_auto_factor(band_ff_lo, band_ff_hi, 20.0);
-            state.transform.pv_factor().set(PitchFactor::from_signed(pv));
+            state
+                .transform
+                .pv_factor()
+                .set(PitchFactor::from_signed(pv));
         }
     });
 
@@ -291,28 +311,66 @@ pub fn ModeRadioGroup() -> impl IntoView {
         Effect::new(move || {
             let mode = state.playback.mode().get();
             let old = prev_mode.get_untracked();
-            if mode == old { return; }
+            if mode == old {
+                return;
+            }
             prev_mode.set(mode);
 
             let was_zc = old == PlaybackMode::ZeroCrossing;
             let is_zc = mode == PlaybackMode::ZeroCrossing;
 
             if was_zc && !is_zc {
-                state.display.zc_saved_auto_gain().set(state.display.auto_gain().get_untracked());
-                state.display.zc_saved_eq().set(state.display.eq().get_untracked());
-                state.display.zc_saved_noise_filter().set(state.display.noise_filter().get_untracked());
+                state
+                    .display
+                    .zc_saved_auto_gain()
+                    .set(state.display.auto_gain().get_untracked());
+                state
+                    .display
+                    .zc_saved_eq()
+                    .set(state.display.eq().get_untracked());
+                state
+                    .display
+                    .zc_saved_noise_filter()
+                    .set(state.display.noise_filter().get_untracked());
 
-                state.display.auto_gain().set(state.display.normal_saved_auto_gain().get_untracked());
-                state.display.eq().set(state.display.normal_saved_eq().get_untracked());
-                state.display.noise_filter().set(state.display.normal_saved_noise_filter().get_untracked());
+                state
+                    .display
+                    .auto_gain()
+                    .set(state.display.normal_saved_auto_gain().get_untracked());
+                state
+                    .display
+                    .eq()
+                    .set(state.display.normal_saved_eq().get_untracked());
+                state
+                    .display
+                    .noise_filter()
+                    .set(state.display.normal_saved_noise_filter().get_untracked());
             } else if !was_zc && is_zc {
-                state.display.normal_saved_auto_gain().set(state.display.auto_gain().get_untracked());
-                state.display.normal_saved_eq().set(state.display.eq().get_untracked());
-                state.display.normal_saved_noise_filter().set(state.display.noise_filter().get_untracked());
+                state
+                    .display
+                    .normal_saved_auto_gain()
+                    .set(state.display.auto_gain().get_untracked());
+                state
+                    .display
+                    .normal_saved_eq()
+                    .set(state.display.eq().get_untracked());
+                state
+                    .display
+                    .normal_saved_noise_filter()
+                    .set(state.display.noise_filter().get_untracked());
 
-                state.display.auto_gain().set(state.display.zc_saved_auto_gain().get_untracked());
-                state.display.eq().set(state.display.zc_saved_eq().get_untracked());
-                state.display.noise_filter().set(state.display.zc_saved_noise_filter().get_untracked());
+                state
+                    .display
+                    .auto_gain()
+                    .set(state.display.zc_saved_auto_gain().get_untracked());
+                state
+                    .display
+                    .eq()
+                    .set(state.display.zc_saved_eq().get_untracked());
+                state
+                    .display
+                    .noise_filter()
+                    .set(state.display.zc_saved_noise_filter().get_untracked());
             }
         });
     }
@@ -370,9 +428,13 @@ pub fn ModeRadioGroup() -> impl IntoView {
     });
 
     // ── Settings popup state ──
-    let settings_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::HfrMode));
-    let no_file = move || state.library.current_index().get().is_none() && state.timeline.active().get().is_none();
-    let muting = Signal::derive(move || state.mic.listening().get() && state.mic.mute_output().get());
+    let settings_open =
+        Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::HfrMode));
+    let no_file = move || {
+        state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
+    };
+    let muting =
+        Signal::derive(move || state.mic.listening().get() && state.mic.mute_output().get());
 
     let row_ref = NodeRef::<leptos::html::Div>::new();
 
@@ -380,13 +442,17 @@ pub fn ModeRadioGroup() -> impl IntoView {
     // active playback mode, plus any extras added via ctrl+click).
     let bucket_is_selected = move |bucket: ModeBucket| -> bool {
         let active = ModeBucket::from_mode(state.playback.mode().get());
-        if active == bucket { return true; }
+        if active == bucket {
+            return true;
+        }
         let extras = state.playback.modes_extra().get();
         extras.iter().any(|m| ModeBucket::from_mode(*m) == bucket)
     };
 
     let select_bucket = move |bucket: ModeBucket, multi: bool| {
-        if no_file() { return; }
+        if no_file() {
+            return;
+        }
         let active = ModeBucket::from_mode(state.playback.mode().get_untracked());
 
         if multi {
@@ -411,8 +477,12 @@ pub fn ModeRadioGroup() -> impl IntoView {
                 extras.push(bucket_mode);
                 // Selecting an HFR-requiring bucket turns HFR on so the
                 // mode is actually playable.
-                if bucket.needs_hfr() && !state.viewmode.focus_stack().get_untracked().hfr_enabled() {
-                    state.viewmode.focus_stack().update(|s| s.set_saved_playback_mode(Some(bucket_mode)));
+                if bucket.needs_hfr() && !state.viewmode.focus_stack().get_untracked().hfr_enabled()
+                {
+                    state
+                        .viewmode
+                        .focus_stack()
+                        .update(|s| s.set_saved_playback_mode(Some(bucket_mode)));
                     state.toggle_hfr();
                 }
             }
@@ -432,10 +502,16 @@ pub fn ModeRadioGroup() -> impl IntoView {
         // Plain click on a different bucket: replace the entire selection.
         let mode = bucket.default_mode();
         if bucket.needs_hfr() && !state.viewmode.focus_stack().get_untracked().hfr_enabled() {
-            state.viewmode.focus_stack().update(|s| s.set_saved_playback_mode(Some(mode)));
+            state
+                .viewmode
+                .focus_stack()
+                .update(|s| s.set_saved_playback_mode(Some(mode)));
             state.toggle_hfr();
         } else {
-            state.viewmode.focus_stack().update(|s| s.set_saved_playback_mode(Some(mode)));
+            state
+                .viewmode
+                .focus_stack()
+                .update(|s| s.set_saved_playback_mode(Some(mode)));
         }
         state.playback.mode().set(mode);
         // A plain click clears any extras the user had added; if they
@@ -496,7 +572,9 @@ pub fn ModeRadioGroup() -> impl IntoView {
             if bucket == ModeBucket::Normal && band_inaudible.get() {
                 s.push_str(" inaudible-warning");
             }
-            if no_file() { s.push_str(" disabled"); }
+            if no_file() {
+                s.push_str(" disabled");
+            }
             s
         });
         let dyn_title = Signal::derive(move || {
@@ -505,7 +583,10 @@ pub fn ModeRadioGroup() -> impl IntoView {
             } else {
                 title.to_string()
             };
-            format!("{}\n(Ctrl-click to add/remove from multi-play selection)", base)
+            format!(
+                "{}\n(Ctrl-click to add/remove from multi-play selection)",
+                base
+            )
         });
         view! {
             <button class=move || class_sig.get()
@@ -567,7 +648,10 @@ fn ModeSettingsBody() -> impl IntoView {
         if let Ok(val) = input.value().parse::<f64>() {
             state.transform.ps_factor_auto().set(false);
             state.playback.mode().set(PlaybackMode::PitchShift);
-            state.transform.ps_factor().set(PitchFactor::from_signed(val));
+            state
+                .transform
+                .ps_factor()
+                .set(PitchFactor::from_signed(val));
         }
     };
 
@@ -577,7 +661,10 @@ fn ModeSettingsBody() -> impl IntoView {
         if let Ok(val) = input.value().parse::<f64>() {
             state.transform.pv_factor_auto().set(false);
             state.playback.mode().set(PlaybackMode::PhaseVocoder);
-            state.transform.pv_factor().set(PitchFactor::from_signed(val));
+            state
+                .transform
+                .pv_factor()
+                .set(PitchFactor::from_signed(val));
         }
     };
 
@@ -604,7 +691,10 @@ fn ModeSettingsBody() -> impl IntoView {
         let input: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
         if let Some(val) = parse_factor_input(&input.value()) {
             state.transform.ps_factor_auto().set(false);
-            state.transform.ps_factor().set(PitchFactor::from_signed(val));
+            state
+                .transform
+                .ps_factor()
+                .set(PitchFactor::from_signed(val));
         }
     };
 
@@ -613,7 +703,10 @@ fn ModeSettingsBody() -> impl IntoView {
         let input: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
         if let Some(val) = parse_factor_input(&input.value()) {
             state.transform.pv_factor_auto().set(false);
-            state.transform.pv_factor().set(PitchFactor::from_signed(val));
+            state
+                .transform
+                .pv_factor()
+                .set(PitchFactor::from_signed(val));
         }
     };
 
@@ -662,7 +755,11 @@ fn ModeSettingsBody() -> impl IntoView {
             if band_ff_hi > band_ff_lo {
                 let out_lo = output_freq(band_ff_lo, f);
                 let out_hi = output_freq(band_ff_hi, f);
-                let (lo, hi) = if out_lo < out_hi { (out_lo, out_hi) } else { (out_hi, out_lo) };
+                let (lo, hi) = if out_lo < out_hi {
+                    (out_lo, out_hi)
+                } else {
+                    (out_hi, out_lo)
+                };
                 state.viewmode.output_freq_highlight().set(Some((lo, hi)));
             }
         }

@@ -46,11 +46,41 @@ pub struct PipistrelleCoeffs {
 
 /// All five `filterInit` presets from the upstream firmware.
 pub const PRESETS: &[PipistrelleCoeffs] = &[
-    PipistrelleCoeffs { db_cut: 3,  b0: 0.99192746, b1: -1.79668601, b2: 0.95279146, a2: 0.94471892 },
-    PipistrelleCoeffs { db_cut: 6,  b0: 0.98369852, b1: -1.78737325, b2: 0.95094035, a2: 0.93463886 },
-    PipistrelleCoeffs { db_cut: 9,  b0: 0.97509378, b1: -1.77642980, b2: 0.94769998, a2: 0.92279376 },
-    PipistrelleCoeffs { db_cut: 12, b0: 0.91071516, b1: -1.59205495, b2: 0.81251270, a2: 0.72322786 },
-    PipistrelleCoeffs { db_cut: 32, b0: 0.99209049, b1: -1.83314419, b2: 0.99209049, a2: 0.98418098 },
+    PipistrelleCoeffs {
+        db_cut: 3,
+        b0: 0.99192746,
+        b1: -1.79668601,
+        b2: 0.95279146,
+        a2: 0.94471892,
+    },
+    PipistrelleCoeffs {
+        db_cut: 6,
+        b0: 0.98369852,
+        b1: -1.78737325,
+        b2: 0.95094035,
+        a2: 0.93463886,
+    },
+    PipistrelleCoeffs {
+        db_cut: 9,
+        b0: 0.97509378,
+        b1: -1.77642980,
+        b2: 0.94769998,
+        a2: 0.92279376,
+    },
+    PipistrelleCoeffs {
+        db_cut: 12,
+        b0: 0.91071516,
+        b1: -1.59205495,
+        b2: 0.81251270,
+        a2: 0.72322786,
+    },
+    PipistrelleCoeffs {
+        db_cut: 32,
+        b0: 0.99209049,
+        b1: -1.83314419,
+        b2: 0.99209049,
+        a2: 0.98418098,
+    },
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -224,7 +254,9 @@ pub fn detect(
             explanation: format!(
                 "Sample rate {} Hz is not within \u{00B1}{:.0}% of the firmware's \
                  native {} Hz \u{2014} cannot meaningfully test for this signature",
-                sample_rate, SAMPLE_RATE_HARD_GATE * 100.0, NATIVE_SAMPLE_RATE,
+                sample_rate,
+                SAMPLE_RATE_HARD_GATE * 100.0,
+                NATIVE_SAMPLE_RATE,
             ),
             ..default
         };
@@ -264,7 +296,8 @@ pub fn detect(
                 let d = to_y(s) - mean;
                 d * d
             })
-            .sum::<f64>() / seg.len() as f64;
+            .sum::<f64>()
+            / seg.len() as f64;
         if var.sqrt() >= SIGNAL_STDEV_GATE {
             usable_window_starts.push(start);
         } else {
@@ -343,8 +376,7 @@ pub fn detect(
             }
         }
 
-        let total_recovered: usize =
-            usable_window_starts.len() * (WINDOW - 1024.min(WINDOW / 4));
+        let total_recovered: usize = usable_window_starts.len() * (WINDOW - 1024.min(WINDOW / 4));
         let in_range_frac = if total_recovered > 0 {
             sum_in_range as f64 / total_recovered as f64
         } else {
@@ -381,13 +413,11 @@ pub fn detect(
     // integer-roundness is too insensitive: the inverse biquad amplifies
     // int16 quantisation noise enough that even the correct preset gives
     // ~uniform fractional parts on the recovered ADC stream.)
-    let best = per_preset
-        .iter()
-        .min_by(|a, b| {
-            a.normalized_residual
-                .partial_cmp(&b.normalized_residual)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+    let best = per_preset.iter().min_by(|a, b| {
+        a.normalized_residual
+            .partial_cmp(&b.normalized_residual)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Match criteria, calibrated empirically (see RESIDUAL_*_THRESHOLD docs):
     //
@@ -400,8 +430,17 @@ pub fn detect(
     // - `residual` provides the strength dial.
     let in_range_pct = best.map(|s| s.in_range_frac).unwrap_or(0.0);
 
-    let (verdict, explanation, best_db_cut, best_near_int, best_near_int_match,
-         best_near_int_total, best_mean_frac, best_resid, best_ir) = match best {
+    let (
+        verdict,
+        explanation,
+        best_db_cut,
+        best_near_int,
+        best_near_int_match,
+        best_near_int_total,
+        best_mean_frac,
+        best_resid,
+        best_ir,
+    ) = match best {
         Some(s)
             if s.normalized_residual < RESIDUAL_MATCH_THRESHOLD
                 && (in_range_pct - 1.0).abs() < 1e-9
@@ -413,10 +452,15 @@ pub fn detect(
                     "Inverse + forward roundtrip with the dBcut=12 firmware-default \
                      preset gives {:.2}% RMS error and every recovered ADC value lands \
                      in [0, 4095] \u{2014} strong Pipistrelle-family firmware signature{}",
-                    s.normalized_residual * 100.0, rate_note,
+                    s.normalized_residual * 100.0,
+                    rate_note,
                 ),
-                Some(s.db_cut), s.near_integer_frac, s.near_integer_match,
-                s.near_integer_total, s.mean_abs_frac, s.normalized_residual,
+                Some(s.db_cut),
+                s.near_integer_frac,
+                s.near_integer_match,
+                s.near_integer_total,
+                s.mean_abs_frac,
+                s.normalized_residual,
                 s.in_range_frac,
             )
         }
@@ -431,10 +475,15 @@ pub fn detect(
                     "Inverse + forward roundtrip with the dBcut=12 firmware-default \
                      preset gives {:.2}% RMS error \u{2014} possible Pipistrelle-family \
                      firmware, not conclusive{}",
-                    s.normalized_residual * 100.0, rate_note,
+                    s.normalized_residual * 100.0,
+                    rate_note,
                 ),
-                Some(s.db_cut), s.near_integer_frac, s.near_integer_match,
-                s.near_integer_total, s.mean_abs_frac, s.normalized_residual,
+                Some(s.db_cut),
+                s.near_integer_frac,
+                s.near_integer_match,
+                s.near_integer_total,
+                s.mean_abs_frac,
+                s.normalized_residual,
                 s.in_range_frac,
             )
         }
@@ -443,16 +492,29 @@ pub fn detect(
             format!(
                 "Best preset dBcut={} gives {:.1}% RMS error, in-range {:.1}% \
                  \u{2014} not consistent with Pipistrelle-family firmware{}",
-                s.db_cut, s.normalized_residual * 100.0, s.in_range_frac * 100.0, rate_note,
+                s.db_cut,
+                s.normalized_residual * 100.0,
+                s.in_range_frac * 100.0,
+                rate_note,
             ),
-            Some(s.db_cut), s.near_integer_frac, s.near_integer_match,
-            s.near_integer_total, s.mean_abs_frac, s.normalized_residual,
+            Some(s.db_cut),
+            s.near_integer_frac,
+            s.near_integer_match,
+            s.near_integer_total,
+            s.mean_abs_frac,
+            s.normalized_residual,
             s.in_range_frac,
         ),
         None => (
             PipistrelleVerdict::NoMatch,
             format!("No preset produced a usable inverse{}", rate_note),
-            None, 0.0, 0, 0, f64::NAN, f64::NAN, 0.0,
+            None,
+            0.0,
+            0,
+            0,
+            f64::NAN,
+            f64::NAN,
+            0.0,
         ),
     };
 
@@ -515,8 +577,10 @@ pub fn forward_filter_chain(v: &[i32], c: &PipistrelleCoeffs) -> Vec<f64> {
     for &ix in &hpf_out {
         let iy = c.b0 * ix + c.b1 * (ix1 - iy1) + c.b2 * ix2 - c.a2 * iy2;
         iy_seq.push(iy);
-        ix2 = ix1; ix1 = ix;
-        iy2 = iy1; iy1 = iy;
+        ix2 = ix1;
+        ix1 = ix;
+        iy2 = iy1;
+        iy1 = iy;
     }
     iy_seq
 }
@@ -529,7 +593,8 @@ fn inverse_filter_chain(y: &[f64], c: &PipistrelleCoeffs) -> Vec<f64> {
     let mut iy_prev1 = 0.0f64;
     let mut hpf_out = Vec::with_capacity(n);
     for &yn in y {
-        let ix = (yn + c.b1 * iy_prev1 + c.a2 * iy_prev2 - c.b1 * ix_prev1 - c.b2 * ix_prev2) / c.b0;
+        let ix =
+            (yn + c.b1 * iy_prev1 + c.a2 * iy_prev2 - c.b1 * ix_prev1 - c.b2 * ix_prev2) / c.b0;
         hpf_out.push(ix);
         ix_prev2 = ix_prev1;
         ix_prev1 = ix;
@@ -558,26 +623,44 @@ mod tests {
         let v: Vec<i32> = (0..n)
             .map(|i| {
                 let t = i as f64 / 384_000.0;
-                let s = (1500.0 + 800.0 * (2.0 * std::f64::consts::PI * 12_000.0 * t).sin()).round();
+                let s =
+                    (1500.0 + 800.0 * (2.0 * std::f64::consts::PI * 12_000.0 * t).sin()).round();
                 (s as i32).clamp(0, 4095)
             })
             .collect();
 
         for preset in PRESETS {
             let y = forward_filter_chain(&v, preset);
-            let y_int16: Vec<f64> = y.iter().map(|&x| x.round().clamp(-32768.0, 32767.0)).collect();
+            let y_int16: Vec<f64> = y
+                .iter()
+                .map(|&x| x.round().clamp(-32768.0, 32767.0))
+                .collect();
             let recovered = inverse_filter_chain(&y_int16, preset);
             // Skip startup transient
             let settle = 1024usize;
-            let in_range_count = recovered[settle..].iter().filter(|&&r| (0.0..=4095.0).contains(&r)).count();
+            let in_range_count = recovered[settle..]
+                .iter()
+                .filter(|&&r| (0.0..=4095.0).contains(&r))
+                .count();
             let frac_in = in_range_count as f64 / (recovered.len() - settle) as f64;
-            assert!(frac_in > 0.95, "preset dBcut={} only {:.2}% in range", preset.db_cut, frac_in * 100.0);
+            assert!(
+                frac_in > 0.95,
+                "preset dBcut={} only {:.2}% in range",
+                preset.db_cut,
+                frac_in * 100.0
+            );
             let resid: f64 = recovered[settle..]
                 .iter()
                 .filter(|&&r| (0.0..=4095.0).contains(&r))
                 .map(|&r| (r - r.round()).abs())
-                .sum::<f64>() / in_range_count as f64;
-            assert!(resid < 0.05, "preset dBcut={} residual {:.4} too high", preset.db_cut, resid);
+                .sum::<f64>()
+                / in_range_count as f64;
+            assert!(
+                resid < 0.05,
+                "preset dBcut={} residual {:.4} too high",
+                preset.db_cut,
+                resid
+            );
         }
     }
 
@@ -621,7 +704,10 @@ mod tests {
             .collect();
         let r = detect(&samples, NATIVE_SAMPLE_RATE, 16, false);
         assert!(
-            matches!(r.verdict, PipistrelleVerdict::Match | PipistrelleVerdict::Possible),
+            matches!(
+                r.verdict,
+                PipistrelleVerdict::Match | PipistrelleVerdict::Possible
+            ),
             "synthetic pipistrelle stream not detected: {:?}",
             r
         );

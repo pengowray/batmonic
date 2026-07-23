@@ -6,10 +6,12 @@ use wasm_bindgen::{JsCast, JsValue};
 
 use crate::annotations::{Annotation, AnnotationKind, Region};
 use crate::audio::microphone::encode_wav;
+use crate::audio::playback::apply_gain;
 use crate::audio::playback::snapshot_params;
 use crate::audio::source::{AudioSource, ChannelView};
-use crate::audio::streaming_playback::{apply_dsp_mode, apply_filters, PlaybackParams, PV_MODE_BOOST_DB};
-use crate::audio::playback::apply_gain;
+use crate::audio::streaming_playback::{
+    apply_dsp_mode, apply_filters, PlaybackParams, PV_MODE_BOOST_DB,
+};
 use crate::state::{AppState, PlaybackMode, Selection};
 
 // Chunk size + filter warmup are shared with streaming playback so the offline
@@ -29,16 +31,14 @@ pub(crate) fn build_export_params(
     sample_rate: u32,
 ) -> PlaybackParams {
     let selection = if use_region_focus {
-        region.and_then(|r| {
-            match (r.freq_low, r.freq_high) {
-                (Some(lo), Some(hi)) => Some(Selection {
-                    time_start: r.time_start,
-                    time_end: r.time_end,
-                    freq_low: Some(lo),
-                    freq_high: Some(hi),
-                }),
-                _ => None,
-            }
+        region.and_then(|r| match (r.freq_low, r.freq_high) {
+            (Some(lo), Some(hi)) => Some(Selection {
+                time_start: r.time_start,
+                time_end: r.time_end,
+                freq_low: Some(lo),
+                freq_high: Some(hi),
+            }),
+            _ => None,
         })
     } else {
         state.interaction.selection().get_untracked()
@@ -55,10 +55,14 @@ pub(crate) fn process_region(
     params: &PlaybackParams,
 ) -> Vec<f32> {
     let start_sample = (start_time * sample_rate as f64) as usize;
-    let end_sample = ((end_time * sample_rate as f64) as usize).min(source.total_samples() as usize);
+    let end_sample =
+        ((end_time * sample_rate as f64) as usize).min(source.total_samples() as usize);
 
     let crossfade_mode = params.pv_hq
-        && matches!(params.mode, PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift);
+        && matches!(
+            params.mode,
+            PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift
+        );
 
     let mut all_samples: Vec<f32> = Vec::new();
     let mut pos = start_sample;
@@ -72,7 +76,10 @@ pub(crate) fn process_region(
         // In crossfade mode, extend the read past the nominal end
         let trailing_end = if crossfade_mode {
             (chunk_end + PV_HQ_OVERLAP).min(end_sample)
-        } else if matches!(params.mode, PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder) {
+        } else if matches!(
+            params.mode,
+            PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder
+        ) {
             (chunk_end + FILTER_WARMUP).min(end_sample)
         } else {
             chunk_end
@@ -126,7 +133,9 @@ pub(crate) fn process_region(
                 // The overlap region is the last PV_HQ_OVERLAP samples of the
                 // existing output, which fade out. Sum with this chunk's
                 // fade-in region.
-                let overlap = PV_HQ_OVERLAP.min(all_samples.len()).min(chunk_samples.len());
+                let overlap = PV_HQ_OVERLAP
+                    .min(all_samples.len())
+                    .min(chunk_samples.len());
                 let out_start = all_samples.len() - overlap;
                 for i in 0..overlap {
                     all_samples[out_start + i] += chunk_samples[i];
@@ -153,7 +162,11 @@ pub(crate) fn process_region(
     }
 
     // Apply gain (including PV compensatory boost)
-    let pv_boost = if matches!(params.mode, PlaybackMode::PhaseVocoder) { PV_MODE_BOOST_DB } else { 0.0 };
+    let pv_boost = if matches!(params.mode, PlaybackMode::PhaseVocoder) {
+        PV_MODE_BOOST_DB
+    } else {
+        0.0
+    };
     let gain_db = params.gain_db + pv_boost;
     apply_gain(&mut all_samples, gain_db);
 
@@ -186,9 +199,7 @@ pub(crate) fn trigger_browser_download(data: &[u8], filename: &str) {
 
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
-    let a: web_sys::HtmlAnchorElement = document
-        .create_element("a").unwrap()
-        .dyn_into().unwrap();
+    let a: web_sys::HtmlAnchorElement = document.create_element("a").unwrap().dyn_into().unwrap();
     a.set_href(&url);
     a.set_download(filename);
     a.set_attribute("style", "display:none").ok();
@@ -224,7 +235,12 @@ pub(crate) fn export_one_region(
 
     // Build GUANO metadata for the export
     let guano = build_export_guano(
-        output_rate, &samples, params, filename, source_filename, source_guano,
+        output_rate,
+        &samples,
+        params,
+        filename,
+        source_filename,
+        source_guano,
     );
     crate::audio::guano::append_guano_chunk(&mut wav_data, &guano.to_text());
 
@@ -283,8 +299,13 @@ pub(crate) fn save_exports(state: &AppState, items: Vec<(String, Vec<u8>)>, is_v
                 save_export_via_dialog(data, name).await
             };
             match outcome {
-                ExportSave::Saved(p) => { saved += 1; last = p; }
-                ExportSave::Failed => { failed += 1; }
+                ExportSave::Saved(p) => {
+                    saved += 1;
+                    last = p;
+                }
+                ExportSave::Failed => {
+                    failed += 1;
+                }
                 ExportSave::Cancelled => {}
             }
         }
@@ -318,9 +339,24 @@ async fn save_export_to_media_store(
 ) -> ExportSave {
     use crate::tauri_bridge::tauri_invoke_typed;
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
-    js_sys::Reflect::set(&args, &JsValue::from_str("relativePath"), &JsValue::from_str(relative_path)).ok();
-    js_sys::Reflect::set(&args, &JsValue::from_str("mimeType"), &JsValue::from_str(mime)).ok();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("filename"),
+        &JsValue::from_str(filename),
+    )
+    .ok();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("relativePath"),
+        &JsValue::from_str(relative_path),
+    )
+    .ok();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("mimeType"),
+        &JsValue::from_str(mime),
+    )
+    .ok();
     let array = js_sys::Uint8Array::new_with_length(data.len() as u32);
     array.copy_from(data);
     js_sys::Reflect::set(&args, &JsValue::from_str("data"), &array).ok();
@@ -328,7 +364,9 @@ async fn save_export_to_media_store(
     match tauri_invoke_typed::<oversample_ipc::plugins::SavePathResult>(
         "plugin:media-store|saveExportBytes",
         &args.into(),
-    ).await {
+    )
+    .await
+    {
         Ok(result) => {
             if result.path.is_empty() {
                 // e.g. pre-Q first run: storage permission was just granted and
@@ -352,7 +390,12 @@ async fn save_export_to_media_store(
 async fn save_export_via_dialog(data: &[u8], filename: &str) -> ExportSave {
     use crate::tauri_bridge::tauri_invoke;
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("filename"),
+        &JsValue::from_str(filename),
+    )
+    .ok();
     let array = js_sys::Uint8Array::new_with_length(data.len() as u32);
     array.copy_from(data);
     js_sys::Reflect::set(&args, &JsValue::from_str("data"), &array).ok();
@@ -431,7 +474,9 @@ fn build_export_guano(
     if let Some(src) = source_guano {
         for (k, v) in &src.fields {
             match k.as_str() {
-                "Make" | "Model" => { g.add(k, v); }
+                "Make" | "Model" => {
+                    g.add(k, v);
+                }
                 _ => {}
             }
         }
@@ -482,7 +527,7 @@ fn build_export_guano(
 pub struct ExportInfo {
     pub count: usize,
     pub source_label: &'static str, // "selection" or "region" or "regions"
-    pub mode_label: Option<String>,  // e.g. "TE 10x", "HF", etc.
+    pub mode_label: Option<String>, // e.g. "TE 10x", "HF", etc.
     pub estimated_duration_secs: Option<f64>,
 }
 
@@ -507,18 +552,31 @@ pub fn get_export_info(state: &AppState) -> Option<ExportInfo> {
                     }
                 }
                 (count, dur)
-            } else { (0, 0.0) }
-        } else { (0, 0.0) }
-    } else { (0, 0.0) };
+            } else {
+                (0, 0.0)
+            }
+        } else {
+            (0, 0.0)
+        }
+    } else {
+        (0, 0.0)
+    };
 
     let (count, source_label, source_duration) = if region_count > 0 {
-        let label = if region_count == 1 { "region" } else { "regions" };
+        let label = if region_count == 1 {
+            "region"
+        } else {
+            "regions"
+        };
         (region_count, label, Some(region_duration_sum))
     } else if let Some(ref sel) = selection {
         (1, "selection", Some(sel.time_end - sel.time_start))
     } else if state.library.current_index().get().is_some() {
         let files = state.library.files().get();
-        let file_dur = state.library.current_index().get()
+        let file_dur = state
+            .library
+            .current_index()
+            .get()
             .and_then(|idx| files.get(idx))
             .map(|f| f.audio.duration_secs);
         (1, "file", file_dur)
@@ -547,7 +605,12 @@ pub fn get_export_info(state: &AppState) -> Option<ExportInfo> {
         _ => d,
     });
 
-    Some(ExportInfo { count, source_label, mode_label, estimated_duration_secs })
+    Some(ExportInfo {
+        count,
+        source_label,
+        mode_label,
+        estimated_duration_secs,
+    })
 }
 
 /// Format a duration in seconds to a human-readable string.
@@ -581,7 +644,8 @@ pub fn get_selected_regions(state: &AppState) -> Vec<(Annotation, Region)> {
         Some(s) => s,
         None => return Vec::new(),
     };
-    set.annotations.iter()
+    set.annotations
+        .iter()
         .filter(|a| selected_ids.contains(&a.id))
         .filter_map(|a| {
             if let AnnotationKind::Region(ref r) = a.kind {
@@ -606,7 +670,9 @@ pub fn export_selected(state: &AppState) {
     let source_guano = file.audio.metadata.guano.as_ref();
 
     // Strip extension from source filename for export naming
-    let base_name = file.name.trim_end_matches(".wav")
+    let base_name = file
+        .name
+        .trim_end_matches(".wav")
         .trim_end_matches(".WAV")
         .trim_end_matches(".w4v")
         .trim_end_matches(".W4V")
@@ -632,7 +698,9 @@ pub fn export_selected(state: &AppState) {
         // Export selected annotation regions
         for (i, (_annotation, region)) in regions.iter().enumerate() {
             let params = build_export_params(state, Some(region), use_region_focus, sample_rate);
-            let label = region.label.as_deref()
+            let label = region
+                .label
+                .as_deref()
                 .or(if regions.len() > 1 { None } else { Some("") });
             let suffix = match label {
                 Some(l) if !l.is_empty() => format!("_{}", l.replace(' ', "_")),
@@ -646,10 +714,14 @@ pub fn export_selected(state: &AppState) {
             };
             let filename = format!("{base_name}{suffix}.wav");
             let wav_data = export_one_region(
-                source.as_ref(), sample_rate,
-                region.time_start, region.time_end,
-                &params, &filename,
-                source_filename, source_guano,
+                source.as_ref(),
+                sample_rate,
+                region.time_start,
+                region.time_end,
+                &params,
+                &filename,
+                source_filename,
+                source_guano,
             );
             exports.push((filename, wav_data));
         }
@@ -658,10 +730,14 @@ pub fn export_selected(state: &AppState) {
         let params = build_export_params(state, None, false, sample_rate);
         let filename = format!("{base_name}_selection.wav");
         let wav_data = export_one_region(
-            source.as_ref(), sample_rate,
-            sel.time_start, sel.time_end,
-            &params, &filename,
-            source_filename, source_guano,
+            source.as_ref(),
+            sample_rate,
+            sel.time_start,
+            sel.time_end,
+            &params,
+            &filename,
+            source_filename,
+            source_guano,
         );
         exports.push((filename, wav_data));
     } else {
@@ -670,10 +746,14 @@ pub fn export_selected(state: &AppState) {
         let duration = file.audio.source.duration_secs();
         let filename = format!("{base_name}_export.wav");
         let wav_data = export_one_region(
-            source.as_ref(), sample_rate,
-            0.0, duration,
-            &params, &filename,
-            source_filename, source_guano,
+            source.as_ref(),
+            sample_rate,
+            0.0,
+            duration,
+            &params,
+            &filename,
+            source_filename,
+            source_guano,
         );
         exports.push((filename, wav_data));
     }

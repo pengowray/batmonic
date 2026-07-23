@@ -5,22 +5,25 @@
 //! open/close/record/listen methods. All thread-local state for each backend
 //! lives here.
 
+use crate::audio::playback::{apply_gain, snapshot_params};
+use crate::audio::streaming_playback::{apply_filters, PlaybackParams};
+use crate::dsp::heterodyne::RealtimeCombHet;
+use crate::dsp::phase_vocoder::phase_vocoder_pitch_shift;
+use crate::dsp::pitch_shift::pitch_shift_realtime;
+use crate::dsp::zc_divide::zc_divide;
 use crate::state::store_fields::*;
+use crate::state::{AppState, MicAcquisitionState, MicBackend, PlaybackMode};
+use crate::tauri_bridge::{
+    get_tauri_internals, tauri_invoke, tauri_invoke_args, tauri_invoke_no_args,
+    tauri_invoke_typed_args, tauri_invoke_typed_no_args,
+};
 use leptos::prelude::*;
+use oversample_core::audio::live_schedule::{plan_live_schedule, DEFAULT_MAX_LOOKAHEAD_SECS};
+use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::AudioContext;
-use crate::state::{AppState, MicAcquisitionState, MicBackend, PlaybackMode};
-use crate::dsp::heterodyne::RealtimeCombHet;
-use crate::dsp::pitch_shift::pitch_shift_realtime;
-use crate::dsp::phase_vocoder::phase_vocoder_pitch_shift;
-use crate::dsp::zc_divide::zc_divide;
-use crate::audio::playback::{apply_gain, snapshot_params};
-use crate::audio::streaming_playback::{apply_filters, PlaybackParams};
-use crate::tauri_bridge::{get_tauri_internals, tauri_invoke, tauri_invoke_no_args, tauri_invoke_typed_no_args, tauri_invoke_typed_args, tauri_invoke_args};
-use oversample_core::audio::live_schedule::{plan_live_schedule, DEFAULT_MAX_LOOKAHEAD_SECS};
-use std::cell::RefCell;
 
 /// Build IPC args for `mic_start_recording` / `usb_start_recording`.
 /// Shared between the cpal and raw-USB paths so they can't drift.
@@ -42,32 +45,47 @@ fn build_start_recording_args(
     state: &AppState,
     shared_fd: Option<i32>,
 ) -> oversample_ipc::mic::StartRecordingArgs {
-    let to_memory = state.playback.record_mode().get_untracked() == crate::state::RecordMode::ToMemory;
+    let to_memory =
+        state.playback.record_mode().get_untracked() == crate::state::RecordMode::ToMemory;
     let preroll = state.mic.preroll_samples().get_untracked();
     let stream_to_disk = state.is_tauri && !to_memory;
 
     // Filename mirrors the one the WASM side uses for the live file so the
     // sidecar + partial match up with the final WAV name on recovery.
-    let filename = state
-        .mic.live_file_idx()
-        .get_untracked()
-        .and_then(|idx| state.library.files().with_untracked(|f| f.get(idx).map(|f| f.name.clone())));
+    let filename = state.mic.live_file_idx().get_untracked().and_then(|idx| {
+        state
+            .library
+            .files()
+            .with_untracked(|f| f.get(idx).map(|f| f.name.clone()))
+    });
 
-    let (device_make, device_model) = if state.recording_meta.device_model_enabled().get_untracked() {
-        (state.recording_meta.cached_make().get_untracked(), state.recording_meta.cached_model().get_untracked())
+    let (device_make, device_model) = if state.recording_meta.device_model_enabled().get_untracked()
+    {
+        (
+            state.recording_meta.cached_make().get_untracked(),
+            state.recording_meta.cached_model().get_untracked(),
+        )
     } else {
         (None, None)
     };
 
     let (loc_latitude, loc_longitude, loc_elevation, loc_accuracy) =
         match state.recording_meta.location().get_untracked() {
-            Some(loc) => (Some(loc.latitude), Some(loc.longitude), loc.elevation, loc.accuracy),
+            Some(loc) => (
+                Some(loc.latitude),
+                Some(loc.longitude),
+                loc.elevation,
+                loc.accuracy,
+            ),
             None => (None, None, None, None),
         };
 
     // Per-device manual bit-depth override for the current device (None = Auto).
     let force_bits = state.mic.device_name().get_untracked().and_then(|dev| {
-        state.mic.bit_depth_override().with_untracked(|m| m.get(&dev).copied())
+        state
+            .mic
+            .bit_depth_override()
+            .with_untracked(|m| m.get(&dev).copied())
     });
 
     oversample_ipc::mic::StartRecordingArgs {
@@ -96,11 +114,20 @@ fn build_start_recording_args(
 fn build_stop_recording_args(state: &AppState) -> oversample_ipc::mic::StopRecordingArgs {
     let (loc_latitude, loc_longitude, loc_elevation, loc_accuracy) =
         match state.recording_meta.location().get_untracked() {
-            Some(loc) => (Some(loc.latitude), Some(loc.longitude), loc.elevation, loc.accuracy),
+            Some(loc) => (
+                Some(loc.latitude),
+                Some(loc.longitude),
+                loc.elevation,
+                loc.accuracy,
+            ),
             None => (None, None, None, None),
         };
-    let (device_make, device_model) = if state.recording_meta.device_model_enabled().get_untracked() {
-        (state.recording_meta.cached_make().get_untracked(), state.recording_meta.cached_model().get_untracked())
+    let (device_make, device_model) = if state.recording_meta.device_model_enabled().get_untracked()
+    {
+        (
+            state.recording_meta.cached_make().get_untracked(),
+            state.recording_meta.cached_model().get_untracked(),
+        )
     } else {
         (None, None)
     };
@@ -298,10 +325,7 @@ fn apply_live_filter(
     dsp_state: &mut ListenDspState,
 ) -> Vec<f32> {
     // Fast path: no filter / notch / spectral subtraction enabled at all.
-    if !params.filter_enabled
-        && !params.notch_enabled
-        && !params.noise_reduce_enabled
-    {
+    if !params.filter_enabled && !params.notch_enabled && !params.noise_reduce_enabled {
         // Still update the warmup tail in case the filter gets enabled later.
         let take = input.len().min(FILTER_WARMUP_SAMPLES);
         dsp_state.filter_tail = input[input.len() - take..].to_vec();
@@ -361,7 +385,13 @@ fn process_live_audio(
                 params.het_comb_count,
             );
             let mut out = vec![0.0f32; filtered.len()];
-            rt_het.process(&filtered, &mut out, sample_rate, &carriers, params.het_cutoff);
+            rt_het.process(
+                &filtered,
+                &mut out,
+                sample_rate,
+                &carriers,
+                params.het_cutoff,
+            );
             out
         }
         PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder => {
@@ -378,9 +408,8 @@ fn process_live_audio(
                 pitch_shift_realtime(&dsp_state.context, params.ps_factor)
             } else {
                 let mut out = phase_vocoder_pitch_shift(&dsp_state.context, params.pv_factor);
-                let boost = 10.0f32.powf(
-                    crate::audio::streaming_playback::PV_MODE_BOOST_DB as f32 / 20.0,
-                );
+                let boost =
+                    10.0f32.powf(crate::audio::streaming_playback::PV_MODE_BOOST_DB as f32 / 20.0);
                 for s in &mut out {
                     *s *= boost;
                 }
@@ -397,7 +426,9 @@ fn process_live_audio(
             let mut result = extracted.to_vec();
 
             // Crossfade start of this chunk with end of previous chunk
-            let fade = LISTEN_CROSSFADE.min(result.len()).min(dsp_state.prev_tail.len());
+            let fade = LISTEN_CROSSFADE
+                .min(result.len())
+                .min(dsp_state.prev_tail.len());
             for i in 0..fade {
                 let t = i as f32 / fade as f32; // 0→1
                 result[i] = dsp_state.prev_tail[i] * (1.0 - t) + result[i] * t;
@@ -413,7 +444,12 @@ fn process_live_audio(
         PlaybackMode::ZeroCrossing => {
             dsp_state.context.clear();
             dsp_state.prev_tail.clear();
-            zc_divide(&filtered, sample_rate, params.zc_factor as u32, params.filter_enabled)
+            zc_divide(
+                &filtered,
+                sample_rate,
+                params.zc_factor as u32,
+                params.filter_enabled,
+            )
         }
         // Normal and TimeExpansion both pass through. TE is unimplementable
         // for live audio (it relies on the AudioContext sample rate change,
@@ -503,11 +539,19 @@ impl MicBackend {
             MicBackend::Browser => Ok(()),
             MicBackend::Cpal => {
                 let fd = try_create_shared_fd(state).await;
-                tauri_invoke_args("mic_start_recording", &build_start_recording_args(state, fd)).await
+                tauri_invoke_args(
+                    "mic_start_recording",
+                    &build_start_recording_args(state, fd),
+                )
+                .await
             }
             MicBackend::RawUsb => {
                 let fd = try_create_shared_fd(state).await;
-                tauri_invoke_args("usb_start_recording", &build_start_recording_args(state, fd)).await
+                tauri_invoke_args(
+                    "usb_start_recording",
+                    &build_start_recording_args(state, fd),
+                )
+                .await
             }
         }
     }
@@ -526,30 +570,37 @@ impl MicBackend {
                     log::warn!("No samples recorded (web)");
                     StopResult::Empty
                 } else {
-                    log::info!("Recording stopped: {} samples ({:.2}s at {} Hz)",
-                        samples.len(), samples.len() as f64 / sample_rate as f64, sample_rate);
-                    StopResult::Samples { samples, sample_rate }
+                    log::info!(
+                        "Recording stopped: {} samples ({:.2}s at {} Hz)",
+                        samples.len(),
+                        samples.len() as f64 / sample_rate as f64,
+                        sample_rate
+                    );
+                    StopResult::Samples {
+                        samples,
+                        sample_rate,
+                    }
                 }
             }
             MicBackend::Cpal => {
                 match tauri_invoke_typed_args::<_, oversample_ipc::mic::RecordingResult>(
                     "mic_stop_recording",
                     &build_stop_recording_args(state),
-                ).await {
-                    Ok(result) => {
-                        match TauriRecordingResult::from_result(result).await {
-                            Some(r) => {
-                                if r.saved_path.starts_with("shared://") {
-                                    finalize_shared_entry().await;
-                                }
-                                StopResult::TauriResult(r)
+                )
+                .await
+                {
+                    Ok(result) => match TauriRecordingResult::from_result(result).await {
+                        Some(r) => {
+                            if r.saved_path.starts_with("shared://") {
+                                finalize_shared_entry().await;
                             }
-                            None => {
-                                cancel_shared_entry().await;
-                                StopResult::Empty
-                            }
+                            StopResult::TauriResult(r)
                         }
-                    }
+                        None => {
+                            cancel_shared_entry().await;
+                            StopResult::Empty
+                        }
+                    },
                     Err(e) => {
                         cancel_shared_entry().await;
                         StopResult::Error(e)
@@ -560,21 +611,21 @@ impl MicBackend {
                 match tauri_invoke_typed_args::<_, oversample_ipc::mic::RecordingResult>(
                     "usb_stop_recording",
                     &build_stop_recording_args(state),
-                ).await {
-                    Ok(result) => {
-                        match TauriRecordingResult::from_result(result).await {
-                            Some(r) => {
-                                if r.saved_path.starts_with("shared://") {
-                                    finalize_shared_entry().await;
-                                }
-                                StopResult::TauriResult(r)
+                )
+                .await
+                {
+                    Ok(result) => match TauriRecordingResult::from_result(result).await {
+                        Some(r) => {
+                            if r.saved_path.starts_with("shared://") {
+                                finalize_shared_entry().await;
                             }
-                            None => {
-                                cancel_shared_entry().await;
-                                StopResult::Empty
-                            }
+                            StopResult::TauriResult(r)
                         }
-                    }
+                        None => {
+                            cancel_shared_entry().await;
+                            StopResult::Empty
+                        }
+                    },
                     Err(e) => {
                         cancel_shared_entry().await;
                         StopResult::Error(e)
@@ -594,7 +645,8 @@ impl MicBackend {
                 let _ = tauri_invoke_args(
                     "mic_set_listening",
                     &oversample_ipc::mic::SetListeningArgs { listening: enabled },
-                ).await;
+                )
+                .await;
             }
             MicBackend::RawUsb => { /* USB streams continuously once open */ }
         }
@@ -655,30 +707,54 @@ async fn try_create_shared_fd(state: &AppState) -> Option<i32> {
         return None;
     }
     // Build filename from the live file if available, otherwise generate one
-    let filename = state.mic.live_file_idx().get_untracked()
-        .and_then(|idx| state.library.files().with_untracked(|f| f.get(idx).map(|f| f.name.clone())))
+    let filename = state
+        .mic
+        .live_file_idx()
+        .get_untracked()
+        .and_then(|idx| {
+            state
+                .library
+                .files()
+                .with_untracked(|f| f.get(idx).map(|f| f.name.clone()))
+        })
         .unwrap_or_else(|| {
             let now = js_sys::Date::new_0();
             format!(
                 "batcap_{:04}{:02}{:02}_{:02}{:02}{:02}.wav",
-                now.get_full_year(), now.get_month() + 1, now.get_date(),
-                now.get_hours(), now.get_minutes(), now.get_seconds(),
+                now.get_full_year(),
+                now.get_month() + 1,
+                now.get_date(),
+                now.get_hours(),
+                now.get_minutes(),
+                now.get_seconds(),
             )
         });
 
     match tauri_invoke_typed_args::<_, oversample_ipc::plugins::CreateRecordingEntryResult>(
         "plugin:media-store|createRecordingEntry",
-        &oversample_ipc::plugins::CreateRecordingEntryArgs { filename: filename.clone() },
-    ).await {
+        &oversample_ipc::plugins::CreateRecordingEntryArgs {
+            filename: filename.clone(),
+        },
+    )
+    .await
+    {
         Ok(result) => {
-            log::info!("Got shared storage fd={} uri={} for {}", result.fd, result.uri, filename);
+            log::info!(
+                "Got shared storage fd={} uri={} for {}",
+                result.fd,
+                result.uri,
+                filename
+            );
             // Keep the content:// URI so the finalizer can read the saved file
             // back for display (the recording lives only in public storage).
             state.mic.pending_shared_uri().set(Some(result.uri));
             Some(result.fd)
         }
         Err(e) => {
-            log::warn!("createRecordingEntry failed (will fall back to internal storage): {}", e);
+            log::warn!(
+                "createRecordingEntry failed (will fall back to internal storage): {}",
+                e
+            );
             state.mic.pending_shared_uri().set(None);
             None
         }
@@ -711,9 +787,12 @@ pub(crate) async fn cancel_shared_entry() {
 fn tauri_listen_usb_error(event_name: &str, callback: Closure<dyn FnMut(JsValue)>) -> Option<()> {
     let tauri = get_tauri_internals()?;
 
-    let transform_fn = js_sys::Reflect::get(&tauri, &JsValue::from_str("transformCallback")).ok()?;
+    let transform_fn =
+        js_sys::Reflect::get(&tauri, &JsValue::from_str("transformCallback")).ok()?;
     let transform_fn = js_sys::Function::from(transform_fn);
-    let handler_id = transform_fn.call1(&tauri, callback.as_ref().unchecked_ref()).ok()?;
+    let handler_id = transform_fn
+        .call1(&tauri, callback.as_ref().unchecked_ref())
+        .ok()?;
 
     let invoke_fn = js_sys::Reflect::get(&tauri, &JsValue::from_str("invoke")).ok()?;
     let invoke_fn = js_sys::Function::from(invoke_fn);
@@ -741,7 +820,10 @@ async fn setup_het_context(state: &AppState) -> bool {
         Ok(c) => c,
         Err(e) => {
             log::error!("Failed to create HET AudioContext: {:?}", e);
-            state.status.message().set(Some("Failed to initialize audio output".into()));
+            state
+                .status
+                .message()
+                .set(Some("Failed to initialize audio output".into()));
             return false;
         }
     };
@@ -825,93 +907,97 @@ pub fn het_context_time() -> Option<f64> {
 /// pull loop (`start_audio_pull_loop`) with samples drained from the native
 /// side as raw f32 bytes (replacing the old JSON `mic-audio-chunk` event).
 fn process_native_chunk(state_cb: AppState, input_data: Vec<f32>) {
-        let len = input_data.len();
-        if len == 0 {
-            return;
-        }
+    let len = input_data.len();
+    if len == 0 {
+        return;
+    }
 
-        // Accumulate samples for live waterfall display during recording OR listening
-        if state_cb.mic.recording().get_untracked() || state_cb.mic.listening().get_untracked() {
-            NATIVE_REC_BUFFER.with(|buf| buf.borrow_mut().extend_from_slice(&input_data));
-            if state_cb.mic.recording().get_untracked() {
-                state_cb.mic.samples_recorded().update(|n| *n += len);
+    // Accumulate samples for live waterfall display during recording OR listening
+    if state_cb.mic.recording().get_untracked() || state_cb.mic.listening().get_untracked() {
+        NATIVE_REC_BUFFER.with(|buf| buf.borrow_mut().extend_from_slice(&input_data));
+        if state_cb.mic.recording().get_untracked() {
+            state_cb.mic.samples_recorded().update(|n| *n += len);
+        }
+    }
+
+    // Listen mode: process input through selected DSP and play through speakers
+    if state_cb.mic.listening().get_untracked() {
+        let sr = state_cb.mic.sample_rate().get_untracked();
+        let params = snapshot_params(&state_cb, None, sr);
+        let mute = state_cb.mic.mute_output().get_untracked();
+        let ctx_samples = state_cb.mic.listen_context_samples().get_untracked();
+        let out_data = NATIVE_RT_HET.with(|h| {
+            NATIVE_LISTEN_STATE.with(|s| {
+                process_live_audio(
+                    &input_data,
+                    sr,
+                    &mut h.borrow_mut(),
+                    &mut s.borrow_mut(),
+                    ctx_samples,
+                    &params,
+                    mute,
+                )
+            })
+        });
+
+        // Schedule playback via AudioBuffer with bounded look-ahead so a
+        // backgrounded-then-resumed burst of queued chunks can't build a
+        // multi-second backlog (which would lag real time and keep sounding
+        // after Stop). See `plan_live_schedule`.
+        let out_len = out_data.len();
+        HET_CTX.with(|ctx_cell| {
+            let ctx_ref = ctx_cell.borrow();
+            let Some(ctx) = ctx_ref.as_ref() else { return };
+
+            // If the OS suspended/interrupted the context (e.g. the app was
+            // backgrounded), its clock is frozen — scheduling against it would
+            // pile up and never play. Kick a resume and drop this chunk;
+            // subsequent chunks schedule normally once it's running again.
+            if ctx.state() != web_sys::AudioContextState::Running {
+                let _ = ctx.resume();
+                return;
             }
-        }
 
-        // Listen mode: process input through selected DSP and play through speakers
-        if state_cb.mic.listening().get_untracked() {
-            let sr = state_cb.mic.sample_rate().get_untracked();
-            let params = snapshot_params(&state_cb, None, sr);
-            let mute = state_cb.mic.mute_output().get_untracked();
-            let ctx_samples = state_cb.mic.listen_context_samples().get_untracked();
-            let out_data = NATIVE_RT_HET.with(|h| {
-                NATIVE_LISTEN_STATE.with(|s| {
-                    process_live_audio(
-                        &input_data,
-                        sr,
-                        &mut h.borrow_mut(),
-                        &mut s.borrow_mut(),
-                        ctx_samples,
-                        &params,
-                        mute,
-                    )
-                })
+            let current_time = ctx.current_time();
+            let next_time = HET_NEXT_TIME.with(|t| *t.borrow());
+            let decision = plan_live_schedule(current_time, next_time, DEFAULT_MAX_LOOKAHEAD_SECS);
+
+            if decision.dropped_backlog {
+                // Fell behind (throttled): stop the stale scheduled tail so it
+                // never sounds, jump to "now", and count the skip. Within a
+                // synchronous burst the context clock is frozen, so sources
+                // stopped before control returns never produce audio — the
+                // audible result is "jump to the newest chunk ≈ now".
+                stop_het_sources();
+                HET_SKIP_COUNT.with(|c| c.set(c.get().saturating_add(1)));
+            }
+
+            let Ok(buffer) = ctx.create_buffer(1, out_len as u32, sr as f32) else {
+                return;
+            };
+            let _ = buffer.copy_to_channel(&out_data, 0);
+            let Ok(source) = ctx.create_buffer_source() else {
+                return;
+            };
+            source.set_buffer(Some(&buffer));
+            let _ = source.connect_with_audio_node(&ctx.destination());
+
+            let start = decision.start;
+            let _ = source.start_with_when(start);
+
+            let duration = out_len as f64 / sr as f64;
+            let end_time = start + duration;
+            HET_NEXT_TIME.with(|t| *t.borrow_mut() = end_time);
+
+            // Track the source so Stop can silence it instantly; drop refs to
+            // ones that have already finished playing.
+            HET_SOURCES.with(|sources| {
+                let mut v = sources.borrow_mut();
+                v.retain(|(_, end)| *end > current_time);
+                v.push((source, end_time));
             });
-
-            // Schedule playback via AudioBuffer with bounded look-ahead so a
-            // backgrounded-then-resumed burst of queued chunks can't build a
-            // multi-second backlog (which would lag real time and keep sounding
-            // after Stop). See `plan_live_schedule`.
-            let out_len = out_data.len();
-            HET_CTX.with(|ctx_cell| {
-                let ctx_ref = ctx_cell.borrow();
-                let Some(ctx) = ctx_ref.as_ref() else { return };
-
-                // If the OS suspended/interrupted the context (e.g. the app was
-                // backgrounded), its clock is frozen — scheduling against it would
-                // pile up and never play. Kick a resume and drop this chunk;
-                // subsequent chunks schedule normally once it's running again.
-                if ctx.state() != web_sys::AudioContextState::Running {
-                    let _ = ctx.resume();
-                    return;
-                }
-
-                let current_time = ctx.current_time();
-                let next_time = HET_NEXT_TIME.with(|t| *t.borrow());
-                let decision = plan_live_schedule(current_time, next_time, DEFAULT_MAX_LOOKAHEAD_SECS);
-
-                if decision.dropped_backlog {
-                    // Fell behind (throttled): stop the stale scheduled tail so it
-                    // never sounds, jump to "now", and count the skip. Within a
-                    // synchronous burst the context clock is frozen, so sources
-                    // stopped before control returns never produce audio — the
-                    // audible result is "jump to the newest chunk ≈ now".
-                    stop_het_sources();
-                    HET_SKIP_COUNT.with(|c| c.set(c.get().saturating_add(1)));
-                }
-
-                let Ok(buffer) = ctx.create_buffer(1, out_len as u32, sr as f32) else { return };
-                let _ = buffer.copy_to_channel(&out_data, 0);
-                let Ok(source) = ctx.create_buffer_source() else { return };
-                source.set_buffer(Some(&buffer));
-                let _ = source.connect_with_audio_node(&ctx.destination());
-
-                let start = decision.start;
-                let _ = source.start_with_when(start);
-
-                let duration = out_len as f64 / sr as f64;
-                let end_time = start + duration;
-                HET_NEXT_TIME.with(|t| *t.borrow_mut() = end_time);
-
-                // Track the source so Stop can silence it instantly; drop refs to
-                // ones that have already finished playing.
-                HET_SOURCES.with(|sources| {
-                    let mut v = sources.borrow_mut();
-                    v.retain(|(_, end)| *end > current_time);
-                    v.push((source, end_time));
-                });
-            });
-        }
+        });
+    }
 }
 
 /// Target wall-clock interval between native audio pulls. Matches the old 80 ms
@@ -945,7 +1031,11 @@ fn start_audio_pull_loop(state: AppState) {
             };
             // Drain the source we actually opened, so a not-fully-torn-down
             // previous device can't shadow it.
-            let source = if mode == NativeMode::Usb { "usb" } else { "cpal" };
+            let source = if mode == NativeMode::Usb {
+                "usb"
+            } else {
+                "cpal"
+            };
             let t0 = js_sys::Date::now();
             let pull_args = js_sys::Object::new();
             let _ = js_sys::Reflect::set(
@@ -975,9 +1065,10 @@ fn start_audio_pull_loop(state: AppState) {
                 >("mic_get_status")
                 .await
                 {
-                    if let (Some(bits), Some(dev)) =
-                        (status.effective_bits, state.mic.device_name().get_untracked())
-                    {
+                    if let (Some(bits), Some(dev)) = (
+                        status.effective_bits,
+                        state.mic.device_name().get_untracked(),
+                    ) {
                         let changed = state
                             .mic
                             .bit_depths()
@@ -1044,7 +1135,10 @@ async fn open_web(state: &AppState) -> bool {
         Ok(md) => md,
         Err(e) => {
             state.log_debug("error", format!("open_web: no media devices: {:?}", e));
-            state.status.message().set(Some("Microphone not available on this device".into()));
+            state
+                .status
+                .message()
+                .set(Some("Microphone not available on this device".into()));
             return false;
         }
     };
@@ -1056,7 +1150,8 @@ async fn open_web(state: &AppState) -> bool {
     js_sys::Reflect::set(&audio_opts, &"autoGainControl".into(), &JsValue::FALSE).ok();
     // If a specific browser device was selected, constrain to that deviceId
     if let Some(device_id) = state.mic.selected_device().get_untracked() {
-        if state.mic.backend().get_untracked() == Some(MicBackend::Browser) && !device_id.is_empty() {
+        if state.mic.backend().get_untracked() == Some(MicBackend::Browser) && !device_id.is_empty()
+        {
             let exact = js_sys::Object::new();
             js_sys::Reflect::set(&exact, &"exact".into(), &JsValue::from_str(&device_id)).ok();
             js_sys::Reflect::set(&audio_opts, &"deviceId".into(), &exact.into()).ok();
@@ -1068,7 +1163,10 @@ async fn open_web(state: &AppState) -> bool {
         Ok(p) => p,
         Err(e) => {
             log::error!("getUserMedia failed: {:?}", e);
-            state.status.message().set(Some("Microphone not available".into()));
+            state
+                .status
+                .message()
+                .set(Some("Microphone not available".into()));
             return false;
         }
     };
@@ -1081,7 +1179,10 @@ async fn open_web(state: &AppState) -> bool {
         }
         Err(e) => {
             state.log_debug("error", format!("open_web: getUserMedia denied: {:?}", e));
-            state.status.message().set(Some("Microphone permission denied".into()));
+            state
+                .status
+                .message()
+                .set(Some("Microphone permission denied".into()));
             return false;
         }
     };
@@ -1098,7 +1199,10 @@ async fn open_web(state: &AppState) -> bool {
         Ok(c) => c,
         Err(e) => {
             log::error!("Failed to create AudioContext: {:?}", e);
-            state.status.message().set(Some("Failed to initialize audio".into()));
+            state
+                .status
+                .message()
+                .set(Some("Failed to initialize audio".into()));
             return false;
         }
     };
@@ -1112,17 +1216,27 @@ async fn open_web(state: &AppState) -> bool {
     // Only report a device name when the user explicitly selected a specific
     // device via the mic chooser (mic_selected_device is Some with a non-empty id).
     // "Browser default" and direct browser mode leave mic_device_name as None.
-    let has_specific_device = state.mic.selected_device().get_untracked()
+    let has_specific_device = state
+        .mic
+        .selected_device()
+        .get_untracked()
         .as_ref()
         .is_some_and(|id| !id.is_empty());
     let dev_name = if has_specific_device {
-        state.mic.device_info().get_untracked().map(|info| info.name.clone())
+        state
+            .mic
+            .device_info()
+            .get_untracked()
+            .map(|info| info.name.clone())
     } else {
         None
     };
     state.mic.device_name().set(dev_name);
     state.mic.manufacturer().set(None);
-    state.mic.connection_type().set(Some("Web Audio API".to_string()));
+    state
+        .mic
+        .connection_type()
+        .set(Some("Web Audio API".to_string()));
     let source = match ctx.create_media_stream_source(&stream) {
         Ok(s) => s,
         Err(e) => {
@@ -1152,55 +1266,58 @@ async fn open_web(state: &AppState) -> bool {
     WEB_LISTEN_STATE.with(|s| s.borrow_mut().clear());
 
     let state_cb = *state;
-    let handler = Closure::<dyn FnMut(web_sys::AudioProcessingEvent)>::new(move |ev: web_sys::AudioProcessingEvent| {
-        let input_buffer = match ev.input_buffer() {
-            Ok(b) => b,
-            Err(_) => return,
-        };
-        let output_buffer = match ev.output_buffer() {
-            Ok(b) => b,
-            Err(_) => return,
-        };
+    let handler = Closure::<dyn FnMut(web_sys::AudioProcessingEvent)>::new(
+        move |ev: web_sys::AudioProcessingEvent| {
+            let input_buffer = match ev.input_buffer() {
+                Ok(b) => b,
+                Err(_) => return,
+            };
+            let output_buffer = match ev.output_buffer() {
+                Ok(b) => b,
+                Err(_) => return,
+            };
 
-        let input_data = match input_buffer.get_channel_data(0) {
-            Ok(d) => d,
-            Err(_) => return,
-        };
+            let input_data = match input_buffer.get_channel_data(0) {
+                Ok(d) => d,
+                Err(_) => return,
+            };
 
-        if state_cb.mic.listening().get_untracked() {
-            let sr = state_cb.mic.sample_rate().get_untracked();
-            let params = snapshot_params(&state_cb, None, sr);
-            let mute = state_cb.mic.mute_output().get_untracked();
-            let ctx_samples = state_cb.mic.listen_context_samples().get_untracked();
-            let out_data = WEB_RT_HET.with(|h| {
-                WEB_LISTEN_STATE.with(|s| {
-                    process_live_audio(
-                        &input_data,
-                        sr,
-                        &mut h.borrow_mut(),
-                        &mut s.borrow_mut(),
-                        ctx_samples,
-                        &params,
-                        mute,
-                    )
-                })
-            });
-            let _ = output_buffer.copy_to_channel(&out_data, 0);
-        } else {
-            let zeros = vec![0.0f32; input_data.len()];
-            let _ = output_buffer.copy_to_channel(&zeros, 0);
-        }
+            if state_cb.mic.listening().get_untracked() {
+                let sr = state_cb.mic.sample_rate().get_untracked();
+                let params = snapshot_params(&state_cb, None, sr);
+                let mute = state_cb.mic.mute_output().get_untracked();
+                let ctx_samples = state_cb.mic.listen_context_samples().get_untracked();
+                let out_data = WEB_RT_HET.with(|h| {
+                    WEB_LISTEN_STATE.with(|s| {
+                        process_live_audio(
+                            &input_data,
+                            sr,
+                            &mut h.borrow_mut(),
+                            &mut s.borrow_mut(),
+                            ctx_samples,
+                            &params,
+                            mute,
+                        )
+                    })
+                });
+                let _ = output_buffer.copy_to_channel(&out_data, 0);
+            } else {
+                let zeros = vec![0.0f32; input_data.len()];
+                let _ = output_buffer.copy_to_channel(&zeros, 0);
+            }
 
-        // Accumulate samples for live waterfall display during recording OR listening
-        if state_cb.mic.recording().get_untracked() || state_cb.mic.listening().get_untracked() {
-            MIC_BUFFER.with(|buf| {
-                buf.borrow_mut().extend_from_slice(&input_data);
-                if state_cb.mic.recording().get_untracked() {
-                    state_cb.mic.samples_recorded().set(buf.borrow().len());
-                }
-            });
-        }
-    });
+            // Accumulate samples for live waterfall display during recording OR listening
+            if state_cb.mic.recording().get_untracked() || state_cb.mic.listening().get_untracked()
+            {
+                MIC_BUFFER.with(|buf| {
+                    buf.borrow_mut().extend_from_slice(&input_data);
+                    if state_cb.mic.recording().get_untracked() {
+                        state_cb.mic.samples_recorded().set(buf.borrow().len());
+                    }
+                });
+            }
+        },
+    );
 
     processor.set_onaudioprocess(Some(handler.as_ref().unchecked_ref()));
 
@@ -1233,7 +1350,9 @@ fn close_web(state: &AppState) {
         }
     });
 
-    MIC_HANDLER.with(|h| { h.borrow_mut().take(); });
+    MIC_HANDLER.with(|h| {
+        h.borrow_mut().take();
+    });
 
     MIC_CTX.with(|c| {
         if let Some(ctx) = c.borrow_mut().take() {
@@ -1274,14 +1393,20 @@ async fn open_cpal(state: &AppState) -> bool {
         max_bit_depth: (max_bits > 0).then_some(max_bits as u16),
         channels: Some(channels),
     };
-    let info = match tauri_invoke_typed_args::<_, oversample_ipc::mic::MicInfo>("mic_open", &open_args).await {
-        Ok(v) => v,
-        Err(e) => {
-            log::warn!("Native mic failed: {}", e);
-            state.status.message().set(Some(format!("Native mic unavailable: {}", e)));
-            return false;
-        }
-    };
+    let info =
+        match tauri_invoke_typed_args::<_, oversample_ipc::mic::MicInfo>("mic_open", &open_args)
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("Native mic failed: {}", e);
+                state
+                    .status
+                    .message()
+                    .set(Some(format!("Native mic unavailable: {}", e)));
+                return false;
+            }
+        };
 
     let sample_rate = info.sample_rate;
     let bits_per_sample = info.bits_per_sample;
@@ -1304,7 +1429,9 @@ async fn open_cpal(state: &AppState) -> bool {
     // The host_label comes from the Tauri backend via mic_info.
     let conn_type = if device_name.to_lowercase().contains("usb") {
         "USB"
-    } else if device_name.to_lowercase().contains("bluetooth") || device_name.to_lowercase().contains("bt ") {
+    } else if device_name.to_lowercase().contains("bluetooth")
+        || device_name.to_lowercase().contains("bt ")
+    {
         "Bluetooth"
     } else {
         // Use the audio host name for native audio interfaces
@@ -1321,7 +1448,12 @@ async fn open_cpal(state: &AppState) -> bool {
     // as open (the loop exits when NATIVE_MIC_OPEN is cleared on close).
     NATIVE_MIC_OPEN.with(|o| *o.borrow_mut() = Some(NativeMode::Cpal));
     start_audio_pull_loop(*state);
-    log::info!("Native mic opened: {} at {} Hz, {}-bit", device_name, sample_rate, bits_per_sample);
+    log::info!(
+        "Native mic opened: {} at {} Hz, {}-bit",
+        device_name,
+        sample_rate,
+        bits_per_sample
+    );
     true
 }
 
@@ -1347,7 +1479,9 @@ async fn open_usb(state: &AppState) -> bool {
     // Step 1: list USB devices via the Kotlin plugin and pick the audio device.
     let list = match tauri_invoke_typed_no_args::<oversample_ipc::plugins::UsbDeviceListResult>(
         "plugin:usb-audio|listUsbDevices",
-    ).await {
+    )
+    .await
+    {
         Ok(v) => v,
         Err(e) => {
             log::warn!("USB device listing failed: {}", e);
@@ -1356,7 +1490,10 @@ async fn open_usb(state: &AppState) -> bool {
         }
     };
     let Some(audio_dev) = list.devices.into_iter().find(|d| d.is_audio_device) else {
-        state.status.message().set(Some("No USB audio device found".into()));
+        state
+            .status
+            .message()
+            .set(Some("No USB audio device found".into()));
         return false;
     };
     let device_name = audio_dev.device_name.clone();
@@ -1370,16 +1507,26 @@ async fn open_usb(state: &AppState) -> bool {
     if !audio_dev.has_permission {
         match tauri_invoke_typed_args::<_, oversample_ipc::plugins::UsbPermissionResult>(
             "plugin:usb-audio|requestUsbPermission",
-            &oversample_ipc::plugins::UsbDeviceNameArgs { device_name: device_name.clone() },
-        ).await {
+            &oversample_ipc::plugins::UsbDeviceNameArgs {
+                device_name: device_name.clone(),
+            },
+        )
+        .await
+        {
             Ok(result) => {
                 if !result.granted {
-                    state.status.message().set(Some("USB permission denied".into()));
+                    state
+                        .status
+                        .message()
+                        .set(Some("USB permission denied".into()));
                     return false;
                 }
             }
             Err(e) => {
-                state.status.message().set(Some(format!("USB permission error: {}", e)));
+                state
+                    .status
+                    .message()
+                    .set(Some(format!("USB permission error: {}", e)));
                 return false;
             }
         }
@@ -1393,10 +1540,15 @@ async fn open_usb(state: &AppState) -> bool {
             device_name: device_name.clone(),
             sample_rate: max_sr as i32,
         },
-    ).await {
+    )
+    .await
+    {
         Ok(v) => v,
         Err(e) => {
-            state.status.message().set(Some(format!("USB open failed: {}", e)));
+            state
+                .status
+                .message()
+                .set(Some(format!("USB open failed: {}", e)));
             return false;
         }
     };
@@ -1411,7 +1563,10 @@ async fn open_usb(state: &AppState) -> bool {
         info.product_name.clone()
     };
     if info.fd < 0 || info.endpoint_address == 0 || info.max_packet_size == 0 {
-        state.status.message().set(Some("USB device: invalid fd or endpoint".into()));
+        state
+            .status
+            .message()
+            .set(Some("USB device: invalid fd or endpoint".into()));
         return false;
     }
 
@@ -1430,7 +1585,10 @@ async fn open_usb(state: &AppState) -> bool {
         uac_version: info.uac_version as u32,
     };
     if let Err(e) = tauri_invoke_args("usb_start_stream", &stream_args).await {
-        state.status.message().set(Some(format!("USB stream failed: {}", e)));
+        state
+            .status
+            .message()
+            .set(Some(format!("USB stream failed: {}", e)));
         let _ = tauri_invoke_no_args("plugin:usb-audio|closeUsbDevice").await;
         return false;
     }
@@ -1438,7 +1596,11 @@ async fn open_usb(state: &AppState) -> bool {
     state.mic.sample_rate().set(sample_rate);
     // Fix: openUsbDevice emits `bitResolution`; the old code read `bitDepth`
     // (never present) so usb_bits was always stuck at the 16 default.
-    let usb_bits = if info.bit_resolution > 0 { info.bit_resolution as u16 } else { 16 };
+    let usb_bits = if info.bit_resolution > 0 {
+        info.bit_resolution as u16
+    } else {
+        16
+    };
     state.mic.bits_per_sample().set(usb_bits);
 
     // Setup HET playback AudioContext and chunk handler (same as cpal)
@@ -1463,7 +1625,10 @@ async fn open_usb(state: &AppState) -> bool {
         state_err.mic.listening().set(false);
         state_err.mic.usb_connected().set(false);
         state_err.mic.backend().set(None);
-        state_err.mic.acquisition_state().set(MicAcquisitionState::Failed);
+        state_err
+            .mic
+            .acquisition_state()
+            .set(MicAcquisitionState::Failed);
 
         NATIVE_MIC_OPEN.with(|o| *o.borrow_mut() = None);
 
@@ -1477,12 +1642,14 @@ async fn open_usb(state: &AppState) -> bool {
             if !samples.is_empty() && sr > 0 {
                 crate::audio::live_recording::finalize_recording(
                     crate::audio::live_recording::FinalizeParams {
-                        samples, sample_rate: sr,
+                        samples,
+                        sample_rate: sr,
                         bits_per_sample: state_err.mic.bits_per_sample().get_untracked(),
                         is_float: false,
                         saved_path: String::new(),
                         file_size: None,
-                    }, state_err,
+                    },
+                    state_err,
                 );
             }
         }
@@ -1505,7 +1672,10 @@ async fn open_usb(state: &AppState) -> bool {
     start_audio_pull_loop(*state);
     state.mic.device_name().set(Some(product_name.clone()));
     state.mic.manufacturer().set(manufacturer_name);
-    state.mic.connection_type().set(Some("USB (Raw)".to_string()));
+    state
+        .mic
+        .connection_type()
+        .set(Some("USB (Raw)".to_string()));
     log::info!("USB mic opened: {} at {} Hz", product_name, sample_rate);
     true
 }
@@ -1515,11 +1685,16 @@ async fn close_usb(state: &AppState) {
         log::error!("usb_stop_stream failed: {}", e);
     }
 
-    let _ = tauri_invoke("plugin:usb-audio|closeUsbDevice",
-        &js_sys::Object::new().into()).await;
+    let _ = tauri_invoke(
+        "plugin:usb-audio|closeUsbDevice",
+        &js_sys::Object::new().into(),
+    )
+    .await;
 
     // Also clean up USB error closure
-    USB_ERROR_CLOSURE.with(|c| { c.borrow_mut().take(); });
+    USB_ERROR_CLOSURE.with(|c| {
+        c.borrow_mut().take();
+    });
 
     cleanup_native_state();
     NATIVE_MIC_OPEN.with(|o| *o.borrow_mut() = None);

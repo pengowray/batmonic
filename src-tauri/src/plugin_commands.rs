@@ -92,8 +92,17 @@ mod tests {
         // Plugin permissions actually listed (ignore core:* and any non-plugin entry).
         let listed: HashSet<String> = perms
             .iter()
-            .map(|p| p.as_str().expect("permission entries are strings").to_string())
-            .filter(|s| s.split(':').next().map(|p| plugins.contains(p)).unwrap_or(false))
+            .map(|p| {
+                p.as_str()
+                    .expect("permission entries are strings")
+                    .to_string()
+            })
+            .filter(|s| {
+                s.split(':')
+                    .next()
+                    .map(|p| plugins.contains(p))
+                    .unwrap_or(false)
+            })
             .collect();
 
         let unknown: Vec<&String> = listed.difference(&expected).collect();

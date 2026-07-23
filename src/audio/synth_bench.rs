@@ -17,8 +17,8 @@ use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use crate::state::store_fields::*;
 use crate::audio::synthetic_mic::{self, SynthSignal};
+use crate::state::store_fields::*;
 use crate::state::{AppState, MainView, ResonatorDensity, ResonatorFftMode};
 use crate::web_util::sleep_ms;
 
@@ -72,16 +72,30 @@ fn build_combos() -> Vec<Combo> {
     let mut combos = Vec::new();
     // Spectrogram + Flow: rate × signal at fit zoom (density N/A).
     for &rate in RATES.iter() {
-        for &(view_label, view) in &[("Spectrogram", MainView::Spectrogram), ("Flow", MainView::Flow)] {
+        for &(view_label, view) in &[
+            ("Spectrogram", MainView::Spectrogram),
+            ("Flow", MainView::Flow),
+        ] {
             for &signal in SIGNALS.iter() {
-                combos.push(Combo { rate, view_label, view, signal, zoom_mult: 1.0, density: None });
+                combos.push(Combo {
+                    rate,
+                    view_label,
+                    view,
+                    signal,
+                    zoom_mult: 1.0,
+                    density: None,
+                });
             }
         }
     }
     // Resonators: sweep the density axis (100/50/25%) so the bank-cost lever is
     // visible directly. Signal content doesn't change resonator cost, so fix it.
     for &rate in RATES.iter() {
-        for &density in &[ResonatorDensity::Full, ResonatorDensity::Half, ResonatorDensity::Quarter] {
+        for &density in &[
+            ResonatorDensity::Full,
+            ResonatorDensity::Half,
+            ResonatorDensity::Quarter,
+        ] {
             combos.push(Combo {
                 rate,
                 view_label: "Resonators",
@@ -99,23 +113,39 @@ fn build_combos() -> Vec<Combo> {
     // to waveform cost, so fix it.
     for &rate in RATES.iter() {
         combos.push(Combo {
-            rate, view_label: "Waveform", view: MainView::Waveform,
-            signal: SynthSignal::Pulses, zoom_mult: 1.0, density: None,
+            rate,
+            view_label: "Waveform",
+            view: MainView::Waveform,
+            signal: SynthSignal::Pulses,
+            zoom_mult: 1.0,
+            density: None,
         });
     }
     combos.push(Combo {
-        rate: 384_000, view_label: "Waveform", view: MainView::Waveform,
-        signal: SynthSignal::Pulses, zoom_mult: 8.0, density: None,
+        rate: 384_000,
+        view_label: "Waveform",
+        view: MainView::Waveform,
+        signal: SynthSignal::Pulses,
+        zoom_mult: 8.0,
+        density: None,
     });
     // Scroll stress (zoom ×8): heaviest cases. Resonators at Quarter (the usable
     // density) so the scrolled-resonator case reflects real use.
     combos.push(Combo {
-        rate: 384_000, view_label: "Spectrogram", view: MainView::Spectrogram,
-        signal: SynthSignal::Pulses, zoom_mult: 8.0, density: None,
+        rate: 384_000,
+        view_label: "Spectrogram",
+        view: MainView::Spectrogram,
+        signal: SynthSignal::Pulses,
+        zoom_mult: 8.0,
+        density: None,
     });
     combos.push(Combo {
-        rate: 384_000, view_label: "Resonators", view: MainView::Resonators,
-        signal: SynthSignal::Pulses, zoom_mult: 8.0, density: Some(ResonatorDensity::Quarter),
+        rate: 384_000,
+        view_label: "Resonators",
+        view: MainView::Resonators,
+        signal: SynthSignal::Pulses,
+        zoom_mult: 8.0,
+        density: Some(ResonatorDensity::Quarter),
     });
     combos
 }
@@ -195,13 +225,23 @@ pub fn run(state: AppState) {
             }
             state.log_debug(
                 "info",
-                format!("Bench {}/{}: {} / {} @ {} kHz{}",
-                    i + 1, total, combo.view_label, combo.signal.label(), combo.rate / 1000, note),
+                format!(
+                    "Bench {}/{}: {} / {} @ {} kHz{}",
+                    i + 1,
+                    total,
+                    combo.view_label,
+                    combo.signal.label(),
+                    combo.rate / 1000,
+                    note
+                ),
             );
 
             // Force the resonator density for this combo (Resonators only).
             if let Some(d) = combo.density {
-                state.resonator.fft_mode().set(ResonatorFftMode::Adaptive(d));
+                state
+                    .resonator
+                    .fft_mode()
+                    .set(ResonatorFftMode::Adaptive(d));
             }
             // Set the view, then (re)start the synth for this combo.
             state.viewmode.main_view().set(combo.view);
@@ -229,7 +269,8 @@ pub fn run(state: AppState) {
             crate::components::spectrogram::take_spec_diag(); // reset spectrogram diag
             let frame_ts = measure_frames(MEASURE_MS, gen).await;
             let cols1 = crate::canvas::live_waterfall::total_columns();
-            let (rcalls, rtotal_ms, rupload_ms) = crate::canvas::live_waterfall::take_render_timing();
+            let (rcalls, rtotal_ms, rupload_ms) =
+                crate::canvas::live_waterfall::take_render_timing();
             // Spectrogram-family combos: split per-frame cost into the whole render
             // Effect body vs the waterfall render_viewport (rtotal_ms) — so we can
             // see if the ×8 scroll cost is the Effect (overlays/markers/signal
@@ -237,7 +278,11 @@ pub fn run(state: AppState) {
             if combo.view != MainView::Waveform {
                 let (seffn, seff_ms) = crate::components::spectrogram::take_spec_diag();
                 if seffn > 0 {
-                    let render_avg = if rcalls > 0 { rtotal_ms / rcalls as f64 } else { 0.0 };
+                    let render_avg = if rcalls > 0 {
+                        rtotal_ms / rcalls as f64
+                    } else {
+                        0.0
+                    };
                     state.log_debug("spec-diag", format!(
                         "{} @ {}k z×{:.0}: {} effect runs avg {:.2}ms (of which render_viewport ~{:.2}ms, {} renders)",
                         combo.view_label, combo.rate / 1000, combo.zoom_mult,
@@ -354,8 +399,7 @@ async fn measure_frames(window_ms: f64, gen: u64) -> Vec<f64> {
                 start.set(ts);
             }
             times.borrow_mut().push(ts);
-            let done = ts - start.get() >= window_ms
-                || BENCH_GEN.with(|g| g.get()) != gen; // cancelled → stop early
+            let done = ts - start.get() >= window_ms || BENCH_GEN.with(|g| g.get()) != gen; // cancelled → stop early
             if done {
                 let _ = resolve.call0(&JsValue::NULL);
                 // Break the self-reference cycle so the closure chain frees.
@@ -390,7 +434,11 @@ fn frame_stats(times: &[f64]) -> (f64, f64, f64, usize) {
     if n < 2 {
         return (0.0, 0.0, 0.0, n);
     }
-    let mut deltas: Vec<f64> = times.windows(2).map(|w| w[1] - w[0]).filter(|d| *d > 0.0).collect();
+    let mut deltas: Vec<f64> = times
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .filter(|d| *d > 0.0)
+        .collect();
     if deltas.is_empty() {
         return (0.0, 0.0, 0.0, n);
     }
@@ -398,7 +446,11 @@ fn frame_stats(times: &[f64]) -> (f64, f64, f64, usize) {
     let avg_fps = if mean > 0.0 { 1000.0 / mean } else { 0.0 };
     deltas.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let max_delta = *deltas.last().unwrap();
-    let min_fps = if max_delta > 0.0 { 1000.0 / max_delta } else { 0.0 };
+    let min_fps = if max_delta > 0.0 {
+        1000.0 / max_delta
+    } else {
+        0.0
+    };
     let p95_idx = (((deltas.len() as f64) * 0.95).floor() as usize).min(deltas.len() - 1);
     let p95_ms = deltas[p95_idx];
     (avg_fps, min_fps, p95_ms, n)
@@ -444,7 +496,12 @@ async fn run_resonator_microbench() -> (bool, Vec<ResoBenchRow>) {
         for _ in 0..iterations {
             crate::canvas::tile_cache::yield_to_browser().await;
             let r = crate::dsp::resonators::bench_resonator_bank(
-                num_bins, samples_per_iter, 1, bandwidth_hz, sample_rate, now_ms.clone(),
+                num_bins,
+                samples_per_iter,
+                1,
+                bandwidth_hz,
+                sample_rate,
+                now_ms.clone(),
             );
             total_ms += r.elapsed_ms;
         }
@@ -454,7 +511,11 @@ async fn run_resonator_microbench() -> (bool, Vec<ResoBenchRow>) {
         } else {
             0.0
         };
-        rows.push(ResoBenchRow { num_bins, total_ms, mupdates_per_s });
+        rows.push(ResoBenchRow {
+            num_bins,
+            total_ms,
+            mupdates_per_s,
+        });
     }
     (simd128, rows)
 }
@@ -484,7 +545,10 @@ fn build_report(
         let dpr = win.device_pixel_ratio();
         s.push_str(&format!("- devicePixelRatio: {:.2}\n", dpr));
     }
-    s.push_str(&format!("- Per combo: {:.0}ms settle + {:.0}ms measure\n", SETTLE_MS, MEASURE_MS));
+    s.push_str(&format!(
+        "- Per combo: {:.0}ms settle + {:.0}ms measure\n",
+        SETTLE_MS, MEASURE_MS
+    ));
     if cancelled {
         s.push_str("- NOTE: run was cancelled early (partial results)\n");
     }
@@ -493,11 +557,25 @@ fn build_report(
     s.push_str("| Rate | View | Signal | Dens | Zoom | avg fps | min fps | p95 ms | cols/s | frames | render ms | upload ms |\n");
     s.push_str("|------|------|--------|------|-----:|--------:|--------:|-------:|-------:|-------:|----------:|----------:|\n");
     for r in results {
-        let zoom = if r.zoom_mult != 1.0 { format!("×{:.0}", r.zoom_mult) } else { "fit".to_string() };
+        let zoom = if r.zoom_mult != 1.0 {
+            format!("×{:.0}", r.zoom_mult)
+        } else {
+            "fit".to_string()
+        };
         s.push_str(&format!(
             "| {}k | {} | {} | {} | {} | {:.1} | {:.1} | {:.1} | {:.0} | {} | {:.2} | {:.2} |\n",
-            r.rate / 1000, r.view, r.signal, r.density, zoom, r.avg_fps, r.min_fps, r.p95_ms,
-            r.cols_per_s, r.frames, r.render_ms, r.upload_ms,
+            r.rate / 1000,
+            r.view,
+            r.signal,
+            r.density,
+            zoom,
+            r.avg_fps,
+            r.min_fps,
+            r.p95_ms,
+            r.cols_per_s,
+            r.frames,
+            r.render_ms,
+            r.upload_ms,
         ));
     }
 
@@ -505,14 +583,20 @@ fn build_report(
     if !results.is_empty() {
         let mean_fps = results.iter().map(|r| r.avg_fps).sum::<f64>() / results.len() as f64;
         let worst = results.iter().min_by(|a, b| {
-            a.avg_fps.partial_cmp(&b.avg_fps).unwrap_or(std::cmp::Ordering::Equal)
+            a.avg_fps
+                .partial_cmp(&b.avg_fps)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
         s.push('\n');
         s.push_str(&format!("Overall avg fps: {:.1}\n", mean_fps));
         if let Some(w) = worst {
             s.push_str(&format!(
                 "Worst combo: {} / {} @ {}k — {:.1} avg fps ({:.1} min)\n",
-                w.view, w.signal, w.rate / 1000, w.avg_fps, w.min_fps,
+                w.view,
+                w.signal,
+                w.rate / 1000,
+                w.avg_fps,
+                w.min_fps,
             ));
         }
     }
@@ -565,10 +649,14 @@ fn emit_report(state: &AppState, report: String, cancelled: bool) {
 /// The anchor is attached to the DOM before clicking and removed after, which
 /// some browsers require for a programmatic download to fire.
 fn download_text(filename: &str, content: &str) {
-    let Some(doc) = web_sys::window().and_then(|w| w.document()) else { return };
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
     let encoded = String::from(js_sys::encode_uri_component(content));
     let href = format!("data:text/markdown;charset=utf-8,{}", encoded);
-    let Ok(a) = doc.create_element("a") else { return };
+    let Ok(a) = doc.create_element("a") else {
+        return;
+    };
     let _ = a.set_attribute("href", &href);
     let _ = a.set_attribute("download", filename);
     let _ = a.set_attribute("style", "display:none");
@@ -583,7 +671,9 @@ fn download_text(filename: &str, content: &str) {
 
 /// Best-effort copy to the clipboard (same pattern the debug-log "Copy All" uses).
 fn copy_to_clipboard(text: &str) {
-    let Some(window) = web_sys::window() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
     if let Ok(nav) = js_sys::Reflect::get(&window, &JsValue::from_str("navigator")) {
         if let Ok(clip) = js_sys::Reflect::get(&nav, &JsValue::from_str("clipboard")) {
             if let Some(func) = js_sys::Reflect::get(&clip, &JsValue::from_str("writeText"))

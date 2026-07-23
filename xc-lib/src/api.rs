@@ -83,14 +83,8 @@ fn parse_search_response(body: &serde_json::Value) -> Result<XcSearchResult, Str
         .and_then(|s| s.parse().ok())
         .or_else(|| body["numSpecies"].as_u64().map(|n| n as u32))
         .unwrap_or(0);
-    let num_pages = body["numPages"]
-        .as_u64()
-        .map(|n| n as u32)
-        .unwrap_or(1);
-    let page = body["page"]
-        .as_u64()
-        .map(|n| n as u32)
-        .unwrap_or(1);
+    let num_pages = body["numPages"].as_u64().map(|n| n as u32).unwrap_or(1);
+    let page = body["page"].as_u64().map(|n| n as u32).unwrap_or(1);
 
     // Surface a schema mismatch rather than silently returning zero results: a
     // present-but-non-array `recordings` means the response shape changed.
@@ -175,23 +169,16 @@ pub async fn fetch_recording(
 }
 
 /// Download audio bytes for a recording.
-pub async fn download_audio(
-    client: &reqwest::Client,
-    file_url: &str,
-) -> Result<Vec<u8>, String> {
-    let resp = client
-        .get(file_url)
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                "Download timed out — try again".to_string()
-            } else if e.is_connect() {
-                "Could not connect to server — check your internet connection".to_string()
-            } else {
-                format!("Download failed: {e}")
-            }
-        })?;
+pub async fn download_audio(client: &reqwest::Client, file_url: &str) -> Result<Vec<u8>, String> {
+    let resp = client.get(file_url).send().await.map_err(|e| {
+        if e.is_timeout() {
+            "Download timed out — try again".to_string()
+        } else if e.is_connect() {
+            "Could not connect to server — check your internet connection".to_string()
+        } else {
+            format!("Download failed: {e}")
+        }
+    })?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
@@ -204,16 +191,13 @@ pub async fn download_audio(
         });
     }
 
-    resp.bytes()
-        .await
-        .map(|b| b.to_vec())
-        .map_err(|e| {
-            if e.is_timeout() {
-                "Download timed out while reading data — try again".to_string()
-            } else {
-                format!("Failed to read audio data: {e}")
-            }
-        })
+    resp.bytes().await.map(|b| b.to_vec()).map_err(|e| {
+        if e.is_timeout() {
+            "Download timed out while reading data — try again".to_string()
+        } else {
+            format!("Failed to read audio data: {e}")
+        }
+    })
 }
 
 /// Ensure the query uses tag syntax required by XC API v3.
@@ -262,10 +246,7 @@ pub fn parse_xc_number(input: &str) -> Result<u64, String> {
         return Ok(n);
     }
 
-    if let Some(rest) = s
-        .strip_prefix("XC")
-        .or_else(|| s.strip_prefix("xc"))
-    {
+    if let Some(rest) = s.strip_prefix("XC").or_else(|| s.strip_prefix("xc")) {
         return rest
             .parse::<u64>()
             .map_err(|_| format!("Invalid XC number: {s}"));

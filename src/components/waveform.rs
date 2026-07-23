@@ -1,15 +1,15 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+use crate::audio::source::ChannelView;
 use crate::canvas::waveform_renderer;
 use crate::components::gutter::{BandGutter, TimeGutter};
 use crate::components::playhead::Playhead;
 use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast, split_three_bands_fft};
 use crate::dsp::zc_divide::zc_rate_per_bin;
+use crate::state::store_fields::*;
 use crate::state::{AppState, CanvasTool, FilterQuality, PlaybackMode, WaveformView};
-use crate::audio::source::ChannelView;
 use crate::viewport;
+use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 const ZC_BIN_DURATION: f64 = 0.001; // 1ms bins
 
@@ -50,8 +50,28 @@ pub fn Waveform() -> impl IntoView {
             };
             let samples = if filter_enabled {
                 match quality {
-                    FilterQuality::Fast => apply_eq_filter_fast(&ch_samples, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
-                    FilterQuality::Spectral => apply_eq_filter(&ch_samples, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
+                    FilterQuality::Fast => apply_eq_filter_fast(
+                        &ch_samples,
+                        sr,
+                        freq_low,
+                        freq_high,
+                        db_below,
+                        db_selected,
+                        db_harmonics,
+                        db_above,
+                        band_mode,
+                    ),
+                    FilterQuality::Spectral => apply_eq_filter(
+                        &ch_samples,
+                        sr,
+                        freq_low,
+                        freq_high,
+                        db_below,
+                        db_selected,
+                        db_harmonics,
+                        db_above,
+                        band_mode,
+                    ),
                 }
             } else {
                 ch_samples.into_owned()
@@ -68,7 +88,8 @@ pub fn Waveform() -> impl IntoView {
     // during a band-gutter drag makes the drag visibly laggy. While the
     // user is actively dragging, we return the last computed split
     // unchanged; a fresh split fires once when the drag ends.
-    let band_split_cache: StoredValue<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>> = StoredValue::new(None);
+    let band_split_cache: StoredValue<Option<(Vec<f32>, Vec<f32>, Vec<f32>)>> =
+        StoredValue::new(None);
     // Identity of the last computed split's inputs. During live capture the
     // processing loop bumps file metadata via `files().update()` every ~50 ms,
     // which invalidates this Memo every tick — but the actual samples only change
@@ -96,7 +117,11 @@ pub fn Waveform() -> impl IntoView {
         // signals get zeroed when HFR is off, which would make the "above"
         // lane show the entire signal. effective_range_ignoring_hfr() always
         // reflects what the drag handles on the spectrogram show.
-        let ff = state.viewmode.focus_stack().get().effective_range_ignoring_hfr();
+        let ff = state
+            .viewmode
+            .focus_stack()
+            .get()
+            .effective_range_ignoring_hfr();
         let freq_low = ff.lo;
         let freq_high = ff.hi;
 
@@ -194,7 +219,9 @@ pub fn Waveform() -> impl IntoView {
         let band_freq_low = ff.lo;
         let band_freq_high = ff.hi;
 
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
 
         let rect = canvas.get_bounding_client_rect();
@@ -206,11 +233,14 @@ pub fn Waveform() -> impl IntoView {
             // once the browser has computed layout.
             let state_retry = state;
             let cb = wasm_bindgen::closure::Closure::once(move || {
-                state_retry.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+                state_retry
+                    .viewmode
+                    .tile_ready_signal()
+                    .update(|n| *n = n.wrapping_add(1));
             });
-            let _ = web_sys::window().unwrap().request_animation_frame(
-                cb.as_ref().unchecked_ref(),
-            );
+            let _ = web_sys::window()
+                .unwrap()
+                .request_animation_frame(cb.as_ref().unchecked_ref());
             cb.forget();
             return;
         }
@@ -220,7 +250,10 @@ pub fn Waveform() -> impl IntoView {
         }
         // Guarded so a redraw doesn't churn canvas_width subscribers every frame.
         if state.viewmode.spectrogram_canvas_width().get_untracked() != display_w as f64 {
-            state.viewmode.spectrogram_canvas_width().set(display_w as f64);
+            state
+                .viewmode
+                .spectrogram_canvas_width()
+                .set(display_w as f64);
         }
 
         // The time axis / selection lives in a sibling <TimeGutter/> strip
@@ -238,8 +271,7 @@ pub fn Waveform() -> impl IntoView {
 
         if let Some(ref tl) = timeline {
             // ── Timeline mode: render waveform for each visible segment ──
-            let primary_file = tl.segments.first()
-                .and_then(|s| files.get(s.file_index));
+            let primary_file = tl.segments.first().and_then(|s| files.get(s.file_index));
             let time_res = primary_file
                 .map(|f| f.spectrogram.time_resolution)
                 .unwrap_or(1.0);
@@ -264,10 +296,13 @@ pub fn Waveform() -> impl IntoView {
 
                 // Canvas pixel range for this segment
                 let seg_canvas_start = (seg.timeline_offset_secs - scroll) * px_per_sec;
-                let seg_canvas_end = ((seg.timeline_offset_secs + seg.duration_secs) - scroll) * px_per_sec;
+                let seg_canvas_end =
+                    ((seg.timeline_offset_secs + seg.duration_secs) - scroll) * px_per_sec;
                 let clip_left = seg_canvas_start.max(0.0);
                 let clip_right = seg_canvas_end.min(display_w as f64);
-                if clip_left >= clip_right { continue; }
+                if clip_left >= clip_right {
+                    continue;
+                }
 
                 // File-local scroll offset
                 let file_scroll = (scroll - seg.timeline_offset_secs).max(0.0);
@@ -275,18 +310,28 @@ pub fn Waveform() -> impl IntoView {
                 let vis_end_time = (file_scroll + visible_time).min(seg.duration_secs);
 
                 let margin_samples = 64usize;
-                let region_start = ((vis_start_time * sr as f64) as usize).saturating_sub(margin_samples);
+                let region_start =
+                    ((vis_start_time * sr as f64) as usize).saturating_sub(margin_samples);
                 let region_end = ((vis_end_time * sr as f64) as usize) + margin_samples;
                 let region_len = region_end.saturating_sub(region_start);
                 // Borrow the visible window zero-copy for Stereo/MonoMix (mirrors the
                 // single-file path) instead of read_region's per-frame Vec alloc.
-                let waveform_buf: std::borrow::Cow<[f32]> = match (cv, seg_file.audio.source.as_contiguous()) {
-                    (ChannelView::MonoMix | ChannelView::Stereo, Some(all)) => {
-                        let end = (region_start + region_len).min(all.len());
-                        std::borrow::Cow::Borrowed(if region_start < end { &all[region_start..end] } else { &[] })
-                    }
-                    _ => std::borrow::Cow::Owned(seg_file.audio.source.read_region(cv, region_start as u64, region_len)),
-                };
+                let waveform_buf: std::borrow::Cow<[f32]> =
+                    match (cv, seg_file.audio.source.as_contiguous()) {
+                        (ChannelView::MonoMix | ChannelView::Stereo, Some(all)) => {
+                            let end = (region_start + region_len).min(all.len());
+                            std::borrow::Cow::Borrowed(if region_start < end {
+                                &all[region_start..end]
+                            } else {
+                                &[]
+                            })
+                        }
+                        _ => std::borrow::Cow::Owned(seg_file.audio.source.read_region(
+                            cv,
+                            region_start as u64,
+                            region_len,
+                        )),
+                    };
 
                 ctx.save();
                 ctx.begin_path();
@@ -334,12 +379,14 @@ pub fn Waveform() -> impl IntoView {
             };
 
             // Calculate visible sample range and read from source
-            let visible_time = viewport::visible_time(display_w as f64, zoom, file.spectrogram.time_resolution);
-            let (vis_start_time, vis_end_time) = viewport::data_window(buf_scroll, visible_time, buf_duration)
-                .unwrap_or((0.0, 0.0));
+            let visible_time =
+                viewport::visible_time(display_w as f64, zoom, file.spectrogram.time_resolution);
+            let (vis_start_time, vis_end_time) =
+                viewport::data_window(buf_scroll, visible_time, buf_duration).unwrap_or((0.0, 0.0));
             // Add a small margin for edge rendering
             let margin_samples = 64usize;
-            let region_start = ((vis_start_time * sr as f64) as usize).saturating_sub(margin_samples);
+            let region_start =
+                ((vis_start_time * sr as f64) as usize).saturating_sub(margin_samples);
             let region_end = ((vis_end_time * sr as f64) as usize) + margin_samples;
             let region_len = region_end.saturating_sub(region_start);
             // Borrow the visible window straight from the contiguous sample
@@ -352,13 +399,22 @@ pub fn Waveform() -> impl IntoView {
             // views and streaming sources still go through read_region.
             let _rp = web_sys::window().and_then(|w| w.performance());
             let _rt0 = _rp.as_ref().map(|p| p.now());
-            let waveform_buf: std::borrow::Cow<[f32]> = match (cv, file.audio.source.as_contiguous()) {
-                (ChannelView::MonoMix | ChannelView::Stereo, Some(all)) => {
-                    let end = (region_start + region_len).min(all.len());
-                    std::borrow::Cow::Borrowed(if region_start < end { &all[region_start..end] } else { &[] })
-                }
-                _ => std::borrow::Cow::Owned(file.audio.source.read_region(cv, region_start as u64, region_len)),
-            };
+            let waveform_buf: std::borrow::Cow<[f32]> =
+                match (cv, file.audio.source.as_contiguous()) {
+                    (ChannelView::MonoMix | ChannelView::Stereo, Some(all)) => {
+                        let end = (region_start + region_len).min(all.len());
+                        std::borrow::Cow::Borrowed(if region_start < end {
+                            &all[region_start..end]
+                        } else {
+                            &[]
+                        })
+                    }
+                    _ => std::borrow::Cow::Owned(file.audio.source.read_region(
+                        cv,
+                        region_start as u64,
+                        region_len,
+                    )),
+                };
             if let (Some(p), Some(t0)) = (_rp.as_ref(), _rt0) {
                 waveform_renderer::wf_diag_record_read(p.now() - t0);
             }
@@ -403,7 +459,11 @@ pub fn Waveform() -> impl IntoView {
                 // instead of re-scanning the whole visible window every frame. Else
                 // the raw windowed path (zoomed-in needs sub-cell resolution, and
                 // streaming / non-mono sources have no contiguous buffer to mip).
-                let spp = if display_w > 0 { visible_time * sr as f64 / display_w as f64 } else { 0.0 };
+                let spp = if display_w > 0 {
+                    visible_time * sr as f64 / display_w as f64
+                } else {
+                    0.0
+                };
                 let mip_buf = if matches!(cv, ChannelView::MonoMix | ChannelView::Stereo) {
                     file.audio.source.as_contiguous()
                 } else {
@@ -411,64 +471,100 @@ pub fn Waveform() -> impl IntoView {
                 };
                 let mip_d = waveform_renderer::MIP_D as f64;
                 let draw_full_wave = |color: &str| {
-                  let _perf = web_sys::window().and_then(|w| w.performance());
-                  let _t0 = _perf.as_ref().map(|p| p.now());
-                  let mut used_mip = false;
-                  // ── Live: read the raw capture ring DIRECTLY (the file source is
-                  // only a ~1 Hz snapshot, so reading it makes the wave look frozen
-                  // between updates). The ring slides every tick; the mip folds the
-                  // new samples incrementally (abs-anchored) so it stays cheap and
-                  // refreshes at frame rate.
-                  let live_drew = if is_live && spp >= mip_d {
-                      let cap_cells = ((crate::canvas::live_waterfall::capacity_time()
-                          * sr as f64) as usize / waveform_renderer::MIP_D) + 8;
-                      // True absolute base of the ring (total samples trimmed off
-                      // the front), published by the live loop. Deriving this from
-                      // the waterfall's processed clock lagged the capture ring by a
-                      // fluctuating amount and made the wave jump — this is exact.
-                      let abs_offset = crate::audio::mic_backend::live_ring_base();
-                      crate::audio::mic_backend::with_live_samples(state.is_tauri, |ring| {
-                          if ring.is_empty() { return false; }
-                          let ring_dur = ring.len() as f64 / sr as f64;
-                          let ring_offset = abs_offset as f64 / sr as f64; // abs time of ring[0]
-                          let ring_scroll = (scroll - ring_offset).clamp(0.0, ring_dur);
-                          waveform_renderer::draw_waveform_mipped_live(
-                              &ctx, ring, abs_offset, cap_cells, sr, ring_scroll, zoom,
-                              file.spectrogram.time_resolution, display_w as f64, wave_h,
-                              sel_time, gain_db, ring_dur, color,
-                          );
-                          true
-                      })
-                  } else {
-                      false
-                  };
-                  if live_drew {
-                      used_mip = true;
-                  } else {
-                      match mip_buf {
-                          // Static file (or live with a too-small window): the whole
-                          // contiguous buffer is a plain [0, len) buffer (abs_offset 0).
-                          Some(all) if spp >= mip_d => {
-                              waveform_renderer::draw_waveform_mipped(
-                                  &ctx, all, 0, 0, sr, buf_scroll, zoom,
-                                  file.spectrogram.time_resolution, display_w as f64, wave_h,
-                                  sel_time, gain_db, buf_duration, color,
-                              );
-                              used_mip = true;
-                          }
-                          // Zoomed-in (sub-cell detail) or non-contiguous → raw window.
-                          _ => {
-                              waveform_renderer::draw_waveform(
-                                  &ctx, &waveform_buf[..], sr, buf_scroll, zoom,
-                                  file.spectrogram.time_resolution, display_w as f64, wave_h,
-                                  sel_time, gain_db, buf_duration, region_start, color,
-                              );
-                          }
-                      }
-                  }
-                  if let (Some(p), Some(t0)) = (_perf.as_ref(), _t0) {
-                      waveform_renderer::wf_diag_record(p.now() - t0, used_mip, spp);
-                  }
+                    let _perf = web_sys::window().and_then(|w| w.performance());
+                    let _t0 = _perf.as_ref().map(|p| p.now());
+                    let mut used_mip = false;
+                    // ── Live: read the raw capture ring DIRECTLY (the file source is
+                    // only a ~1 Hz snapshot, so reading it makes the wave look frozen
+                    // between updates). The ring slides every tick; the mip folds the
+                    // new samples incrementally (abs-anchored) so it stays cheap and
+                    // refreshes at frame rate.
+                    let live_drew = if is_live && spp >= mip_d {
+                        let cap_cells = ((crate::canvas::live_waterfall::capacity_time()
+                            * sr as f64) as usize
+                            / waveform_renderer::MIP_D)
+                            + 8;
+                        // True absolute base of the ring (total samples trimmed off
+                        // the front), published by the live loop. Deriving this from
+                        // the waterfall's processed clock lagged the capture ring by a
+                        // fluctuating amount and made the wave jump — this is exact.
+                        let abs_offset = crate::audio::mic_backend::live_ring_base();
+                        crate::audio::mic_backend::with_live_samples(state.is_tauri, |ring| {
+                            if ring.is_empty() {
+                                return false;
+                            }
+                            let ring_dur = ring.len() as f64 / sr as f64;
+                            let ring_offset = abs_offset as f64 / sr as f64; // abs time of ring[0]
+                            let ring_scroll = (scroll - ring_offset).clamp(0.0, ring_dur);
+                            waveform_renderer::draw_waveform_mipped_live(
+                                &ctx,
+                                ring,
+                                abs_offset,
+                                cap_cells,
+                                sr,
+                                ring_scroll,
+                                zoom,
+                                file.spectrogram.time_resolution,
+                                display_w as f64,
+                                wave_h,
+                                sel_time,
+                                gain_db,
+                                ring_dur,
+                                color,
+                            );
+                            true
+                        })
+                    } else {
+                        false
+                    };
+                    if live_drew {
+                        used_mip = true;
+                    } else {
+                        match mip_buf {
+                            // Static file (or live with a too-small window): the whole
+                            // contiguous buffer is a plain [0, len) buffer (abs_offset 0).
+                            Some(all) if spp >= mip_d => {
+                                waveform_renderer::draw_waveform_mipped(
+                                    &ctx,
+                                    all,
+                                    0,
+                                    0,
+                                    sr,
+                                    buf_scroll,
+                                    zoom,
+                                    file.spectrogram.time_resolution,
+                                    display_w as f64,
+                                    wave_h,
+                                    sel_time,
+                                    gain_db,
+                                    buf_duration,
+                                    color,
+                                );
+                                used_mip = true;
+                            }
+                            // Zoomed-in (sub-cell detail) or non-contiguous → raw window.
+                            _ => {
+                                waveform_renderer::draw_waveform(
+                                    &ctx,
+                                    &waveform_buf[..],
+                                    sr,
+                                    buf_scroll,
+                                    zoom,
+                                    file.spectrogram.time_resolution,
+                                    display_w as f64,
+                                    wave_h,
+                                    sel_time,
+                                    gain_db,
+                                    buf_duration,
+                                    region_start,
+                                    color,
+                                );
+                            }
+                        }
+                    }
+                    if let (Some(p), Some(t0)) = (_perf.as_ref(), _t0) {
+                        waveform_renderer::wf_diag_record(p.now() - t0, used_mip, spp);
+                    }
                 };
 
                 match waveform_view {
@@ -539,7 +635,9 @@ pub fn Waveform() -> impl IntoView {
             if !clean_view {
                 if !file.wav_markers.is_empty() {
                     let sr = file.audio.sample_rate as f64;
-                    let markers: Vec<(f64, Option<String>)> = file.wav_markers.iter()
+                    let markers: Vec<(f64, Option<String>)> = file
+                        .wav_markers
+                        .iter()
                         .map(|m| (m.position as f64 / sr, m.label.clone()))
                         .collect();
                     crate::canvas::overlays::draw_time_marker_lines(
@@ -556,7 +654,9 @@ pub fn Waveform() -> impl IntoView {
                 if let Some(file_id_val) = state.current_file_id_tracked() {
                     let store = state.annotations.store().get();
                     if let Some(set) = store.get(file_id_val) {
-                        let ann_markers: Vec<(f64, Option<String>)> = set.annotations.iter()
+                        let ann_markers: Vec<(f64, Option<String>)> = set
+                            .annotations
+                            .iter()
                             .filter_map(|a| match &a.kind {
                                 crate::annotations::AnnotationKind::Marker(m) => {
                                     Some((m.time, m.label.clone()))
@@ -581,8 +681,16 @@ pub fn Waveform() -> impl IntoView {
             }
 
             // Draw "play here" marker when not playing
-            if !clean_view && state.playback.start_mode().get() .uses_from_here() && !is_playing && canvas_tool == CanvasTool::Hand {
-                let visible_time = viewport::visible_time(display_w as f64, zoom, file.spectrogram.time_resolution);
+            if !clean_view
+                && state.playback.start_mode().get().uses_from_here()
+                && !is_playing
+                && canvas_tool == CanvasTool::Hand
+            {
+                let visible_time = viewport::visible_time(
+                    display_w as f64,
+                    zoom,
+                    file.spectrogram.time_resolution,
+                );
                 let here_x = display_w as f64 * viewport::PLAY_FROM_HERE_FRACTION;
                 let here_time = viewport::play_from_here_time(scroll, visible_time);
                 state.playback.from_here_time().set(here_time);
@@ -598,7 +706,6 @@ pub fn Waveform() -> impl IntoView {
                 ctx.stroke();
                 let _ = ctx.set_line_dash(&js_sys::Array::new());
             }
-
         } else {
             ctx.set_fill_style_str("#0a0a0a");
             ctx.fill_rect(0.0, 0.0, display_w as f64, display_h as f64);
@@ -634,27 +741,45 @@ pub fn Waveform() -> impl IntoView {
             let (visible_time, duration) = if let Some(file) = files.get(idx) {
                 let zoom = state.view.zoom_level().get_untracked();
                 let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-                (viewport::visible_time(canvas_w, zoom, file.spectrogram.time_resolution), file.audio.duration_secs)
+                (
+                    viewport::visible_time(canvas_w, zoom, file.spectrogram.time_resolution),
+                    file.audio.duration_secs,
+                )
             } else {
                 return;
             };
-            let delta = raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
-            let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
+            let delta =
+                raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
+            let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
             state.suspend_follow();
             state.view.scroll_offset().update(|s| {
-                *s = viewport::clamp_scroll_for_mode(*s + delta, duration, visible_time, from_here_mode);
+                *s = viewport::clamp_scroll_for_mode(
+                    *s + delta,
+                    duration,
+                    visible_time,
+                    from_here_mode,
+                );
             });
         }
     };
 
     let on_pointerdown = move |ev: web_sys::PointerEvent| {
-        if ev.button() != 0 { return; }
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if ev.button() != 0 {
+            return;
+        }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
 
-        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+            return;
+        }
         // Always start pan drag (bookmark on click is handled in pointerup)
         state.interaction.is_dragging().set(true);
-        hand_drag_start.set((ev.client_x() as f64, state.view.scroll_offset().get_untracked()));
+        hand_drag_start.set((
+            ev.client_x() as f64,
+            state.view.scroll_offset().get_untracked(),
+        ));
         // Capture pointer so drag continues when cursor leaves the canvas
         if let Some(target) = ev.target() {
             if let Ok(el) = target.dyn_into::<web_sys::Element>() {
@@ -664,12 +789,18 @@ pub fn Waveform() -> impl IntoView {
     };
 
     let on_pointermove = move |ev: web_sys::PointerEvent| {
-        if !state.interaction.is_dragging().get_untracked() { return; }
-        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+        if !state.interaction.is_dragging().get_untracked() {
+            return;
+        }
+        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+            return;
+        }
         let (start_client_x, start_scroll) = hand_drag_start.get_untracked();
         let dx = ev.client_x() as f64 - start_client_x;
         let cw = state.viewmode.spectrogram_canvas_width().get_untracked();
-        if cw == 0.0 { return; }
+        if cw == 0.0 {
+            return;
+        }
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked();
         let file = idx.and_then(|i| files.get(i));
@@ -679,7 +810,9 @@ pub fn Waveform() -> impl IntoView {
         let time_res = if waterfall_active {
             crate::canvas::live_waterfall::time_resolution()
         } else {
-            file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+            file.as_ref()
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(1.0)
         };
         let zoom = state.view.zoom_level().get_untracked();
         let visible_time = viewport::visible_time(cw, zoom, time_res);
@@ -694,18 +827,28 @@ pub fn Waveform() -> impl IntoView {
         } else {
             let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
             let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
-            viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode)
+            viewport::clamp_scroll_for_mode(
+                start_scroll + dt,
+                duration,
+                visible_time,
+                from_here_mode,
+            )
         };
         state.view.scroll_offset().set(new_scroll);
     };
 
     let on_pointerup = move |ev: web_sys::PointerEvent| {
-        if state.interaction.is_dragging().get_untracked() && state.interaction.canvas_tool().get_untracked() == CanvasTool::Hand {
+        if state.interaction.is_dragging().get_untracked()
+            && state.interaction.canvas_tool().get_untracked() == CanvasTool::Hand
+        {
             let (start_x, _) = hand_drag_start.get_untracked();
             let dx = (ev.client_x() as f64 - start_x).abs();
             if dx < 3.0 && state.playback.is_playing().get_untracked() {
                 let t = state.playback.playhead_time().get_untracked();
-                state.viewmode.bookmarks().update(|bm| bm.push(crate::state::Bookmark { time: t }));
+                state
+                    .viewmode
+                    .bookmarks()
+                    .update(|bm| bm.push(crate::state::Bookmark { time: t }));
             }
         }
         state.interaction.is_dragging().set(false);
@@ -718,7 +861,9 @@ pub fn Waveform() -> impl IntoView {
 
     // ── Touch event handlers (mobile) ──────────────────────────────────────────
     let on_touchstart = move |ev: web_sys::TouchEvent| {
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
 
         // Cancel any ongoing inertia animation immediately
         crate::components::inertia::cancel_inertia(inertia_generation);
@@ -735,8 +880,14 @@ pub fn Waveform() -> impl IntoView {
                 let files = state.library.files().get_untracked();
                 let idx = state.library.current_index().get_untracked();
                 let file = idx.and_then(|i| files.get(i));
-                let time_res = file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
-                let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX);
+                let time_res = file
+                    .as_ref()
+                    .map(|f| f.spectrogram.time_resolution)
+                    .unwrap_or(1.0);
+                let duration = file
+                    .as_ref()
+                    .map(|f| f.audio.duration_secs)
+                    .unwrap_or(f64::MAX);
                 pinch_state.set(Some(PinchState::horizontal(
                     dist,
                     state.view.zoom_level().get_untracked(),
@@ -751,19 +902,28 @@ pub fn Waveform() -> impl IntoView {
             return;
         }
 
-        if n != 1 { return; }
+        if n != 1 {
+            return;
+        }
         pinch_state.set(None);
 
         let touch = touches.get(0).unwrap();
-        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+            return;
+        }
         // Always start pan drag (bookmark on tap handled in touchend)
         ev.prevent_default();
         state.interaction.is_dragging().set(true);
-        hand_drag_start.set((touch.client_x() as f64, state.view.scroll_offset().get_untracked()));
+        hand_drag_start.set((
+            touch.client_x() as f64,
+            state.view.scroll_offset().get_untracked(),
+        ));
     };
 
     let on_touchmove = move |ev: web_sys::TouchEvent| {
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
 
         let touches = ev.touches();
         let n = touches.length();
@@ -772,9 +932,11 @@ pub fn Waveform() -> impl IntoView {
         if n == 2 {
             if let Some(ps) = pinch_state.get_untracked() {
                 ev.prevent_default();
-                use crate::components::pinch::{two_finger_geometry, apply_pinch};
+                use crate::components::pinch::{apply_pinch, two_finger_geometry};
                 if let Some((mid_x, dist)) = two_finger_geometry(&touches) {
-                    let Some(canvas_el) = canvas_ref.get() else { return };
+                    let Some(canvas_el) = canvas_ref.get() else {
+                        return;
+                    };
                     let canvas: &web_sys::HtmlCanvasElement = canvas_el.as_ref();
                     let rect = canvas.get_bounding_client_rect();
                     let cw = canvas.width() as f64;
@@ -787,15 +949,23 @@ pub fn Waveform() -> impl IntoView {
             return;
         }
 
-        if n != 1 { return; }
+        if n != 1 {
+            return;
+        }
         let touch = touches.get(0).unwrap();
-        if !state.interaction.is_dragging().get_untracked() { return; }
-        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+        if !state.interaction.is_dragging().get_untracked() {
+            return;
+        }
+        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+            return;
+        }
         ev.prevent_default();
         let (start_client_x, start_scroll) = hand_drag_start.get_untracked();
         let dx = touch.client_x() as f64 - start_client_x;
         let cw = state.viewmode.spectrogram_canvas_width().get_untracked();
-        if cw == 0.0 { return; }
+        if cw == 0.0 {
+            return;
+        }
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked();
         let file = idx.and_then(|i| files.get(i));
@@ -805,7 +975,9 @@ pub fn Waveform() -> impl IntoView {
         let time_res = if waterfall_active {
             crate::canvas::live_waterfall::time_resolution()
         } else {
-            file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+            file.as_ref()
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(1.0)
         };
         let zoom = state.view.zoom_level().get_untracked();
         let visible_time = viewport::visible_time(cw, zoom, time_res);
@@ -820,7 +992,12 @@ pub fn Waveform() -> impl IntoView {
         } else {
             let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
             let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
-            viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode)
+            viewport::clamp_scroll_for_mode(
+                start_scroll + dt,
+                duration,
+                visible_time,
+                from_here_mode,
+            )
         };
         state.view.scroll_offset().set(new_scroll);
         // Record velocity sample for inertia
@@ -835,7 +1012,10 @@ pub fn Waveform() -> impl IntoView {
         }
         if remaining == 1 {
             if let Some(touch) = _ev.touches().get(0) {
-                hand_drag_start.set((touch.client_x() as f64, state.view.scroll_offset().get_untracked()));
+                hand_drag_start.set((
+                    touch.client_x() as f64,
+                    state.view.scroll_offset().get_untracked(),
+                ));
                 if state.interaction.canvas_tool().get_untracked() == CanvasTool::Hand {
                     state.interaction.is_dragging().set(true);
                 }
@@ -850,7 +1030,10 @@ pub fn Waveform() -> impl IntoView {
                     let dx = (touch.client_x() as f64 - start_x).abs();
                     if dx < 5.0 && state.playback.is_playing().get_untracked() {
                         let t = state.playback.playhead_time().get_untracked();
-                        state.viewmode.bookmarks().update(|bm| bm.push(crate::state::Bookmark { time: t }));
+                        state
+                            .viewmode
+                            .bookmarks()
+                            .update(|bm| bm.push(crate::state::Bookmark { time: t }));
                     } else if dx >= 5.0 {
                         // Flick → launch inertia
                         let vel = velocity_tracker.with_value(|t| t.velocity_px_per_sec());
@@ -864,16 +1047,27 @@ pub fn Waveform() -> impl IntoView {
                         let time_res = if waterfall_active {
                             crate::canvas::live_waterfall::time_resolution()
                         } else {
-                            file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+                            file.as_ref()
+                                .map(|f| f.spectrogram.time_resolution)
+                                .unwrap_or(1.0)
                         };
                         let duration = if waterfall_active {
                             crate::canvas::live_waterfall::total_time()
                         } else {
-                            file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX)
+                            file.as_ref()
+                                .map(|f| f.audio.duration_secs)
+                                .unwrap_or(f64::MAX)
                         };
-                        let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
+                        let from_here_mode =
+                            state.playback.start_mode().get_untracked().uses_from_here();
                         crate::components::inertia::start_inertia(
-                            state, vel, cw, time_res, duration, from_here_mode, inertia_generation,
+                            state,
+                            vel,
+                            cw,
+                            time_res,
+                            duration,
+                            from_here_mode,
+                            inertia_generation,
                         );
                     }
                 }

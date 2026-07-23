@@ -11,9 +11,9 @@
 //! with LRU-by-distance eviction.  Evicted columns can be recomputed from
 //! `AudioData.samples` via `tile_cache::schedule_tile_on_demand()`.
 
+use crate::types::SpectrogramColumn;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use crate::types::SpectrogramColumn;
 
 /// Memory budget for all spectral stores combined (~200 MB).
 const MAX_STORE_BYTES: usize = 200 * 1024 * 1024;
@@ -40,18 +40,24 @@ thread_local! {
 
 /// Total approximate bytes used across all stores.
 fn total_bytes(stores: &HashMap<usize, SpectralColumnStore>) -> usize {
-    stores.values().map(|s| s.present_count * APPROX_BYTES_PER_COL).sum()
+    stores
+        .values()
+        .map(|s| s.present_count * APPROX_BYTES_PER_COL)
+        .sum()
 }
 
 /// Initialise (or reset) the store for a file.
 pub fn init(file_idx: usize, total_cols: usize, fft_size: usize) {
     STORES.with(|s| {
-        s.borrow_mut().insert(file_idx, SpectralColumnStore {
-            columns: (0..total_cols).map(|_| None).collect(),
-            fft_size,
-            max_magnitude: 0.0,
-            present_count: 0,
-        });
+        s.borrow_mut().insert(
+            file_idx,
+            SpectralColumnStore {
+                columns: (0..total_cols).map(|_| None).collect(),
+                fft_size,
+                max_magnitude: 0.0,
+                present_count: 0,
+            },
+        );
     });
 }
 
@@ -61,7 +67,9 @@ pub fn init(file_idx: usize, total_cols: usize, fft_size: usize) {
 pub fn insert_columns(file_idx: usize, start_col: usize, cols: &[SpectrogramColumn]) {
     STORES.with(|s| {
         let mut stores = s.borrow_mut();
-        let Some(store) = stores.get_mut(&file_idx) else { return };
+        let Some(store) = stores.get_mut(&file_idx) else {
+            return;
+        };
         for (i, col) in cols.iter().enumerate() {
             let idx = start_col + i;
             if idx < store.columns.len() {
@@ -95,7 +103,9 @@ fn evict_over_budget(
         // Try to evict from non-primary files first
         let mut evicted = false;
         for (&fi, store) in stores.iter_mut() {
-            if fi == primary_file { continue; }
+            if fi == primary_file {
+                continue;
+            }
             if store.present_count > 0 {
                 // Evict the column furthest from the middle of this store
                 let mid = store.columns.len() / 2;
@@ -107,11 +117,15 @@ fn evict_over_budget(
                 }
             }
         }
-        if evicted { continue; }
+        if evicted {
+            continue;
+        }
 
         // Evict from primary file: column furthest from `center`
         if let Some(store) = stores.get_mut(&primary_file) {
-            if store.present_count == 0 { break; }
+            if store.present_count == 0 {
+                break;
+            }
             if let Some(idx) = farthest_present(&store.columns, center) {
                 store.columns[idx] = None;
                 store.present_count -= 1;
@@ -151,12 +165,15 @@ pub fn ensure_capacity(file_idx: usize, new_total: usize) {
                 }
             }
             None => {
-                stores.insert(file_idx, SpectralColumnStore {
-                    columns: (0..new_total).map(|_| None).collect(),
-                    fft_size: 0,
-                    max_magnitude: 0.0,
-                    present_count: 0,
-                });
+                stores.insert(
+                    file_idx,
+                    SpectralColumnStore {
+                        columns: (0..new_total).map(|_| None).collect(),
+                        fft_size: 0,
+                        max_magnitude: 0.0,
+                        present_count: 0,
+                    },
+                );
             }
         }
     });
@@ -166,7 +183,9 @@ pub fn ensure_capacity(file_idx: usize, new_total: usize) {
 pub fn tile_complete(file_idx: usize, tile_start: usize, tile_end: usize) -> bool {
     STORES.with(|s| {
         let stores = s.borrow();
-        let Some(store) = stores.get(&file_idx) else { return false };
+        let Some(store) = stores.get(&file_idx) else {
+            return false;
+        };
         let end = tile_end.min(store.columns.len());
         (tile_start..end).all(|i| store.columns[i].is_some())
     })
@@ -198,7 +217,8 @@ pub fn with_columns<R>(
 /// Get the current running max magnitude.
 pub fn get_max_magnitude(file_idx: usize) -> f32 {
     STORES.with(|s| {
-        s.borrow().get(&file_idx)
+        s.borrow()
+            .get(&file_idx)
             .map(|st| st.max_magnitude)
             .unwrap_or(0.0)
     })
@@ -222,14 +242,20 @@ pub fn compute_chroma_global_max(
         let mut max_note = 0.0f32;
         for col in store.columns.iter().flatten() {
             let ch = stft_to_chromagram(&col.magnitudes, freq_resolution, min_octave, num_octaves);
-            for &v in &ch.pitch_classes { max_class = max_class.max(v); }
+            for &v in &ch.pitch_classes {
+                max_class = max_class.max(v);
+            }
             for octaves in &ch.octave_detail {
                 for &v in &octaves[min_octave..max_octave.min(MAX_OCTAVES)] {
                     max_note = max_note.max(v);
                 }
             }
         }
-        if max_class > 0.0 { Some((max_class, max_note)) } else { None }
+        if max_class > 0.0 {
+            Some((max_class, max_note))
+        } else {
+            None
+        }
     })
 }
 
@@ -255,11 +281,15 @@ pub fn drain_columns(file_idx: usize) -> Option<Vec<SpectrogramColumn>> {
     STORES.with(|s| {
         let mut stores = s.borrow_mut();
         let store = stores.remove(&file_idx)?;
-        let result: Vec<SpectrogramColumn> = store.columns.into_iter()
-            .map(|opt| opt.unwrap_or_else(|| SpectrogramColumn {
-                magnitudes: Vec::new(),
-                time_offset: 0.0,
-            }))
+        let result: Vec<SpectrogramColumn> = store
+            .columns
+            .into_iter()
+            .map(|opt| {
+                opt.unwrap_or_else(|| SpectrogramColumn {
+                    magnitudes: Vec::new(),
+                    time_offset: 0.0,
+                })
+            })
             .collect();
         Some(result)
     })
@@ -267,7 +297,9 @@ pub fn drain_columns(file_idx: usize) -> Option<Vec<SpectrogramColumn>> {
 
 /// Remove a specific file's store (e.g. when a file is unloaded).
 pub fn clear_file(file_idx: usize) {
-    STORES.with(|s| { s.borrow_mut().remove(&file_idx); });
+    STORES.with(|s| {
+        s.borrow_mut().remove(&file_idx);
+    });
 }
 
 /// Clear all stores.

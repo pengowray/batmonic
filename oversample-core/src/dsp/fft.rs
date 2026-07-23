@@ -101,8 +101,11 @@ pub fn compute_reassigned_tile(
 
     if samples.len() < fft_size || col_count == 0 {
         return PreRendered {
-            width: 0, height: 0,
-            pixels: Vec::new(), db_data: Vec::new(), flow_shifts: Vec::new(),
+            width: 0,
+            height: 0,
+            pixels: Vec::new(),
+            db_data: Vec::new(),
+            flow_shifts: Vec::new(),
         };
     }
 
@@ -213,11 +216,7 @@ pub fn compute_reassigned_tile(
 /// Compute a spectrogram from audio data using a Short-Time Fourier Transform (STFT).
 ///
 /// Uses a Hann window for spectral leakage reduction.
-pub fn compute_spectrogram(
-    audio: &AudioData,
-    fft_size: usize,
-    hop_size: usize,
-) -> SpectrogramData {
+pub fn compute_spectrogram(audio: &AudioData, fft_size: usize, hop_size: usize) -> SpectrogramData {
     let fft = FFT_PLANNER.with(|p| p.borrow_mut().plan_fft_forward(fft_size));
 
     // Use the in-memory mono-mixed samples directly — allocating a fresh Vec
@@ -285,7 +284,14 @@ pub fn compute_spectrogram_partial(
 ) -> Vec<SpectrogramColumn> {
     // Use audio.samples directly — same rationale as compute_spectrogram:
     // avoid allocating a duplicate Vec for multi-hour files.
-    compute_stft_columns(&audio.samples, audio.sample_rate, fft_size, hop_size, col_start, col_count)
+    compute_stft_columns(
+        &audio.samples,
+        audio.sample_rate,
+        fft_size,
+        hop_size,
+        col_start,
+        col_count,
+    )
 }
 
 /// Compute STFT columns directly from a sample slice.
@@ -327,7 +333,10 @@ pub fn compute_stft_columns(
         fft.process(&mut input, &mut spectrum).expect("FFT failed");
         let magnitudes: Vec<f32> = spectrum.iter().map(|c| c.norm()).collect();
         let time_offset = pos as f64 / sample_rate as f64;
-        columns.push(SpectrogramColumn { magnitudes, time_offset });
+        columns.push(SpectrogramColumn {
+            magnitudes,
+            time_offset,
+        });
     }
     columns
 }
@@ -410,16 +419,22 @@ pub fn compute_overview_from_spectrogram(data: &SpectrogramData) -> Option<Previ
 
     let src_w = data.columns.len();
     let src_h = data.columns[0].magnitudes.len();
-    if src_h == 0 { return None; }
+    if src_h == 0 {
+        return None;
+    }
 
     let out_w = (src_w as u32).min(1024);
     let out_h = (src_h as u32).min(256);
 
-    let max_mag = data.columns.iter()
+    let max_mag = data
+        .columns
+        .iter()
         .flat_map(|c| c.magnitudes.iter())
         .copied()
         .fold(0.0f32, f32::max);
-    if max_mag <= 0.0 { return None; }
+    if max_mag <= 0.0 {
+        return None;
+    }
 
     let mut pixels = vec![0u8; (out_w * out_h * 4) as usize];
 
@@ -427,7 +442,9 @@ pub fn compute_overview_from_spectrogram(data: &SpectrogramData) -> Option<Previ
         let src_col = (x as usize * src_w) / out_w as usize;
         let col = &data.columns[src_col.min(src_w - 1)];
         let col_len = col.magnitudes.len();
-        if col_len == 0 { continue; }
+        if col_len == 0 {
+            continue;
+        }
         for y in 0..out_h {
             let src_bin = src_h - 1 - ((y as usize * src_h) / out_h as usize).min(src_h - 1);
             let mag = col.magnitudes[src_bin.min(col_len - 1)];

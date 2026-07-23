@@ -13,11 +13,11 @@
 //! browser XC mode would require a CORS-enabled proxy (a new feature, not a fix).
 
 use crate::state::store_fields::*;
+use crate::state::AppState;
+use crate::tauri_bridge::{tauri_invoke, tauri_invoke_with_args};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use wasm_bindgen::prelude::*;
-use crate::state::AppState;
-use crate::tauri_bridge::{tauri_invoke, tauri_invoke_with_args};
 
 const XC_GROUPS: &[&str] = &["bats", "birds", "frogs", "grasshoppers", "land mammals"];
 
@@ -186,7 +186,11 @@ fn parse_cached_file(val: &JsValue) -> Option<CachedFile> {
 enum BrowserView {
     ApiKeyPrompt,
     GroupBrowse,
-    SpeciesRecordings { genus: String, species: String, en: String },
+    SpeciesRecordings {
+        genus: String,
+        species: String,
+        en: String,
+    },
     SearchResults,
 }
 
@@ -211,7 +215,8 @@ pub fn XcBrowser() -> impl IntoView {
     let recordings_total_pages = RwSignal::new(1u32);
     let downloading: RwSignal<Option<u64>> = RwSignal::new(None);
     let recordings_total: RwSignal<u32> = RwSignal::new(0);
-    let cached_ids: RwSignal<std::collections::HashSet<u64>> = RwSignal::new(std::collections::HashSet::new());
+    let cached_ids: RwSignal<std::collections::HashSet<u64>> =
+        RwSignal::new(std::collections::HashSet::new());
 
     // Country combobox state
     let country_dropdown_open = RwSignal::new(false);
@@ -223,7 +228,9 @@ pub fn XcBrowser() -> impl IntoView {
         if filter.is_empty() {
             countries.clone()
         } else {
-            countries.iter().copied()
+            countries
+                .iter()
+                .copied()
                 .filter(|c| c.to_lowercase().contains(&filter))
                 .collect::<Vec<_>>()
         }
@@ -257,7 +264,9 @@ pub fn XcBrowser() -> impl IntoView {
             match tauri_invoke_with_args(
                 "xc_set_api_key",
                 &oversample_ipc::xc::XcSetApiKeyArgs { key: key.clone() },
-            ).await {
+            )
+            .await
+            {
                 Ok(_) => {
                     has_key.set(true);
                     view.set(BrowserView::GroupBrowse);
@@ -272,7 +281,11 @@ pub fn XcBrowser() -> impl IntoView {
         let group = selected_group.get_untracked();
         let country = {
             let c = country_input.get_untracked().trim().to_string();
-            if c.is_empty() { None } else { Some(c) }
+            if c.is_empty() {
+                None
+            } else {
+                Some(c)
+            }
         };
         loading.set(true);
         error_msg.set(None);
@@ -281,8 +294,13 @@ pub fn XcBrowser() -> impl IntoView {
         spawn_local(async move {
             match tauri_invoke_with_args(
                 "xc_browse_group",
-                &oversample_ipc::xc::XcGroupArgs { group: group.clone(), country: country.clone() },
-            ).await {
+                &oversample_ipc::xc::XcGroupArgs {
+                    group: group.clone(),
+                    country: country.clone(),
+                },
+            )
+            .await
+            {
                 Ok(val) => {
                     species_list.set(parse_species_list(&val));
                 }
@@ -292,8 +310,13 @@ pub fn XcBrowser() -> impl IntoView {
             // Get cache age
             if let Ok(val) = tauri_invoke_with_args(
                 "xc_taxonomy_age",
-                &oversample_ipc::xc::XcGroupArgs { group: group.clone(), country: country.clone() },
-            ).await {
+                &oversample_ipc::xc::XcGroupArgs {
+                    group: group.clone(),
+                    country: country.clone(),
+                },
+            )
+            .await
+            {
                 taxonomy_age.set(val.as_string());
             }
 
@@ -313,7 +336,11 @@ pub fn XcBrowser() -> impl IntoView {
         let group = selected_group.get_untracked();
         let country = {
             let c = country_input.get_untracked().trim().to_string();
-            if c.is_empty() { None } else { Some(c) }
+            if c.is_empty() {
+                None
+            } else {
+                Some(c)
+            }
         };
         loading.set(true);
         error_msg.set(None);
@@ -321,8 +348,13 @@ pub fn XcBrowser() -> impl IntoView {
         spawn_local(async move {
             match tauri_invoke_with_args(
                 "xc_refresh_taxonomy",
-                &oversample_ipc::xc::XcGroupArgs { group: group.clone(), country: country.clone() },
-            ).await {
+                &oversample_ipc::xc::XcGroupArgs {
+                    group: group.clone(),
+                    country: country.clone(),
+                },
+            )
+            .await
+            {
                 Ok(val) => {
                     species_list.set(parse_species_list(&val));
                     taxonomy_age.set(Some("just now".to_string()));
@@ -337,10 +369,10 @@ pub fn XcBrowser() -> impl IntoView {
         spawn_local(async move {
             let mut set = std::collections::HashSet::new();
             for id in ids {
-                if let Ok(val) = tauri_invoke_with_args(
-                    "xc_is_cached",
-                    &oversample_ipc::xc::XcIdArgs { id },
-                ).await {
+                if let Ok(val) =
+                    tauri_invoke_with_args("xc_is_cached", &oversample_ipc::xc::XcIdArgs { id })
+                        .await
+                {
                     if val.as_bool().unwrap_or(false) {
                         set.insert(id);
                     }
@@ -369,13 +401,20 @@ pub fn XcBrowser() -> impl IntoView {
                     species: species.clone(),
                     page: None,
                 },
-            ).await {
+            )
+            .await
+            {
                 Ok(val) => {
                     recordings.set(parse_recordings(&val));
                     recordings_page.set(parse_current_page(&val));
                     recordings_total_pages.set(parse_num_pages(&val));
                     recordings_total.set(parse_num_recordings(&val));
-                    let ids: Vec<u64> = recordings.try_get_untracked().unwrap_or_default().iter().map(|r| r.id).collect();
+                    let ids: Vec<u64> = recordings
+                        .try_get_untracked()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|r| r.id)
+                        .collect();
                     check_cached(ids);
                 }
                 Err(e) => error_msg.set(Some(e)),
@@ -397,14 +436,24 @@ pub fn XcBrowser() -> impl IntoView {
         spawn_local(async move {
             match tauri_invoke_with_args(
                 "xc_search",
-                &oversample_ipc::xc::XcSearchArgs { query: query.clone(), page: None },
-            ).await {
+                &oversample_ipc::xc::XcSearchArgs {
+                    query: query.clone(),
+                    page: None,
+                },
+            )
+            .await
+            {
                 Ok(val) => {
                     recordings.set(parse_recordings(&val));
                     recordings_page.set(parse_current_page(&val));
                     recordings_total_pages.set(parse_num_pages(&val));
                     recordings_total.set(parse_num_recordings(&val));
-                    let ids: Vec<u64> = recordings.try_get_untracked().unwrap_or_default().iter().map(|r| r.id).collect();
+                    let ids: Vec<u64> = recordings
+                        .try_get_untracked()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|r| r.id)
+                        .collect();
                     check_cached(ids);
                 }
                 Err(e) => error_msg.set(Some(e)),
@@ -419,44 +468,42 @@ pub fn XcBrowser() -> impl IntoView {
         }
     };
 
-    let on_country_keydown = move |ev: web_sys::KeyboardEvent| {
-        match ev.key().as_str() {
-            "Enter" => {
-                if country_dropdown_open.get_untracked() {
-                    let list = filtered_countries.get_untracked();
-                    let idx = country_highlight_idx.get_untracked();
-                    if idx == 0 {
-                        country_input.set(String::new());
-                        country_filter_text.set(String::new());
-                    } else if let Some(name) = list.get(idx - 1) {
-                        country_input.set(name.to_string());
-                        country_filter_text.set(name.to_string());
-                    }
-                    country_dropdown_open.set(false);
-                } else {
-                    let text = country_filter_text.get_untracked().trim().to_string();
-                    country_input.set(text);
+    let on_country_keydown = move |ev: web_sys::KeyboardEvent| match ev.key().as_str() {
+        "Enter" => {
+            if country_dropdown_open.get_untracked() {
+                let list = filtered_countries.get_untracked();
+                let idx = country_highlight_idx.get_untracked();
+                if idx == 0 {
+                    country_input.set(String::new());
+                    country_filter_text.set(String::new());
+                } else if let Some(name) = list.get(idx - 1) {
+                    country_input.set(name.to_string());
+                    country_filter_text.set(name.to_string());
                 }
-                load_group();
-            }
-            "Escape" => {
                 country_dropdown_open.set(false);
-                country_filter_text.set(country_input.get_untracked());
+            } else {
+                let text = country_filter_text.get_untracked().trim().to_string();
+                country_input.set(text);
             }
-            "ArrowDown" => {
-                ev.prevent_default();
-                if !country_dropdown_open.get_untracked() {
-                    country_dropdown_open.set(true);
-                }
-                let max = filtered_countries.get_untracked().len();
-                country_highlight_idx.update(|i| *i = (*i + 1).min(max));
-            }
-            "ArrowUp" => {
-                ev.prevent_default();
-                country_highlight_idx.update(|i| *i = i.saturating_sub(1));
-            }
-            _ => {}
+            load_group();
         }
+        "Escape" => {
+            country_dropdown_open.set(false);
+            country_filter_text.set(country_input.get_untracked());
+        }
+        "ArrowDown" => {
+            ev.prevent_default();
+            if !country_dropdown_open.get_untracked() {
+                country_dropdown_open.set(true);
+            }
+            let max = filtered_countries.get_untracked().len();
+            country_highlight_idx.update(|i| *i = (*i + 1).min(max));
+        }
+        "ArrowUp" => {
+            ev.prevent_default();
+            country_highlight_idx.update(|i| *i = i.saturating_sub(1));
+        }
+        _ => {}
     };
 
     let on_back = move |_: web_sys::MouseEvent| {
@@ -480,7 +527,8 @@ pub fn XcBrowser() -> impl IntoView {
                             species: species.clone(),
                             page: Some(page_num),
                         },
-                    ).await
+                    )
+                    .await
                 }
                 BrowserView::SearchResults => {
                     tauri_invoke_with_args(
@@ -489,7 +537,8 @@ pub fn XcBrowser() -> impl IntoView {
                             query: search_input.get_untracked(),
                             page: Some(page_num),
                         },
-                    ).await
+                    )
+                    .await
                 }
                 _ => return,
             };
@@ -500,7 +549,12 @@ pub fn XcBrowser() -> impl IntoView {
                     recordings_page.set(parse_current_page(&val));
                     recordings_total_pages.set(parse_num_pages(&val));
                     recordings_total.set(parse_num_recordings(&val));
-                    let ids: Vec<u64> = recordings.try_get_untracked().unwrap_or_default().iter().map(|r| r.id).collect();
+                    let ids: Vec<u64> = recordings
+                        .try_get_untracked()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|r| r.id)
+                        .collect();
                     check_cached(ids);
                 }
                 Err(e) => error_msg.set(Some(e)),
@@ -514,10 +568,9 @@ pub fn XcBrowser() -> impl IntoView {
         error_msg.set(None);
         spawn_local(async move {
             let result: Result<(), String> = async {
-                let val = tauri_invoke_with_args(
-                    "xc_download",
-                    &oversample_ipc::xc::XcIdArgs { id },
-                ).await?;
+                let val =
+                    tauri_invoke_with_args("xc_download", &oversample_ipc::xc::XcIdArgs { id })
+                        .await?;
                 let cached = parse_cached_file(&val)
                     .ok_or_else(|| "Failed to parse download result".to_string())?;
 
@@ -545,7 +598,8 @@ pub fn XcBrowser() -> impl IntoView {
                     state,
                     load_id,
                     false,
-                ).await;
+                )
+                .await;
                 state.loading_done(load_id);
                 load_result?;
 
@@ -555,10 +609,13 @@ pub fn XcBrowser() -> impl IntoView {
                     state.library.current_index().set(Some(file_count - 1));
                 }
 
-                cached_ids.update(|s| { s.insert(id); });
+                cached_ids.update(|s| {
+                    s.insert(id);
+                });
                 state.dialogs.xc_browser_open().set(false);
                 Ok(())
-            }.await;
+            }
+            .await;
 
             if let Err(e) = result {
                 log::error!("Failed to load XC{id}: {e}");

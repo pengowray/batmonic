@@ -9,17 +9,20 @@
 // popup only carries settings that have nowhere else to go:
 //   • PS/PV overlap-save buffer size (latency vs smoothness tradeoff)
 
-use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::audio::microphone;
 use crate::components::combo_button::ComboButton;
+use crate::state::store_fields::*;
 use crate::state::{
-    AppState, LayerPanel, MicAcquisitionState, MicStrategy, PlaybackMode,
-    RecordReadyState,
+    AppState, LayerPanel, MicAcquisitionState, MicStrategy, PlaybackMode, RecordReadyState,
 };
+use leptos::prelude::*;
 
 fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
+    if active {
+        "layer-panel-opt sel"
+    } else {
+        "layer-panel-opt"
+    }
 }
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {
@@ -32,7 +35,9 @@ fn toggle_panel(state: &AppState, panel: LayerPanel) {
 pub fn ListenButton() -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let listen_is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::ListenMode));
+    let listen_is_open = Signal::derive(move || {
+        state.panels.layer_panel_open().get() == Some(LayerPanel::ListenMode)
+    });
 
     let listen_left_class = Signal::derive(move || {
         if state.mic.strategy().get() == MicStrategy::None {
@@ -40,7 +45,8 @@ pub fn ListenButton() -> impl IntoView {
         }
         let is_listening_ready = state.mic.listening().get()
             && state.mic.acquisition_state().get() == MicAcquisitionState::Ready;
-        let is_rec_ready = state.mic.record_ready_state().get() == RecordReadyState::AwaitingConfirmation;
+        let is_rec_ready =
+            state.mic.record_ready_state().get() == RecordReadyState::AwaitingConfirmation;
         if is_listening_ready || is_rec_ready {
             "layer-btn combo-btn-left mic-armed"
         } else {
@@ -48,7 +54,11 @@ pub fn ListenButton() -> impl IntoView {
         }
     });
     let listen_right_class = Signal::derive(move || {
-        if listen_is_open.get() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right" }
+        if listen_is_open.get() {
+            "layer-btn combo-btn-right open"
+        } else {
+            "layer-btn combo-btn-right"
+        }
     });
 
     let listen_left_value = Signal::derive(move || {

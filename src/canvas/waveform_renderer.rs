@@ -28,15 +28,15 @@ fn compute_viewport(
 ) -> WaveViewport {
     let mid_y = canvas_height / 2.0;
     let visible_time = viewport::visible_time(canvas_width, zoom, time_resolution);
-    let px_per_sec = if visible_time > 0.0 { canvas_width / visible_time } else { 0.0 };
-    let (start_time, data_x, data_width) = viewport::data_region_px(
-        scroll_offset,
-        visible_time,
-        total_duration,
-        canvas_width,
-    )
-    .map(|(data_start, _data_end, dst_x, dst_w)| (data_start, dst_x, dst_w))
-    .unwrap_or((0.0, 0.0, 0.0));
+    let px_per_sec = if visible_time > 0.0 {
+        canvas_width / visible_time
+    } else {
+        0.0
+    };
+    let (start_time, data_x, data_width) =
+        viewport::data_region_px(scroll_offset, visible_time, total_duration, canvas_width)
+            .map(|(data_start, _data_end, dst_x, dst_w)| (data_start, dst_x, dst_w))
+            .unwrap_or((0.0, 0.0, 0.0));
     let samples_per_pixel = if data_width > 0.0 {
         ((data_width / px_per_sec) * sample_rate as f64) / data_width
     } else {
@@ -72,7 +72,10 @@ fn draw_waveform_layer(
 
     let off = vp.region_start_sample;
     let px_start = vp.data_x.floor().max(0.0) as usize;
-    let px_end = (vp.data_x + vp.data_width).ceil().min(canvas_width).max(vp.data_x) as usize;
+    let px_end = (vp.data_x + vp.data_width)
+        .ceil()
+        .min(canvas_width)
+        .max(vp.data_x) as usize;
 
     if vp.samples_per_pixel <= 2.0 {
         ctx.begin_path();
@@ -119,8 +122,12 @@ fn draw_waveform_layer(
             let mut min_val = f32::MAX;
             let mut max_val = f32::MIN;
             for &s in &samples[i0..i1] {
-                if s < min_val { min_val = s; }
-                if s > max_val { max_val = s; }
+                if s < min_val {
+                    min_val = s;
+                }
+                if s > max_val {
+                    max_val = s;
+                }
             }
 
             let y_min = vp.mid_y - (max_val as f64 * gain_linear * vp.mid_y * 0.9);
@@ -192,10 +199,27 @@ pub fn draw_waveform(
     }
 
     let gain_linear = 10.0_f64.powf(gain_db / 20.0);
-    let vp = compute_viewport(total_duration, sample_rate, scroll_offset, zoom, time_resolution, canvas_width, canvas_height, region_start_sample);
+    let vp = compute_viewport(
+        total_duration,
+        sample_rate,
+        scroll_offset,
+        zoom,
+        time_resolution,
+        canvas_width,
+        canvas_height,
+        region_start_sample,
+    );
     draw_selection(ctx, selection, &vp, canvas_width, canvas_height);
     draw_center_line(ctx, vp.mid_y, canvas_width);
-    draw_waveform_layer(ctx, samples, sample_rate, &vp, canvas_width, stroke_color, gain_linear);
+    draw_waveform_layer(
+        ctx,
+        samples,
+        sample_rate,
+        &vp,
+        canvas_width,
+        stroke_color,
+        gain_linear,
+    );
 }
 
 // ── Min/max mip for the Waveform view (zoomed-out scan elimination) ───────────
@@ -233,7 +257,9 @@ pub fn wf_diag_record(ms: f64, used_mip: bool, spp: f64) {
         let mut d = c.borrow_mut();
         d.0 += 1;
         d.1 += ms;
-        if used_mip { d.5 += 1; }
+        if used_mip {
+            d.5 += 1;
+        }
         d.7 = spp;
     });
 }
@@ -284,7 +310,14 @@ struct WaveMip {
 impl WaveMip {
     fn new(key: (usize, usize, u8), cap: usize) -> Self {
         let cap = cap.max(4);
-        WaveMip { cells: vec![(0.0, 0.0); cap], cap, head: -1, tail: -1, consumed: 0, key }
+        WaveMip {
+            cells: vec![(0.0, 0.0); cap],
+            cap,
+            head: -1,
+            tail: -1,
+            consumed: 0,
+            key,
+        }
     }
 
     /// Fold the buffer's newest samples into the envelope. `abs_latest` is the
@@ -324,8 +357,12 @@ impl WaveMip {
                 }
             } else {
                 let cell = &mut self.cells[(c as usize) % cap];
-                if s < cell.0 { cell.0 = s; }
-                if s > cell.1 { cell.1 = s; }
+                if s < cell.0 {
+                    cell.0 = s;
+                }
+                if s > cell.1 {
+                    cell.1 = s;
+                }
             }
         }
         self.consumed = start + new;
@@ -343,8 +380,12 @@ impl WaveMip {
         let mut mx = f32::MIN;
         for c in lo..=hi {
             let (cmn, cmx) = self.cells[(c as usize) % self.cap];
-            if cmn < mn { mn = cmn; }
-            if cmx > mx { mx = cmx; }
+            if cmn < mn {
+                mn = cmn;
+            }
+            if cmx > mx {
+                mx = cmx;
+            }
         }
         Some((mn, mx))
     }
@@ -381,7 +422,16 @@ fn draw_mip_core(
     let gain_linear = 10.0_f64.powf(gain_db / 20.0);
     // region_start_sample = 0: the renderer works in whole-buffer (then absolute)
     // sample space, so the visible window is derived from scroll/zoom directly.
-    let vp = compute_viewport(total_duration, sample_rate, scroll_offset, zoom, time_resolution, canvas_width, canvas_height, 0);
+    let vp = compute_viewport(
+        total_duration,
+        sample_rate,
+        scroll_offset,
+        zoom,
+        time_resolution,
+        canvas_width,
+        canvas_height,
+        0,
+    );
     draw_selection(ctx, selection, &vp, canvas_width, canvas_height);
     draw_center_line(ctx, vp.mid_y, canvas_width);
 
@@ -406,7 +456,10 @@ fn draw_mip_core(
         }
         let sr = sample_rate as f64;
         let px_start = vp.data_x.floor().max(0.0) as usize;
-        let px_end = (vp.data_x + vp.data_width).ceil().min(canvas_width).max(vp.data_x) as usize;
+        let px_end = (vp.data_x + vp.data_width)
+            .ceil()
+            .min(canvas_width)
+            .max(vp.data_x) as usize;
         ctx.set_stroke_style_str(stroke_color);
         ctx.set_line_width(1.0);
         ctx.begin_path();
@@ -419,12 +472,14 @@ fn draw_mip_core(
                 continue;
             }
             let li0 = ((t0 * sr) as i64).max(0); // buffer-local sample (start)
-            // Map buffer-local → absolute → cell range covering [li0, li1).
+                                                 // Map buffer-local → absolute → cell range covering [li0, li1).
             let a0 = abs_offset as i64 + li0;
             let a1 = abs_offset as i64 + li1;
             let c0 = a0 / MIP_D as i64;
             let c1 = (a1 - 1) / MIP_D as i64;
-            let Some((mn, mx)) = mip.range(c0, c1) else { continue };
+            let Some((mn, mx)) = mip.range(c0, c1) else {
+                continue;
+            };
             let y_min = vp.mid_y - (mx as f64 * gain_linear * vp.mid_y * 0.9);
             let y_max = vp.mid_y - (mn as f64 * gain_linear * vp.mid_y * 0.9);
             ctx.move_to(x, y_min);
@@ -456,8 +511,23 @@ pub fn draw_waveform_mipped(
 ) {
     let key = (buf.as_ptr() as usize, buf.len(), channel_id);
     let cap_cells = buf.len() / MIP_D + 2;
-    draw_mip_core(ctx, buf, abs_offset, key, cap_cells, sample_rate, scroll_offset, zoom,
-        time_resolution, canvas_width, canvas_height, selection, gain_db, total_duration, stroke_color);
+    draw_mip_core(
+        ctx,
+        buf,
+        abs_offset,
+        key,
+        cap_cells,
+        sample_rate,
+        scroll_offset,
+        zoom,
+        time_resolution,
+        canvas_width,
+        canvas_height,
+        selection,
+        gain_db,
+        total_duration,
+        stroke_color,
+    );
 }
 
 /// Draw the live waveform from the SLIDING raw-sample ring, folded incrementally.
@@ -488,8 +558,23 @@ pub fn draw_waveform_mipped_live(
     // file's mip; length is omitted from the key (it fluctuates each tick).
     let key = (ring.as_ptr() as usize, 0usize, 1u8);
     let cap_cells = cap_cells.max(ring.len() / MIP_D + 2);
-    draw_mip_core(ctx, ring, abs_offset, key, cap_cells, sample_rate, scroll_offset, zoom,
-        time_resolution, canvas_width, canvas_height, selection, gain_db, total_duration, stroke_color);
+    draw_mip_core(
+        ctx,
+        ring,
+        abs_offset,
+        key,
+        cap_cells,
+        sample_rate,
+        scroll_offset,
+        zoom,
+        time_resolution,
+        canvas_width,
+        canvas_height,
+        selection,
+        gain_db,
+        total_duration,
+        stroke_color,
+    );
 }
 
 /// Draw a waveform layer into a vertical sub-region of the canvas.
@@ -505,7 +590,11 @@ fn draw_waveform_layer_lane(
     y_offset: f64,
     lane_height: f64,
 ) {
-    if vp.data_width <= 0.0 || vp.px_per_sec <= 0.0 || vp.samples_per_pixel <= 0.0 || lane_height <= 0.0 {
+    if vp.data_width <= 0.0
+        || vp.px_per_sec <= 0.0
+        || vp.samples_per_pixel <= 0.0
+        || lane_height <= 0.0
+    {
         return;
     }
 
@@ -516,7 +605,10 @@ fn draw_waveform_layer_lane(
     let half_h = lane_height / 2.0;
     let off = vp.region_start_sample;
     let px_start = vp.data_x.floor().max(0.0) as usize;
-    let px_end = (vp.data_x + vp.data_width).ceil().min(canvas_width).max(vp.data_x) as usize;
+    let px_end = (vp.data_x + vp.data_width)
+        .ceil()
+        .min(canvas_width)
+        .max(vp.data_x) as usize;
 
     if vp.samples_per_pixel <= 2.0 {
         ctx.begin_path();
@@ -525,11 +617,20 @@ fn draw_waveform_layer_lane(
             let x = px as f64;
             let t = vp.start_time + ((x - vp.data_x) / vp.px_per_sec);
             let abs_idx = (t * sample_rate as f64) as usize;
-            if abs_idx < off { continue; }
+            if abs_idx < off {
+                continue;
+            }
             let idx = abs_idx - off;
-            if idx >= samples.len() { break; }
+            if idx >= samples.len() {
+                break;
+            }
             let y = mid_y - (samples[idx] as f64 * gain_linear * half_h * 0.9);
-            if first { ctx.move_to(x, y); first = false; } else { ctx.line_to(x, y); }
+            if first {
+                ctx.move_to(x, y);
+                first = false;
+            } else {
+                ctx.line_to(x, y);
+            }
         }
         ctx.stroke();
     } else {
@@ -540,16 +641,24 @@ fn draw_waveform_layer_lane(
             let t1 = vp.start_time + ((x + 1.0 - vp.data_x) / vp.px_per_sec);
             let abs_i0 = (t0 * sample_rate as f64) as usize;
             let abs_i1 = (t1 * sample_rate as f64) as usize;
-            if abs_i1 <= off { continue; }
+            if abs_i1 <= off {
+                continue;
+            }
             let i0 = abs_i0.saturating_sub(off).min(samples.len());
             let i1 = abs_i1.saturating_sub(off).min(samples.len());
-            if i0 >= i1 || i0 >= samples.len() { continue; }
+            if i0 >= i1 || i0 >= samples.len() {
+                continue;
+            }
 
             let mut min_val = f32::MAX;
             let mut max_val = f32::MIN;
             for &s in &samples[i0..i1] {
-                if s < min_val { min_val = s; }
-                if s > max_val { max_val = s; }
+                if s < min_val {
+                    min_val = s;
+                }
+                if s > max_val {
+                    max_val = s;
+                }
             }
 
             let y_min = mid_y - (max_val as f64 * gain_linear * half_h * 0.9);
@@ -598,22 +707,51 @@ pub fn draw_waveform_freq(
     }
 
     let gain_linear = 10.0_f64.powf(gain_db / 20.0);
-    let vp = compute_viewport(total_duration, sample_rate, scroll_offset, zoom, time_resolution, canvas_width, canvas_height, region_start_sample);
+    let vp = compute_viewport(
+        total_duration,
+        sample_rate,
+        scroll_offset,
+        zoom,
+        time_resolution,
+        canvas_width,
+        canvas_height,
+        region_start_sample,
+    );
     draw_selection(ctx, selection, &vp, canvas_width, canvas_height);
     draw_center_line(ctx, vp.mid_y, canvas_width);
 
     // Full waveform behind in dim green
-    draw_waveform_layer(ctx, samples, sample_rate, &vp, canvas_width, "rgba(100, 170, 100, 0.35)", gain_linear);
+    draw_waveform_layer(
+        ctx,
+        samples,
+        sample_rate,
+        &vp,
+        canvas_width,
+        "rgba(100, 170, 100, 0.35)",
+        gain_linear,
+    );
 
     // Selected frequency band overlay in semi-transparent blue
     if !filtered_samples.is_empty() {
-        draw_waveform_layer(ctx, filtered_samples, sample_rate, &vp, canvas_width, "rgba(80, 140, 255, 0.7)", gain_linear);
+        draw_waveform_layer(
+            ctx,
+            filtered_samples,
+            sample_rate,
+            &vp,
+            canvas_width,
+            "rgba(80, 140, 255, 0.7)",
+            gain_linear,
+        );
     }
 
     // Label with the band's frequency range
     ctx.set_fill_style_str("rgba(255, 255, 255, 0.35)");
     ctx.set_font("10px sans-serif");
-    let _ = ctx.fill_text(&format!("{}\u{2013}{} kHz", fmt_khz(freq_low), fmt_khz(freq_high)), 4.0, 12.0);
+    let _ = ctx.fill_text(
+        &format!("{}\u{2013}{} kHz", fmt_khz(freq_low), fmt_khz(freq_high)),
+        4.0,
+        12.0,
+    );
 }
 
 /// Draw triple-band waveform: three stacked channels for above, selected, and below.
@@ -639,7 +777,16 @@ pub fn draw_waveform_triple(
     ctx.fill_rect(0.0, 0.0, canvas_width, canvas_height);
 
     let gain_linear = 10.0_f64.powf(gain_db / 20.0);
-    let vp = compute_viewport(total_duration, sample_rate, scroll_offset, zoom, time_resolution, canvas_width, canvas_height, region_start_sample);
+    let vp = compute_viewport(
+        total_duration,
+        sample_rate,
+        scroll_offset,
+        zoom,
+        time_resolution,
+        canvas_width,
+        canvas_height,
+        region_start_sample,
+    );
     draw_selection(ctx, selection, &vp, canvas_width, canvas_height);
 
     let lane_height = canvas_height / 3.0;
@@ -666,20 +813,47 @@ pub fn draw_waveform_triple(
 
     // Above band (top lane) — orange/amber
     if !above_samples.is_empty() {
-        draw_waveform_layer_lane(ctx, above_samples, sample_rate, &vp, canvas_width,
-            "rgba(220, 160, 60, 0.8)", gain_linear, 0.0, lane_height);
+        draw_waveform_layer_lane(
+            ctx,
+            above_samples,
+            sample_rate,
+            &vp,
+            canvas_width,
+            "rgba(220, 160, 60, 0.8)",
+            gain_linear,
+            0.0,
+            lane_height,
+        );
     }
 
     // Selected band (middle lane) — blue
     if !selected_samples.is_empty() {
-        draw_waveform_layer_lane(ctx, selected_samples, sample_rate, &vp, canvas_width,
-            "rgba(80, 140, 255, 0.85)", gain_linear, lane_height, lane_height);
+        draw_waveform_layer_lane(
+            ctx,
+            selected_samples,
+            sample_rate,
+            &vp,
+            canvas_width,
+            "rgba(80, 140, 255, 0.85)",
+            gain_linear,
+            lane_height,
+            lane_height,
+        );
     }
 
     // Below band (bottom lane) — green
     if !below_samples.is_empty() {
-        draw_waveform_layer_lane(ctx, below_samples, sample_rate, &vp, canvas_width,
-            "rgba(100, 200, 100, 0.7)", gain_linear, lane_height * 2.0, lane_height);
+        draw_waveform_layer_lane(
+            ctx,
+            below_samples,
+            sample_rate,
+            &vp,
+            canvas_width,
+            "rgba(100, 200, 100, 0.7)",
+            gain_linear,
+            lane_height * 2.0,
+            lane_height,
+        );
     }
 
     // Lane labels — actual frequency ranges
@@ -718,12 +892,9 @@ pub fn draw_zc_rate(
     }
 
     let visible_time = viewport::visible_time(canvas_width, zoom, time_resolution);
-    let Some((start_time, end_time, data_x, _data_width)) = viewport::data_region_px(
-        scroll_offset,
-        visible_time,
-        total_duration,
-        canvas_width,
-    ) else {
+    let Some((start_time, end_time, data_x, _data_width)) =
+        viewport::data_region_px(scroll_offset, visible_time, total_duration, canvas_width)
+    else {
         return;
     };
     let px_per_sec = canvas_width / visible_time;
@@ -842,8 +1013,12 @@ mod tests {
             }
             let (mut mn, mut mx) = (f32::MAX, f32::MIN);
             for &s in &full[lo..hi] {
-                if s < mn { mn = s; }
-                if s > mx { mx = s; }
+                if s < mn {
+                    mn = s;
+                }
+                if s > mx {
+                    mx = s;
+                }
             }
             let (cmn, cmx) = m.cells[(c as usize) % m.cap];
             assert_eq!(cmn.to_bits(), mn.to_bits(), "cell {c} min");
@@ -864,8 +1039,12 @@ mod tests {
         let hi = ((c1 as usize + 1) * MIP_D).min(full.len());
         let (mut rmn, mut rmx) = (f32::MAX, f32::MIN);
         for &s in &full[lo..hi] {
-            if s < rmn { rmn = s; }
-            if s > rmx { rmx = s; }
+            if s < rmn {
+                rmn = s;
+            }
+            if s > rmx {
+                rmx = s;
+            }
         }
         assert_eq!(mn.to_bits(), rmn.to_bits());
         assert_eq!(mx.to_bits(), rmx.to_bits());
@@ -878,7 +1057,7 @@ mod tests {
         let cap = 16usize; // 16 cells = 16*MIP_D samples retained
         let mut m = WaveMip::new((4, 0, 0), cap);
         let ring_len = (cap - 1) * MIP_D; // a bit under capacity
-        // Feed up to absolute N in ticks; the "ring" is the last ring_len samples.
+                                          // Feed up to absolute N in ticks; the "ring" is the last ring_len samples.
         let n = (cap as u64 + 40) * MIP_D as u64; // many cells past cap → wraps
         let full: Vec<f32> = (0..n).map(sample).collect();
         let mut abs = 0u64;
@@ -896,8 +1075,12 @@ mod tests {
             let hi = (lo + MIP_D).min(full.len());
             let (mut mn, mut mx) = (f32::MAX, f32::MIN);
             for &s in &full[lo..hi] {
-                if s < mn { mn = s; }
-                if s > mx { mx = s; }
+                if s < mn {
+                    mn = s;
+                }
+                if s > mx {
+                    mx = s;
+                }
             }
             let (cmn, cmx) = m.cells[(c as usize) % m.cap];
             assert_eq!(cmn.to_bits(), mn.to_bits(), "wrapped cell {c} min");

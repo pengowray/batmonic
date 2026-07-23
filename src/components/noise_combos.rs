@@ -17,7 +17,11 @@ use crate::dsp::notch::{self, DetectionConfig};
 use crate::state::{AppState, LayerPanel};
 
 fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
+    if active {
+        "layer-panel-opt sel"
+    } else {
+        "layer-panel-opt"
+    }
 }
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {
@@ -49,7 +53,8 @@ pub fn NotchCombo() -> impl IntoView {
     // threshold 12..3 inverted). Stored only inside the popup.
     let sensitivity = RwSignal::new(6.0f64);
 
-    let is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::Notch));
+    let is_open =
+        Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::Notch));
     let no_file = move || {
         state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
     };
@@ -57,25 +62,49 @@ pub fn NotchCombo() -> impl IntoView {
     let enabled = Signal::derive(move || state.notch.enabled().get());
 
     let left_class = Signal::derive(move || {
-        if no_file() { "layer-btn combo-btn-left disabled" }
-        else if enabled.get() { "layer-btn combo-btn-left active" }
-        else { "layer-btn combo-btn-left" }
+        if no_file() {
+            "layer-btn combo-btn-left disabled"
+        } else if enabled.get() {
+            "layer-btn combo-btn-left active"
+        } else {
+            "layer-btn combo-btn-left"
+        }
     });
     let right_class = Signal::derive(move || {
-        if no_file() { return "layer-btn combo-btn-right disabled"; }
+        if no_file() {
+            return "layer-btn combo-btn-right disabled";
+        }
         let dim = if !enabled.get() { " dim" } else { "" };
         if is_open.get() {
-            if dim.is_empty() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right dim open" }
-        } else if dim.is_empty() { "layer-btn combo-btn-right" } else { "layer-btn combo-btn-right dim" }
+            if dim.is_empty() {
+                "layer-btn combo-btn-right open"
+            } else {
+                "layer-btn combo-btn-right dim open"
+            }
+        } else if dim.is_empty() {
+            "layer-btn combo-btn-right"
+        } else {
+            "layer-btn combo-btn-right dim"
+        }
     });
 
     let left_value = Signal::derive(move || {
         let n = band_count.get();
-        if n == 0 { String::new() }
-        else if n == 1 { "1 band".to_string() }
-        else { format!("{} bands", n) }
+        if n == 0 {
+            String::new()
+        } else if n == 1 {
+            "1 band".to_string()
+        } else {
+            format!("{} bands", n)
+        }
     });
-    let right_value = Signal::derive(move || if enabled.get() { "ON".to_string() } else { "OFF".to_string() });
+    let right_value = Signal::derive(move || {
+        if enabled.get() {
+            "ON".to_string()
+        } else {
+            "OFF".to_string()
+        }
+    });
 
     let toggle_menu = Callback::new(move |()| {
         toggle_panel(&state, LayerPanel::Notch);
@@ -85,7 +114,8 @@ pub fn NotchCombo() -> impl IntoView {
     let run_detect = move || {
         // While live, detect from the circular buffer so the bands reflect
         // current ambient noise rather than stale file content.
-        let is_live = state.mic.listening().get_untracked() || state.mic.recording().get_untracked();
+        let is_live =
+            state.mic.listening().get_untracked() || state.mic.recording().get_untracked();
         if is_live {
             let is_tauri = state.is_tauri;
             let sample_rate = state.mic.sample_rate().get_untracked();
@@ -106,14 +136,21 @@ pub fn NotchCombo() -> impl IntoView {
                     ..DetectionConfig::default()
                 };
                 let bands = notch::detect_noise_bands_async(
-                    &samples, sample_rate, &config,
+                    &samples,
+                    sample_rate,
+                    &config,
                     crate::canvas::tile_cache::yield_to_browser,
-                ).await;
+                )
+                .await;
                 let count = bands.len();
                 state.notch.bands().set(bands);
                 if count > 0 {
                     state.notch.enabled().set(true);
-                    state.show_info_toast(format!("Found {} noise band{} from live", count, if count == 1 { "" } else { "s" }));
+                    state.show_info_toast(format!(
+                        "Found {} noise band{} from live",
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    ));
                 } else {
                     state.show_info_toast("No persistent noise bands detected");
                 }
@@ -131,7 +168,11 @@ pub fn NotchCombo() -> impl IntoView {
         state.notch.detecting().set(true);
         let threshold = sensitivity.get_untracked();
         let total = file.audio.source.total_samples() as usize;
-        let samples = Arc::new(file.audio.source.read_region(ChannelView::MonoMix, 0, total));
+        let samples = Arc::new(
+            file.audio
+                .source
+                .read_region(ChannelView::MonoMix, 0, total),
+        );
         let sample_rate = file.audio.sample_rate;
         let duration = file.audio.duration_secs;
 
@@ -143,14 +184,21 @@ pub fn NotchCombo() -> impl IntoView {
                 ..DetectionConfig::default()
             };
             let bands = notch::detect_noise_bands_async(
-                &samples, sample_rate, &config,
+                &samples,
+                sample_rate,
+                &config,
                 crate::canvas::tile_cache::yield_to_browser,
-            ).await;
+            )
+            .await;
             let count = bands.len();
             state.notch.bands().set(bands);
             if count > 0 {
                 state.notch.enabled().set(true);
-                state.show_info_toast(format!("Found {} noise band{}", count, if count == 1 { "" } else { "s" }));
+                state.show_info_toast(format!(
+                    "Found {} noise band{}",
+                    count,
+                    if count == 1 { "" } else { "s" }
+                ));
             } else {
                 state.show_info_toast("No persistent noise bands detected");
             }
@@ -161,7 +209,9 @@ pub fn NotchCombo() -> impl IntoView {
     // Pressing Notch ON with nothing defined yet auto-runs detection (live or
     // file, whichever applies) so the toggle "just works" without a second tap.
     let left_click = Callback::new(move |_: web_sys::MouseEvent| {
-        if no_file() { return; }
+        if no_file() {
+            return;
+        }
         let turning_on = !state.notch.enabled().get_untracked();
         state.notch.enabled().set(turning_on);
         if turning_on
@@ -171,7 +221,9 @@ pub fn NotchCombo() -> impl IntoView {
             run_detect();
         }
     });
-    let on_detect = move |_: web_sys::MouseEvent| { run_detect(); };
+    let on_detect = move |_: web_sys::MouseEvent| {
+        run_detect();
+    };
 
     let on_sensitivity_change = move |ev: web_sys::Event| {
         let target: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -196,12 +248,16 @@ pub fn NotchCombo() -> impl IntoView {
     };
     let remove_band = move |index: usize| {
         state.notch.bands().update(|bands| {
-            if index < bands.len() { bands.remove(index); }
+            if index < bands.len() {
+                bands.remove(index);
+            }
         });
     };
     let set_all_enabled = move |enabled: bool| {
         state.notch.bands().update(|bands| {
-            for band in bands.iter_mut() { band.enabled = enabled; }
+            for band in bands.iter_mut() {
+                band.enabled = enabled;
+            }
         });
     };
 
@@ -372,7 +428,9 @@ pub fn NotchCombo() -> impl IntoView {
 pub fn NrCombo() -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::NoiseReduce));
+    let is_open = Signal::derive(move || {
+        state.panels.layer_panel_open().get() == Some(LayerPanel::NoiseReduce)
+    });
     let no_file = move || {
         state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
     };
@@ -380,23 +438,46 @@ pub fn NrCombo() -> impl IntoView {
     let has_floor = Signal::derive(move || state.noise_reduce.floor().get().is_some());
 
     let left_class = Signal::derive(move || {
-        if no_file() { "layer-btn combo-btn-left disabled" }
-        else if enabled.get() { "layer-btn combo-btn-left active" }
-        else { "layer-btn combo-btn-left" }
+        if no_file() {
+            "layer-btn combo-btn-left disabled"
+        } else if enabled.get() {
+            "layer-btn combo-btn-left active"
+        } else {
+            "layer-btn combo-btn-left"
+        }
     });
     let right_class = Signal::derive(move || {
-        if no_file() { return "layer-btn combo-btn-right disabled"; }
+        if no_file() {
+            return "layer-btn combo-btn-right disabled";
+        }
         let dim = if !enabled.get() { " dim" } else { "" };
         if is_open.get() {
-            if dim.is_empty() { "layer-btn combo-btn-right open" } else { "layer-btn combo-btn-right dim open" }
-        } else if dim.is_empty() { "layer-btn combo-btn-right" } else { "layer-btn combo-btn-right dim" }
+            if dim.is_empty() {
+                "layer-btn combo-btn-right open"
+            } else {
+                "layer-btn combo-btn-right dim open"
+            }
+        } else if dim.is_empty() {
+            "layer-btn combo-btn-right"
+        } else {
+            "layer-btn combo-btn-right dim"
+        }
     });
 
     let left_value = Signal::derive(move || {
-        if !has_floor.get() { String::new() }
-        else { format!("{:.0}%", state.noise_reduce.strength().get() * 100.0) }
+        if !has_floor.get() {
+            String::new()
+        } else {
+            format!("{:.0}%", state.noise_reduce.strength().get() * 100.0)
+        }
     });
-    let right_value = Signal::derive(move || if enabled.get() { "ON".to_string() } else { "OFF".to_string() });
+    let right_value = Signal::derive(move || {
+        if enabled.get() {
+            "ON".to_string()
+        } else {
+            "OFF".to_string()
+        }
+    });
 
     let toggle_menu = Callback::new(move |()| {
         toggle_panel(&state, LayerPanel::NoiseReduce);
@@ -406,7 +487,8 @@ pub fn NrCombo() -> impl IntoView {
         // While live, source samples from the circular capture buffer rather
         // than the file (which lags the buffer by the periodic snapshot
         // interval, and is short on history right after Listen starts).
-        let is_live = state.mic.listening().get_untracked() || state.mic.recording().get_untracked();
+        let is_live =
+            state.mic.listening().get_untracked() || state.mic.recording().get_untracked();
         if is_live {
             let is_tauri = state.is_tauri;
             let sample_rate = state.mic.sample_rate().get_untracked();
@@ -422,9 +504,12 @@ pub fn NrCombo() -> impl IntoView {
                 let duration = samples.len() as f64 / sample_rate as f64;
                 let analysis_secs = duration.min(10.0);
                 let floor = crate::dsp::spectral_sub::learn_noise_floor_async(
-                    &samples, sample_rate, analysis_secs,
+                    &samples,
+                    sample_rate,
+                    analysis_secs,
                     crate::canvas::tile_cache::yield_to_browser,
-                ).await;
+                )
+                .await;
                 if let Some(f) = floor {
                     state.noise_reduce.floor().set(Some(f));
                     state.noise_reduce.enabled().set(true);
@@ -445,7 +530,11 @@ pub fn NrCombo() -> impl IntoView {
         };
         state.noise_reduce.learning().set(true);
         let total = file.audio.source.total_samples() as usize;
-        let samples = Arc::new(file.audio.source.read_region(ChannelView::MonoMix, 0, total));
+        let samples = Arc::new(
+            file.audio
+                .source
+                .read_region(ChannelView::MonoMix, 0, total),
+        );
         let sample_rate = file.audio.sample_rate;
         let duration = file.audio.duration_secs;
 
@@ -453,9 +542,12 @@ pub fn NrCombo() -> impl IntoView {
             yield_to_browser().await;
             let analysis_secs = if duration > 30.0 { 10.0 } else { duration };
             let floor = crate::dsp::spectral_sub::learn_noise_floor_async(
-                &samples, sample_rate, analysis_secs,
+                &samples,
+                sample_rate,
+                analysis_secs,
                 crate::canvas::tile_cache::yield_to_browser,
-            ).await;
+            )
+            .await;
             if let Some(f) = floor {
                 state.noise_reduce.floor().set(Some(f));
                 state.noise_reduce.enabled().set(true);
@@ -470,7 +562,9 @@ pub fn NrCombo() -> impl IntoView {
     // Pressing NR ON with no floor learned yet auto-learns the noise floor
     // (live or file) so a single tap both learns and enables.
     let left_click = Callback::new(move |_: web_sys::MouseEvent| {
-        if no_file() { return; }
+        if no_file() {
+            return;
+        }
         let turning_on = !state.noise_reduce.enabled().get_untracked();
         state.noise_reduce.enabled().set(turning_on);
         if turning_on
@@ -480,7 +574,9 @@ pub fn NrCombo() -> impl IntoView {
             run_learn();
         }
     });
-    let on_learn_floor = move |_: web_sys::MouseEvent| { run_learn(); };
+    let on_learn_floor = move |_: web_sys::MouseEvent| {
+        run_learn();
+    };
 
     let on_strength_change = move |ev: web_sys::Event| {
         let target: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();

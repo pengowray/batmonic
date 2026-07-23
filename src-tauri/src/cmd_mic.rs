@@ -32,8 +32,7 @@ pub fn stream_finalized_to_shared_fd(
     let mut src = std::fs::File::open(finalized_path)
         .map_err(|e| format!("recovery: open finalized for copy: {}", e))?;
     let mut dst = unsafe { std::fs::File::from_raw_fd(fd) };
-    std::io::copy(&mut src, &mut dst)
-        .map_err(|e| format!("recovery: copy to shared fd: {}", e))?;
+    std::io::copy(&mut src, &mut dst).map_err(|e| format!("recovery: copy to shared fd: {}", e))?;
     Ok(())
 }
 
@@ -167,7 +166,10 @@ pub fn mic_start_recording(
         let seeded = buf.seed_preroll(preroll_samples.unwrap_or(0) as usize);
         m.is_recording.store(true, Ordering::Relaxed);
         if seeded > 0 {
-            eprintln!("mic_start_recording: seeded {} pre-roll samples to disk", seeded);
+            eprintln!(
+                "mic_start_recording: seeded {} pre-roll samples to disk",
+                seeded
+            );
         }
     }
 
@@ -185,7 +187,14 @@ pub fn mic_start_recording(
         loc_accuracy,
         enable_recovery,
     };
-    if let Some(writer) = recovery::start_writer(&app, &args, m.format, m.sample_rate, m.channels as u16, "batcap") {
+    if let Some(writer) = recovery::start_writer(
+        &app,
+        &args,
+        m.format,
+        m.sample_rate,
+        m.channels as u16,
+        "batcap",
+    ) {
         if let Ok(mut guard) = m.recovery.writer.lock() {
             *guard = Some(writer);
         }
@@ -216,7 +225,12 @@ pub fn mic_stop_recording(
     // captured, not the remainder-in-memory count.
     let (num_samples, sample_rate, shared_fd, preroll_seeded) = {
         let mut buf = m.buffer.lock().unwrap();
-        (buf.total_samples, buf.sample_rate, buf.shared_fd.take(), buf.preroll_seeded)
+        (
+            buf.total_samples,
+            buf.sample_rate,
+            buf.shared_fd.take(),
+            buf.preroll_seeded,
+        )
     };
     // RAII-own the shared-storage fd so every early return below (no-samples,
     // skip-save, finalize error) closes it instead of leaking it.
@@ -283,9 +297,8 @@ pub fn mic_stop_recording(
         preroll_secs: (preroll_seeded > 0 && sample_rate > 0)
             .then(|| preroll_seeded as f64 / sample_rate as f64),
     };
-    let guano = recording::build_tauri_guano(
-        sample_rate, num_samples, &filename_ts, &now, &guano_params,
-    );
+    let guano =
+        recording::build_tauri_guano(sample_rate, num_samples, &filename_ts, &now, &guano_params);
     let guano_text = guano.to_text();
 
     let (saved_path, file_size_bytes, has_memory_samples) = if streaming_mode {
@@ -303,11 +316,9 @@ pub fn mic_stop_recording(
         // finalize + shared-storage copy so it can't block mic_get_status or a
         // concurrent mic command for the duration of the copy.
         drop(mic);
-        let finalized_path = recovery::finalize_in_place_and_take(
-            writer,
-            &final_bytes,
-            &guano_text,
-        ).map_err(|e| format!("recovery finalize failed: {}", e))?;
+        let finalized_path =
+            recovery::finalize_in_place_and_take(writer, &final_bytes, &guano_text)
+                .map_err(|e| format!("recovery finalize failed: {}", e))?;
 
         let final_size = finalized_path.metadata().map(|m| m.len()).unwrap_or(0);
 
@@ -365,7 +376,10 @@ pub fn mic_stop_recording(
         };
         // Stash the captured samples for the WASM finalizer to pull as raw bytes.
         let has_mem = !samples_f32.is_empty();
-        *app.state::<crate::RecordedMemoryMutex>().inner().lock().unwrap() = samples_f32;
+        *app.state::<crate::RecordedMemoryMutex>()
+            .inner()
+            .lock()
+            .unwrap() = samples_f32;
         (path, file_size_bytes, has_mem)
     };
 
@@ -428,12 +442,18 @@ pub fn mic_pull_audio(
     let samples: Vec<f32> = if source == "usb" {
         usb.lock()
             .ok()
-            .and_then(|g| g.as_ref().and_then(|u| u.buffer.lock().ok().map(|mut b| b.drain_pending())))
+            .and_then(|g| {
+                g.as_ref()
+                    .and_then(|u| u.buffer.lock().ok().map(|mut b| b.drain_pending()))
+            })
             .unwrap_or_default()
     } else {
         mic.lock()
             .ok()
-            .and_then(|g| g.as_ref().and_then(|m| m.buffer.lock().ok().map(|mut b| b.drain_pending())))
+            .and_then(|g| {
+                g.as_ref()
+                    .and_then(|m| m.buffer.lock().ok().map(|mut b| b.drain_pending()))
+            })
             .unwrap_or_default()
     };
 

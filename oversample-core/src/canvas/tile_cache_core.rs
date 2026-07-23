@@ -31,7 +31,11 @@ pub struct TileKey {
 
 impl TileKey {
     pub fn new(file_idx: usize, lod: u8, tile_idx: usize) -> Self {
-        Self { file_idx, lod, tile_idx }
+        Self {
+            file_idx,
+            lod,
+            tile_idx,
+        }
     }
 }
 
@@ -137,12 +141,17 @@ impl<K: Eq + Hash + Copy> TileCache<K> {
             .map(|(&key, tile)| (tile.lru_stamp, key))
             .collect();
         entries.sort_by_key(|(stamp, _)| *stamp);
-        self.lru = entries.into_iter().map(|(stamp, key)| (key, stamp)).collect();
+        self.lru = entries
+            .into_iter()
+            .map(|(stamp, key)| (key, stamp))
+            .collect();
     }
 
     fn evict_to_fit(&mut self, incoming_bytes: usize) {
         while self.total_bytes + incoming_bytes > self.max_bytes {
-            let Some((oldest, stamp)) = self.lru.pop_front() else { break };
+            let Some((oldest, stamp)) = self.lru.pop_front() else {
+                break;
+            };
             // Skip stale LRU entries: only evict if this is still the tile's
             // current stamp (it may have been touched/re-inserted since).
             let should_evict = self
@@ -213,20 +222,47 @@ impl<K: Eq + Hash + Copy> TileCache<K> {
 // Convenience wrappers for the (file_idx, lod, tile_idx) multi-LOD caches.
 impl TileCache<TileKey> {
     pub fn insert(&mut self, file_idx: usize, lod: u8, tile_idx: usize, rendered: PreRendered) {
-        let key = TileKey { file_idx, lod, tile_idx };
-        self.insert_keyed(key, Tile { tile_idx, file_idx, lod, rendered, lru_stamp: 0 });
+        let key = TileKey {
+            file_idx,
+            lod,
+            tile_idx,
+        };
+        self.insert_keyed(
+            key,
+            Tile {
+                tile_idx,
+                file_idx,
+                lod,
+                rendered,
+                lru_stamp: 0,
+            },
+        );
     }
 
     pub fn get(&self, file_idx: usize, lod: u8, tile_idx: usize) -> Option<&Tile> {
-        self.get_keyed(&TileKey { file_idx, lod, tile_idx })
+        self.get_keyed(&TileKey {
+            file_idx,
+            lod,
+            tile_idx,
+        })
     }
 
-    pub fn evict_far_from(&mut self, file_idx: usize, lod: u8, center_tile: usize, keep_radius: usize) {
+    pub fn evict_far_from(
+        &mut self,
+        file_idx: usize,
+        lod: u8,
+        center_tile: usize,
+        keep_radius: usize,
+    ) {
         let keys_to_evict: Vec<TileKey> = self
             .tiles
             .keys()
             .copied()
-            .filter(|k| k.file_idx == file_idx && k.lod == lod && k.tile_idx.abs_diff(center_tile) > keep_radius)
+            .filter(|k| {
+                k.file_idx == file_idx
+                    && k.lod == lod
+                    && k.tile_idx.abs_diff(center_tile) > keep_radius
+            })
             .collect();
         for key in keys_to_evict {
             if let Some(evicted) = self.tiles.remove(&key) {
@@ -244,7 +280,16 @@ impl TileCache<TileKey> {
 impl TileCache<ChromaKey> {
     pub fn insert(&mut self, file_idx: usize, tile_idx: usize, rendered: PreRendered) {
         let key = ChromaKey { file_idx, tile_idx };
-        self.insert_keyed(key, Tile { tile_idx, file_idx, lod: 1, rendered, lru_stamp: 0 });
+        self.insert_keyed(
+            key,
+            Tile {
+                tile_idx,
+                file_idx,
+                lod: 1,
+                rendered,
+                lru_stamp: 0,
+            },
+        );
     }
 
     pub fn get(&self, file_idx: usize, tile_idx: usize) -> Option<&Tile> {
@@ -331,7 +376,10 @@ mod tests {
         c.insert(0, 0, 3, tile_of(100));
         assert_eq!(c.total_bytes(), 300);
         assert_eq!(c.len(), 3);
-        assert!(c.get(0, 0, 0).is_none(), "oldest tile should have been evicted");
+        assert!(
+            c.get(0, 0, 0).is_none(),
+            "oldest tile should have been evicted"
+        );
         assert!(c.get(0, 0, 3).is_some());
     }
 
@@ -345,7 +393,10 @@ mod tests {
         c.touch(TileKey::new(0, 0, 0));
         c.insert(0, 0, 3, tile_of(100)); // evicts the new oldest (tile 1)
         assert!(c.get(0, 0, 0).is_some(), "touched tile should survive");
-        assert!(c.get(0, 0, 1).is_none(), "untouched oldest should be evicted");
+        assert!(
+            c.get(0, 0, 1).is_none(),
+            "untouched oldest should be evicted"
+        );
     }
 
     #[test]
@@ -426,7 +477,12 @@ mod tests {
     #[test]
     fn in_flight_absent_key_is_inactive() {
         let mut map: HashMap<TileKey, f64> = HashMap::new();
-        assert!(!in_flight_is_active(&mut map, &TileKey::new(9, 9, 9), 0.0, 10_000.0));
+        assert!(!in_flight_is_active(
+            &mut map,
+            &TileKey::new(9, 9, 9),
+            0.0,
+            10_000.0
+        ));
     }
 
     #[test]

@@ -1,7 +1,7 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use crate::state::{AppState, CanvasTool, SpectrogramHandle};
 use crate::annotations::AnnotationKind;
+use crate::state::store_fields::*;
+use crate::state::{AppState, CanvasTool, SpectrogramHandle};
+use leptos::prelude::*;
 
 /// Format a frequency value for display (e.g. "45.0 kHz" or "800 Hz").
 fn fmt_freq(f: f64) -> String {
@@ -18,7 +18,9 @@ fn format_selection_dims(duration: f64, freq_low: Option<f64>, freq_high: Option
     match (freq_low, freq_high) {
         (Some(fl), Some(fh)) => format!(
             "Duration: {}   Freq range: {:.0} – {:.0} kHz",
-            dur_str, fl / 1000.0, fh / 1000.0
+            dur_str,
+            fl / 1000.0,
+            fh / 1000.0
         ),
         _ => format!("Duration: {}", dur_str),
     }
@@ -32,7 +34,11 @@ pub fn AnalysisPanel() -> impl IntoView {
         let selection = state.interaction.selection().get()?;
         let d = selection.time_end - selection.time_start;
         if d > 0.0001 {
-            Some(format_selection_dims(d, selection.freq_low, selection.freq_high))
+            Some(format_selection_dims(
+                d,
+                selection.freq_low,
+                selection.freq_high,
+            ))
         } else {
             None
         }
@@ -40,7 +46,9 @@ pub fn AnalysisPanel() -> impl IntoView {
 
     let annotation_dims = move || {
         let ids = state.annotations.selected_ids().get();
-        if ids.is_empty() { return None; }
+        if ids.is_empty() {
+            return None;
+        }
         let id = state.current_file_id_tracked()?;
         let store = state.annotations.store().get();
         let set = store.get(id)?;

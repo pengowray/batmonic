@@ -124,7 +124,11 @@ impl BatBookEntry {
         if self.freq_lo_hz == 0.0 && self.freq_hi_hz == 0.0 {
             return "\u{2014}".to_string(); // em dash for no echolocation
         }
-        format!("{}\u{2013}{} kHz", fmt_khz(self.freq_lo_hz), fmt_khz(self.freq_hi_hz))
+        format!(
+            "{}\u{2013}{} kHz",
+            fmt_khz(self.freq_lo_hz),
+            fmt_khz(self.freq_hi_hz)
+        )
     }
 }
 

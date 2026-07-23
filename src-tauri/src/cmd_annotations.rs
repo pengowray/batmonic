@@ -23,7 +23,10 @@ pub fn write_sidecar(path: String, yaml: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn read_central_annotations(app: tauri::AppHandle, file_key: String) -> Result<Option<String>, String> {
+pub fn read_central_annotations(
+    app: tauri::AppHandle,
+    file_key: String,
+) -> Result<Option<String>, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -40,7 +43,11 @@ pub fn read_central_annotations(app: tauri::AppHandle, file_key: String) -> Resu
 }
 
 #[tauri::command]
-pub fn write_central_annotations(app: tauri::AppHandle, file_key: String, yaml: String) -> Result<(), String> {
+pub fn write_central_annotations(
+    app: tauri::AppHandle,
+    file_key: String,
+    yaml: String,
+) -> Result<(), String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -115,13 +122,19 @@ pub async fn save_export_file(_filename: String, _data: Vec<u8>) -> Result<Strin
 #[tauri::command]
 pub async fn open_file_dialog() -> Result<Vec<String>, String> {
     let handle = rfd::AsyncFileDialog::new()
-        .add_filter("Audio files", &["wav", "w4v", "flac", "ogg", "mp3", "m4a", "m4b"])
+        .add_filter(
+            "Audio files",
+            &["wav", "w4v", "flac", "ogg", "mp3", "m4a", "m4b"],
+        )
         .add_filter("All files", &["*"])
         .set_title("Open audio files")
         .pick_files()
         .await;
     match handle {
-        Some(files) => Ok(files.iter().map(|f| f.path().to_string_lossy().to_string()).collect()),
+        Some(files) => Ok(files
+            .iter()
+            .map(|f| f.path().to_string_lossy().to_string())
+            .collect()),
         None => Ok(Vec::new()), // cancelled
     }
 }

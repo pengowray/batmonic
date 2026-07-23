@@ -94,7 +94,9 @@ pub fn ComboButton(
                 // duration. `try_get_untracked`: this leaked 400ms timer can fire
                 // after the ComboButton is disposed mid-hold, disposing this
                 // signal; bail rather than panic on the disposed read.
-                let Some(start) = hold_start_ms.try_get_untracked() else { return };
+                let Some(start) = hold_start_ms.try_get_untracked() else {
+                    return;
+                };
                 state.mic.gesture_start_ms().set(Some(start));
                 let me = web_sys::MouseEvent::new("longpress").unwrap();
                 lp.run(me);
@@ -102,10 +104,9 @@ pub fn ComboButton(
                 toggle.run(());
             }
         }) as Box<dyn Fn()>);
-        if let Ok(id) = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-            cb.as_ref().unchecked_ref(),
-            400,
-        ) {
+        if let Ok(id) = window
+            .set_timeout_with_callback_and_timeout_and_arguments_0(cb.as_ref().unchecked_ref(), 400)
+        {
             hold_timer.set(Some(id));
         }
         cb.forget();
@@ -116,8 +117,16 @@ pub fn ComboButton(
     };
 
     // Convert preference props to popup enums.
-    let preferred_side = if menu_direction == "above" { Side::Above } else { Side::Below };
-    let preferred_align = if panel_align == "right" { Align::End } else { Align::Start };
+    let preferred_side = if menu_direction == "above" {
+        Side::Above
+    } else {
+        Side::Below
+    };
+    let preferred_align = if panel_align == "right" {
+        Align::End
+    } else {
+        Align::Start
+    };
 
     // NodeRef for the .combo-btn-row container — the PopupPanel uses this as
     // the anchor for viewport-aware placement.

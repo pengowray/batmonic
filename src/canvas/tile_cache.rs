@@ -32,17 +32,17 @@
 //! bump `tile_ready_signal` to trigger re-rendering and schedule remaining
 //! missing tiles.
 
-use crate::state::store_fields::*;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use leptos::prelude::*;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
-use crate::canvas::spectrogram_renderer::{self, PreRendered, FlowAlgo};
-use crate::state::{AppState, LoadedFile, PlaybackMode};
 use crate::audio::streaming_playback::PV_HQ_OVERLAP;
 use crate::audio::streaming_source;
+use crate::canvas::spectrogram_renderer::{self, FlowAlgo, PreRendered};
+use crate::state::store_fields::*;
+use crate::state::{AppState, LoadedFile, PlaybackMode};
 use crate::viewport;
+use leptos::prelude::*;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 
 /// Number of spectrogram columns per tile (constant across all LODs).
 pub const TILE_COLS: usize = 256;
@@ -84,7 +84,9 @@ fn visible_window_for_file(state: &AppState, file_idx: usize) -> Option<(f64, f6
 
     let timeline = state.timeline.active().get_untracked();
     let tl = timeline.as_ref()?;
-    let global_time_res = tl.segments.first()
+    let global_time_res = tl
+        .segments
+        .first()
         .and_then(|s| files.get(s.file_index))
         .map(|f| f.spectrogram.time_resolution)
         .unwrap_or(file_time_res);
@@ -95,7 +97,8 @@ fn visible_window_for_file(state: &AppState, file_idx: usize) -> Option<(f64, f6
     let visible_start = scroll;
     let visible_end = scroll + visible_time;
 
-    tl.segments.iter()
+    tl.segments
+        .iter()
         .filter(|seg| seg.file_index == file_idx)
         .find_map(|seg| {
             let seg_start = seg.timeline_offset_secs;
@@ -135,7 +138,11 @@ fn visible_tile_focus_for_file(
     let last_tile = (end_col / TILE_COLS as f64).floor() as usize;
     let center_col = ((local_start + local_end) * 0.5 / time_res).clamp(0.0, max_col);
     let center_tile = (center_col / TILE_COLS as f64).floor() as usize;
-    Some((first_tile, last_tile, center_tile.clamp(first_tile, last_tile)))
+    Some((
+        first_tile,
+        last_tile,
+        center_tile.clamp(first_tile, last_tile),
+    ))
 }
 
 fn full_tile_order(n_tiles: usize, center_tile: usize) -> Vec<usize> {
@@ -184,28 +191,61 @@ pub const LOD_BASELINE: u8 = 2;
 pub const BASELINE_HOP: usize = 512;
 
 pub const LOD_CONFIGS: [LodConfig; NUM_LODS] = [
-    LodConfig { fft_size: 256, hop_size: 8192 }, // LOD 0 — ultra-wide overview (quality downscaled)
-    LodConfig { fft_size: 256, hop_size: 2048 }, // LOD 1 — wide overview (quality downscaled)
-    LodConfig { fft_size: 256, hop_size: 512 },  // LOD 2 — normal resolution (baseline)
-    LodConfig { fft_size: 256, hop_size: 128 },  // LOD 3 — zoomed in
-    LodConfig { fft_size: 256, hop_size: 32 },   // LOD 4 — deep zoom
-    LodConfig { fft_size: 256, hop_size: 8 },    // LOD 5 — extreme zoom
-    LodConfig { fft_size: 256, hop_size: 2 },    // LOD 6 — sample-level zoom
-    LodConfig { fft_size: 128, hop_size: 1 },    // LOD 7 — per-sample zoom (finest possible)
+    LodConfig {
+        fft_size: 256,
+        hop_size: 8192,
+    }, // LOD 0 — ultra-wide overview (quality downscaled)
+    LodConfig {
+        fft_size: 256,
+        hop_size: 2048,
+    }, // LOD 1 — wide overview (quality downscaled)
+    LodConfig {
+        fft_size: 256,
+        hop_size: 512,
+    }, // LOD 2 — normal resolution (baseline)
+    LodConfig {
+        fft_size: 256,
+        hop_size: 128,
+    }, // LOD 3 — zoomed in
+    LodConfig {
+        fft_size: 256,
+        hop_size: 32,
+    }, // LOD 4 — deep zoom
+    LodConfig {
+        fft_size: 256,
+        hop_size: 8,
+    }, // LOD 5 — extreme zoom
+    LodConfig {
+        fft_size: 256,
+        hop_size: 2,
+    }, // LOD 6 — sample-level zoom
+    LodConfig {
+        fft_size: 128,
+        hop_size: 1,
+    }, // LOD 7 — per-sample zoom (finest possible)
 ];
 
 /// Select the ideal LOD level for the current zoom.
 /// `zoom` is pixels per baseline (LOD2) column.
 pub fn select_lod(zoom: f64) -> u8 {
     // LOD 7 is only 2× finer than LOD 6 (hop 1 vs 2), so its threshold is 2×.
-    if zoom >= 256.0 { 7 }
-    else if zoom >= 128.0 { 6 }
-    else if zoom >= 32.0 { 5 }
-    else if zoom >= 8.0 { 4 }
-    else if zoom >= 2.0 { 3 }
-    else if zoom >= 0.5 { 2 }
-    else if zoom >= 0.125 { 1 }
-    else { 0 }
+    if zoom >= 256.0 {
+        7
+    } else if zoom >= 128.0 {
+        6
+    } else if zoom >= 32.0 {
+        5
+    } else if zoom >= 8.0 {
+        4
+    } else if zoom >= 2.0 {
+        3
+    } else if zoom >= 0.5 {
+        2
+    } else if zoom >= 0.125 {
+        1
+    } else {
+        0
+    }
 }
 
 /// Ratio of baseline (LOD2) columns to LOD_L columns (how many LOD_L cols per baseline col).
@@ -217,16 +257,21 @@ pub fn lod_ratio(lod: u8) -> f64 {
 /// Tile count at a given LOD for a file with `total_samples` audio samples.
 pub fn tile_count_for_samples(total_samples: usize, lod: u8) -> usize {
     let config = &LOD_CONFIGS[lod as usize];
-    if total_samples < config.fft_size { return 0; }
+    if total_samples < config.fft_size {
+        return 0;
+    }
     let total_cols = (total_samples - config.fft_size) / config.hop_size + 1;
     total_cols.div_ceil(TILE_COLS)
 }
 
-
 /// Map a tile index from one LOD to the corresponding tile at a lower (coarser) LOD.
 /// Returns (fallback_tile_idx, sub_col_start, sub_col_end) — the sub-region within
 /// the fallback tile that covers the same time range.
-pub fn fallback_tile_info(target_lod: u8, target_tile: usize, fallback_lod: u8) -> (usize, f64, f64) {
+pub fn fallback_tile_info(
+    target_lod: u8,
+    target_tile: usize,
+    fallback_lod: u8,
+) -> (usize, f64, f64) {
     let target_hop = LOD_CONFIGS[target_lod as usize].hop_size;
     let fb_hop = LOD_CONFIGS[fallback_lod as usize].hop_size;
 
@@ -341,10 +386,14 @@ thread_local! {
 fn at_spawn_limit() -> bool {
     let now = js_sys::Date::now();
     let mag = IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
-    let flow = FLOW_IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
-    let reassign = REASSIGN_IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
-    let chroma = CHROMA_IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
-    let reson = RESONATOR_IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
+    let flow =
+        FLOW_IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
+    let reassign =
+        REASSIGN_IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
+    let chroma =
+        CHROMA_IN_FLIGHT.with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
+    let reson = RESONATOR_IN_FLIGHT
+        .with(|s| in_flight_active_count(&s.borrow(), now, IN_FLIGHT_TIMEOUT_MS));
     mag + flow + reassign + chroma + reson >= MAX_CONCURRENT_SPAWNS
 }
 
@@ -372,7 +421,8 @@ struct CacheCtx {
 
 impl CacheCtx {
     fn get(&self, file_idx: usize, lod: u8, tile_idx: usize) -> Option<()> {
-        self.cache.with(|c| c.borrow().get(file_idx, lod, tile_idx).map(|_| ()))
+        self.cache
+            .with(|c| c.borrow().get(file_idx, lod, tile_idx).map(|_| ()))
     }
 
     /// Touch (mark recently-used) then borrow a cached tile. The double-`with`
@@ -387,7 +437,11 @@ impl CacheCtx {
     ) -> Option<R> {
         self.cache.with(|c| {
             let mut cache = c.borrow_mut();
-            let key = TileKey { file_idx, lod, tile_idx };
+            let key = TileKey {
+                file_idx,
+                lod,
+                tile_idx,
+            };
             if cache.contains_key(&key) {
                 cache.touch(key);
                 drop(cache);
@@ -399,11 +453,16 @@ impl CacheCtx {
     }
 
     fn request_still_active(&self, key: &TileKey) -> bool {
-        self.in_flight.with(|s| has_active_in_flight(&mut s.borrow_mut(), key))
+        self.in_flight
+            .with(|s| has_active_in_flight(&mut s.borrow_mut(), key))
     }
 
     fn tile_active(&self, file_idx: usize, lod: u8, tile_idx: usize) -> bool {
-        self.request_still_active(&TileKey { file_idx, lod, tile_idx })
+        self.request_still_active(&TileKey {
+            file_idx,
+            lod,
+            tile_idx,
+        })
     }
 
     fn bump_generation(&self) {
@@ -420,11 +479,18 @@ impl CacheCtx {
 
     fn clear_file(&self, file_idx: usize) {
         self.cache.with(|c| c.borrow_mut().clear_for_file(file_idx));
-        self.in_flight.with(|s| s.borrow_mut().retain(|k, _| k.file_idx != file_idx));
+        self.in_flight
+            .with(|s| s.borrow_mut().retain(|k, _| k.file_idx != file_idx));
         self.bump_generation();
     }
 
-    fn debug_stats(&self, file_idx: usize, lod: u8, first_tile: usize, last_tile: usize) -> TileDebugStats {
+    fn debug_stats(
+        &self,
+        file_idx: usize,
+        lod: u8,
+        first_tile: usize,
+        last_tile: usize,
+    ) -> TileDebugStats {
         self.cache.with(|c| {
             let cache = c.borrow();
             self.in_flight.with(|s| {
@@ -432,7 +498,11 @@ impl CacheCtx {
                 let mut stats = collect_debug_stats(
                     cache.len(),
                     &mut inflight,
-                    (first_tile..=last_tile).map(|tile_idx| TileKey { file_idx, lod, tile_idx }),
+                    (first_tile..=last_tile).map(|tile_idx| TileKey {
+                        file_idx,
+                        lod,
+                        tile_idx,
+                    }),
                     |key| cache.contains_key(key),
                 );
                 stats.used_bytes = cache.total_bytes();
@@ -444,16 +514,32 @@ impl CacheCtx {
 }
 
 fn magnitude_ctx() -> CacheCtx {
-    CacheCtx { cache: &CACHE, in_flight: &IN_FLIGHT, generation: &CACHE_GENERATION }
+    CacheCtx {
+        cache: &CACHE,
+        in_flight: &IN_FLIGHT,
+        generation: &CACHE_GENERATION,
+    }
 }
 fn flow_ctx() -> CacheCtx {
-    CacheCtx { cache: &FLOW_CACHE, in_flight: &FLOW_IN_FLIGHT, generation: &FLOW_CACHE_GENERATION }
+    CacheCtx {
+        cache: &FLOW_CACHE,
+        in_flight: &FLOW_IN_FLIGHT,
+        generation: &FLOW_CACHE_GENERATION,
+    }
 }
 fn reassign_ctx() -> CacheCtx {
-    CacheCtx { cache: &REASSIGN_CACHE, in_flight: &REASSIGN_IN_FLIGHT, generation: &REASSIGN_CACHE_GENERATION }
+    CacheCtx {
+        cache: &REASSIGN_CACHE,
+        in_flight: &REASSIGN_IN_FLIGHT,
+        generation: &REASSIGN_CACHE_GENERATION,
+    }
 }
 fn resonator_ctx() -> CacheCtx {
-    CacheCtx { cache: &RESONATOR_CACHE, in_flight: &RESONATOR_IN_FLIGHT, generation: &RESONATOR_CACHE_GENERATION }
+    CacheCtx {
+        cache: &RESONATOR_CACHE,
+        in_flight: &RESONATOR_IN_FLIGHT,
+        generation: &RESONATOR_CACHE_GENERATION,
+    }
 }
 
 // ── Public API: magnitude tile cache ─────────────────────────────────────────
@@ -462,7 +548,12 @@ pub fn get_tile(file_idx: usize, lod: u8, tile_idx: usize) -> Option<()> {
     magnitude_ctx().get(file_idx, lod, tile_idx)
 }
 
-pub fn borrow_tile<R>(file_idx: usize, lod: u8, tile_idx: usize, f: impl FnOnce(&Tile) -> R) -> Option<R> {
+pub fn borrow_tile<R>(
+    file_idx: usize,
+    lod: u8,
+    tile_idx: usize,
+    f: impl FnOnce(&Tile) -> R,
+) -> Option<R> {
     magnitude_ctx().borrow_tile(file_idx, lod, tile_idx, f)
 }
 
@@ -488,7 +579,10 @@ pub fn clear_all_caches() {
 }
 
 pub fn evict_far(file_idx: usize, lod: u8, center_tile: usize, keep_radius: usize) {
-    CACHE.with(|c| c.borrow_mut().evict_far_from(file_idx, lod, center_tile, keep_radius));
+    CACHE.with(|c| {
+        c.borrow_mut()
+            .evict_far_from(file_idx, lod, center_tile, keep_radius)
+    });
 }
 
 /// Evict tiles far from ALL given centers. A tile is only evicted if it falls
@@ -496,8 +590,11 @@ pub fn evict_far(file_idx: usize, lod: u8, center_tile: usize, keep_radius: usiz
 pub fn evict_far_multi(file_idx: usize, lod: u8, centers: &[(usize, usize)]) {
     CACHE.with(|c| {
         c.borrow_mut().clear_keys(|k| {
-            k.file_idx == file_idx && k.lod == lod
-                && centers.iter().all(|&(center, radius)| k.tile_idx.abs_diff(center) > radius)
+            k.file_idx == file_idx
+                && k.lod == lod
+                && centers
+                    .iter()
+                    .all(|&(center, radius)| k.tile_idx.abs_diff(center) > radius)
         });
     });
 }
@@ -508,9 +605,13 @@ pub fn evict_far_multi(file_idx: usize, lod: u8, centers: &[(usize, usize)]) {
 pub fn cancel_far_in_flight(file_idx: usize, lod: u8, center_tile: usize, keep_radius: usize) {
     IN_FLIGHT.with(|s| {
         let mut map = s.borrow_mut();
-        if map.is_empty() { return; }
+        if map.is_empty() {
+            return;
+        }
         map.retain(|k, _| {
-            k.file_idx != file_idx || k.lod != lod || k.tile_idx.abs_diff(center_tile) <= keep_radius
+            k.file_idx != file_idx
+                || k.lod != lod
+                || k.tile_idx.abs_diff(center_tile) <= keep_radius
         });
     });
 }
@@ -519,25 +620,41 @@ pub fn cancel_far_in_flight(file_idx: usize, lod: u8, center_tile: usize, keep_r
 pub fn cancel_far_in_flight_multi(file_idx: usize, lod: u8, centers: &[(usize, usize)]) {
     IN_FLIGHT.with(|s| {
         let mut map = s.borrow_mut();
-        if map.is_empty() { return; }
+        if map.is_empty() {
+            return;
+        }
         map.retain(|k, _| {
-            k.file_idx != file_idx || k.lod != lod
-                || centers.iter().any(|&(center, radius)| k.tile_idx.abs_diff(center) <= radius)
+            k.file_idx != file_idx
+                || k.lod != lod
+                || centers
+                    .iter()
+                    .any(|&(center, radius)| k.tile_idx.abs_diff(center) <= radius)
         });
     });
 }
 
 /// Returns the count of visible tiles that are neither cached nor in-flight.
 /// Used by the render effect to detect stuck states needing recovery.
-pub fn count_missing_visible(file_idx: usize, lod: u8, first_tile: usize, last_tile: usize) -> usize {
+pub fn count_missing_visible(
+    file_idx: usize,
+    lod: u8,
+    first_tile: usize,
+    last_tile: usize,
+) -> usize {
     CACHE.with(|c| {
         let cache = c.borrow();
         IN_FLIGHT.with(|s| {
             let mut inflight = s.borrow_mut();
-            (first_tile..=last_tile).filter(|&t| {
-                let key = TileKey { file_idx, lod, tile_idx: t };
-                !cache.contains_key(&key) && !has_active_in_flight(&mut inflight, &key)
-            }).count()
+            (first_tile..=last_tile)
+                .filter(|&t| {
+                    let key = TileKey {
+                        file_idx,
+                        lod,
+                        tile_idx: t,
+                    };
+                    !cache.contains_key(&key) && !has_active_in_flight(&mut inflight, &key)
+                })
+                .count()
         })
     })
 }
@@ -601,11 +718,21 @@ where
     }
 }
 
-pub fn magnitude_debug_stats(file_idx: usize, lod: u8, first_tile: usize, last_tile: usize) -> TileDebugStats {
+pub fn magnitude_debug_stats(
+    file_idx: usize,
+    lod: u8,
+    first_tile: usize,
+    last_tile: usize,
+) -> TileDebugStats {
     magnitude_ctx().debug_stats(file_idx, lod, first_tile, last_tile)
 }
 
-pub fn flow_debug_stats(file_idx: usize, lod: u8, first_tile: usize, last_tile: usize) -> TileDebugStats {
+pub fn flow_debug_stats(
+    file_idx: usize,
+    lod: u8,
+    first_tile: usize,
+    last_tile: usize,
+) -> TileDebugStats {
     flow_ctx().debug_stats(file_idx, lod, first_tile, last_tile)
 }
 
@@ -634,7 +761,11 @@ fn resonator_request_still_active(key: &TileKey) -> bool {
 }
 
 fn active_baseline_fft(state: AppState) -> usize {
-    state.spect.fft_mode().get_untracked().fft_for_lod(LOD_BASELINE)
+    state
+        .spect
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(LOD_BASELINE)
 }
 
 fn spectrogram_fft_size(data: &crate::types::SpectrogramData) -> Option<usize> {
@@ -651,7 +782,15 @@ fn spectrogram_fft_size(data: &crate::types::SpectrogramData) -> Option<usize> {
 pub fn tiles_ready(file_idx: usize, n_tiles: usize) -> usize {
     CACHE.with(|c| {
         let cache = c.borrow();
-        (0..n_tiles).filter(|&i| cache.contains_key(&TileKey { file_idx, lod: LOD_BASELINE, tile_idx: i })).count()
+        (0..n_tiles)
+            .filter(|&i| {
+                cache.contains_key(&TileKey {
+                    file_idx,
+                    lod: LOD_BASELINE,
+                    tile_idx: i,
+                })
+            })
+            .count()
     })
 }
 
@@ -664,18 +803,33 @@ pub fn tiles_ready(file_idx: usize, n_tiles: usize) -> usize {
 pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: usize) {
     use crate::dsp::fft::compute_stft_columns;
 
-    let key = TileKey { file_idx, lod, tile_idx };
-    if CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
-    if at_spawn_limit() { return; }
+    let key = TileKey {
+        file_idx,
+        lod,
+        tile_idx,
+    };
+    if CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
+    if at_spawn_limit() {
+        return;
+    }
 
     // Bounds check: reject tiles that are entirely past the audio data.
     // This prevents futile async work and IN_FLIGHT entries that never resolve.
     let total_samples = state.library.files().with_untracked(|files| {
-        files.get(file_idx).map(|f| f.audio.source.total_samples() as usize).unwrap_or(0)
+        files
+            .get(file_idx)
+            .map(|f| f.audio.source.total_samples() as usize)
+            .unwrap_or(0)
     });
     let max_tiles = tile_count_for_samples(total_samples, lod);
-    if tile_idx >= max_tiles { return; }
+    if tile_idx >= max_tiles {
+        return;
+    }
 
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
@@ -710,9 +864,10 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
             }
         }
 
-        let audio = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.audio.clone())
-        });
+        let audio = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_idx).map(|f| f.audio.clone()));
         let Some(audio) = audio else {
             IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -731,10 +886,11 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
         // transform's onset fade/warmup falls on discarded samples rather than
         // visible tile content.
         let xform_on = state.display.transform().get_untracked();
-        let needs_padding = xform_on && matches!(
-            state.playback.mode().get_untracked(),
-            PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift | PlaybackMode::TimeExpansion
-        );
+        let needs_padding = xform_on
+            && matches!(
+                state.playback.mode().get_untracked(),
+                PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift | PlaybackMode::TimeExpansion
+            );
         // Pad by PV_HQ_OVERLAP to ensure complete overlap-add warmup
         // before the tile's actual samples begin.
         let xform_pad = if needs_padding { PV_HQ_OVERLAP } else { 0 };
@@ -743,7 +899,12 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
         let padded_len = pre_pad_used + sample_len;
 
         // Prefetch for streaming sources
-        let (did_seek, is_vbr) = streaming_source::prefetch_streaming(audio.source.as_ref(), padded_start as u64, padded_len).await;
+        let (did_seek, is_vbr) = streaming_source::prefetch_streaming(
+            audio.source.as_ref(),
+            padded_start as u64,
+            padded_len,
+        )
+        .await;
         if did_seek {
             if is_vbr {
                 state.show_info_toast("VBR MP3: seek position may be approximate");
@@ -756,7 +917,9 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
             return;
         }
 
-        let raw_samples = audio.source.read_region(cv, padded_start as u64, padded_len);
+        let raw_samples = audio
+            .source
+            .read_region(cv, padded_start as u64, padded_len);
 
         // Apply DSP transform (heterodyne, pitch shift, etc.) when display_transform is active
         let samples = if xform_on {
@@ -774,7 +937,8 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
         // Apply decimation if active — produces fewer samples, so STFT yields fewer columns per tile
         let decim_target = state.display.decimate_effective().get_untracked();
         let (samples, effective_rate) = if decim_target > 0 && decim_target < audio.sample_rate {
-            let decimated = crate::dsp::filters::decimate(&samples, audio.sample_rate, decim_target);
+            let decimated =
+                crate::dsp::filters::decimate(&samples, audio.sample_rate, decim_target);
             let rate = crate::dsp::filters::decimated_rate(audio.sample_rate, decim_target);
             (decimated, rate)
         } else {
@@ -787,11 +951,23 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
             let oversample = config_hop / BASELINE_HOP;
             let compute_fft = fft_mode.fft_for_lod(LOD_BASELINE);
             let dense_cols = compute_stft_columns(
-                &samples, effective_rate, compute_fft, BASELINE_HOP, 0, TILE_COLS * oversample,
+                &samples,
+                effective_rate,
+                compute_fft,
+                BASELINE_HOP,
+                0,
+                TILE_COLS * oversample,
             );
             aggregate_columns_max(&dense_cols, oversample)
         } else {
-            compute_stft_columns(&samples, effective_rate, actual_fft, config_hop, 0, TILE_COLS)
+            compute_stft_columns(
+                &samples,
+                effective_rate,
+                actual_fft,
+                config_hop,
+                0,
+                TILE_COLS,
+            )
         };
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
 
@@ -799,20 +975,29 @@ pub fn schedule_tile_lod(state: AppState, file_idx: usize, lod: u8, tile_idx: us
         // (e.g. user toggled xform mode — these tiles are stale)
         let current_gen = CACHE_GENERATION.with(|g| *g.borrow());
         if current_gen != gen {
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
         if cols.is_empty() {
             // Still bump the signal so the render effect re-evaluates
             // (e.g. to schedule tiles at clamped positions after fast scrolling)
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
         let rendered = spectrogram_renderer::pre_render_columns(&cols);
         CACHE.with(|c| c.borrow_mut().insert(file_idx, lod, tile_idx, rendered));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
@@ -827,9 +1012,17 @@ pub fn schedule_tile(state: AppState, file: LoadedFile, file_idx: usize, tile_id
         return;
     }
 
-    let key = TileKey { file_idx, lod: LOD_BASELINE, tile_idx };
-    if CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
+    let key = TileKey {
+        file_idx,
+        lod: LOD_BASELINE,
+        tile_idx,
+    };
+    if CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
     let gen = CACHE_GENERATION.with(|g| *g.borrow());
@@ -852,7 +1045,10 @@ pub fn schedule_tile(state: AppState, file: LoadedFile, file_idx: usize, tile_id
         }
 
         let still_loaded = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.name == file.name).unwrap_or(false)
+            files
+                .get(file_idx)
+                .map(|f| f.name == file.name)
+                .unwrap_or(false)
         });
         if !still_loaded {
             IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
@@ -866,20 +1062,28 @@ pub fn schedule_tile(state: AppState, file: LoadedFile, file_idx: usize, tile_id
             return;
         }
 
-        let rendered = spectrogram_renderer::pre_render_columns(
-            &file.spectrogram.columns[col_start..col_end],
-        );
+        let rendered =
+            spectrogram_renderer::pre_render_columns(&file.spectrogram.columns[col_start..col_end]);
 
         let current_gen = CACHE_GENERATION.with(|g| *g.borrow());
         if current_gen != gen {
             IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
+        CACHE.with(|c| {
+            c.borrow_mut()
+                .insert(file_idx, LOD_BASELINE, tile_idx, rendered)
+        });
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
@@ -890,12 +1094,19 @@ pub fn schedule_all_tiles(state: AppState, file: LoadedFile, file_idx: usize) {
     } else {
         file.spectrogram.columns.len()
     };
-    if total_cols == 0 { return; }
+    if total_cols == 0 {
+        return;
+    }
     let n_tiles = total_cols.div_ceil(TILE_COLS);
 
-    let tile_order = visible_tile_focus_for_file(&state, file_idx, total_cols, file.spectrogram.time_resolution)
-        .map(|(_, _, center_tile)| full_tile_order(n_tiles, center_tile))
-        .unwrap_or_else(|| (0..n_tiles).collect());
+    let tile_order = visible_tile_focus_for_file(
+        &state,
+        file_idx,
+        total_cols,
+        file.spectrogram.time_resolution,
+    )
+    .map(|(_, _, center_tile)| full_tile_order(n_tiles, center_tile))
+    .unwrap_or_else(|| (0..n_tiles).collect());
 
     for tile_idx in tile_order {
         schedule_tile(state, file.clone(), file_idx, tile_idx);
@@ -906,9 +1117,17 @@ pub fn schedule_all_tiles(state: AppState, file: LoadedFile, file_idx: usize) {
 pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize, expected_fft: usize) -> bool {
     use crate::canvas::spectral_store;
 
-    let key = TileKey { file_idx, lod: LOD_BASELINE, tile_idx };
-    if CACHE.with(|c| c.borrow().contains_key(&key)) { return true; }
-    if !spectral_store::fft_matches(file_idx, expected_fft) { return false; }
+    let key = TileKey {
+        file_idx,
+        lod: LOD_BASELINE,
+        tile_idx,
+    };
+    if CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return true;
+    }
+    if !spectral_store::fft_matches(file_idx, expected_fft) {
+        return false;
+    }
 
     let col_start = tile_idx * TILE_COLS;
     let col_end = col_start + TILE_COLS;
@@ -918,7 +1137,10 @@ pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize, expected_ff
     });
 
     if let Some(rendered) = rendered {
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
+        CACHE.with(|c| {
+            c.borrow_mut()
+                .insert(file_idx, LOD_BASELINE, tile_idx, rendered)
+        });
         true
     } else {
         false
@@ -926,7 +1148,13 @@ pub fn render_tile_from_store_sync(file_idx: usize, tile_idx: usize, expected_ff
 }
 
 /// Render a partial (live) baseline-LOD tile from the spectral store.
-pub fn render_live_tile_sync(file_idx: usize, tile_idx: usize, col_start: usize, available_cols: usize, expected_fft: usize) -> bool {
+pub fn render_live_tile_sync(
+    file_idx: usize,
+    tile_idx: usize,
+    col_start: usize,
+    available_cols: usize,
+    expected_fft: usize,
+) -> bool {
     use crate::canvas::spectral_store;
 
     if !spectral_store::fft_matches(file_idx, expected_fft) {
@@ -990,7 +1218,10 @@ pub fn render_live_tile_sync(file_idx: usize, tile_idx: usize, col_start: usize,
     });
 
     if let Some(rendered) = rendered {
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
+        CACHE.with(|c| {
+            c.borrow_mut()
+                .insert(file_idx, LOD_BASELINE, tile_idx, rendered)
+        });
         true
     } else {
         false
@@ -1007,10 +1238,20 @@ pub fn schedule_tile_from_store(state: AppState, file_idx: usize, tile_idx: usiz
         return;
     }
 
-    let key = TileKey { file_idx, lod: LOD_BASELINE, tile_idx };
-    if CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
-    if at_spawn_limit() { return; }
+    let key = TileKey {
+        file_idx,
+        lod: LOD_BASELINE,
+        tile_idx,
+    };
+    if CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
+    if at_spawn_limit() {
+        return;
+    }
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
     let gen = CACHE_GENERATION.with(|g| *g.borrow());
@@ -1039,9 +1280,10 @@ pub fn schedule_tile_from_store(state: AppState, file_idx: usize, tile_idx: usiz
             }
         }
 
-        let still_loaded = state.library.files().with_untracked(|files| {
-            file_idx < files.len()
-        });
+        let still_loaded = state
+            .library
+            .files()
+            .with_untracked(|files| file_idx < files.len());
         if !still_loaded {
             IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -1050,33 +1292,48 @@ pub fn schedule_tile_from_store(state: AppState, file_idx: usize, tile_idx: usiz
         let col_start = tile_idx * TILE_COLS;
         let col_end = col_start + TILE_COLS;
 
-        let rendered = spectral_store::with_columns(file_idx, col_start, col_end, |cols, _max_mag| {
-            spectrogram_renderer::pre_render_columns(cols)
-        });
+        let rendered =
+            spectral_store::with_columns(file_idx, col_start, col_end, |cols, _max_mag| {
+                spectrogram_renderer::pre_render_columns(cols)
+            });
 
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
 
         let current_gen = CACHE_GENERATION.with(|g| *g.borrow());
         if current_gen != gen {
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
         if let Some(rendered) = rendered {
-            CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
+            CACHE.with(|c| {
+                c.borrow_mut()
+                    .insert(file_idx, LOD_BASELINE, tile_idx, rendered)
+            });
         }
         // Always bump signal so render effect retries even if store had no data
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
 /// Schedule visible baseline-LOD tiles from the spectral store.
 pub fn schedule_visible_tiles_from_store(state: AppState, file_idx: usize, total_cols: usize) {
-    if total_cols == 0 { return; }
+    if total_cols == 0 {
+        return;
+    }
     let n_tiles = total_cols.div_ceil(TILE_COLS);
 
     let time_res = state.library.files().with_untracked(|files| {
-        files.get(file_idx).map(|f| f.spectrogram.time_resolution).unwrap_or(0.01)
+        files
+            .get(file_idx)
+            .map(|f| f.spectrogram.time_resolution)
+            .unwrap_or(0.01)
     });
     let center_tile = visible_tile_focus_for_file(&state, file_idx, total_cols, time_res)
         .map(|(_, _, center_tile)| center_tile)
@@ -1091,14 +1348,18 @@ pub fn schedule_visible_tiles_from_store(state: AppState, file_idx: usize, total
         } else {
             let mut v = Vec::new();
             if let Some(l) = center_tile.checked_sub(dist) {
-                if l < n_tiles { v.push(l); }
+                if l < n_tiles {
+                    v.push(l);
+                }
             }
             if center_tile + dist < n_tiles {
                 v.push(center_tile + dist);
             }
             v
         };
-        if tiles.is_empty() { break; }
+        if tiles.is_empty() {
+            break;
+        }
         for t in tiles {
             schedule_tile_from_store(state, file_idx, t);
             scheduled += 1;
@@ -1129,7 +1390,9 @@ pub fn schedule_prefetch_tiles(
     let lod = select_lod(zoom);
     let hop = LOD_CONFIGS[lod as usize].hop_size;
     let max_tiles = tile_count_for_samples(total_samples, lod);
-    if max_tiles == 0 { return; }
+    if max_tiles == 0 {
+        return;
+    }
 
     let time_to_tile = |t: f64| -> usize {
         let sample = (t * sample_rate as f64) as usize;
@@ -1143,14 +1406,18 @@ pub fn schedule_prefetch_tiles(
     let center_tile = time_to_tile(center_time);
     let ahead_end = time_to_tile(center_time + ahead_secs).min(max_tiles.saturating_sub(1));
     for t in center_tile..=ahead_end {
-        if tiles.len() >= max_prefetch { break; }
+        if tiles.len() >= max_prefetch {
+            break;
+        }
         tiles.push(t);
     }
 
     // Region 2: first initial_secs from file start
     let initial_end = time_to_tile(initial_secs).min(max_tiles.saturating_sub(1));
     for t in 0..=initial_end {
-        if tiles.len() >= max_prefetch { break; }
+        if tiles.len() >= max_prefetch {
+            break;
+        }
         if !tiles.contains(&t) {
             tiles.push(t);
         }
@@ -1171,25 +1438,36 @@ pub fn schedule_prefetch_tiles(
 }
 
 /// Schedule baseline-LOD on-demand tile computation from audio samples.
-pub fn schedule_tile_on_demand(
-    state: AppState,
-    file_idx: usize,
-    tile_idx: usize,
-) {
+pub fn schedule_tile_on_demand(state: AppState, file_idx: usize, tile_idx: usize) {
     use crate::canvas::spectral_store;
     use crate::dsp::fft::compute_stft_columns;
 
-    let key = TileKey { file_idx, lod: LOD_BASELINE, tile_idx };
-    if CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
-    if at_spawn_limit() { return; }
+    let key = TileKey {
+        file_idx,
+        lod: LOD_BASELINE,
+        tile_idx,
+    };
+    if CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
+    if at_spawn_limit() {
+        return;
+    }
 
     // Bounds check: reject tiles past the audio data
     let total_samples = state.library.files().with_untracked(|files| {
-        files.get(file_idx).map(|f| f.audio.source.total_samples() as usize).unwrap_or(0)
+        files
+            .get(file_idx)
+            .map(|f| f.audio.source.total_samples() as usize)
+            .unwrap_or(0)
     });
     let max_tiles = tile_count_for_samples(total_samples, LOD_BASELINE);
-    if tile_idx >= max_tiles { return; }
+    if tile_idx >= max_tiles {
+        return;
+    }
 
     IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
@@ -1218,9 +1496,10 @@ pub fn schedule_tile_on_demand(
             }
         }
 
-        let audio = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.audio.clone())
-        });
+        let audio = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_idx).map(|f| f.audio.clone()));
         let Some(audio) = audio else {
             IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -1229,14 +1508,23 @@ pub fn schedule_tile_on_demand(
         let cv = state.viewmode.channel_view().get_untracked();
         let col_start = tile_idx * TILE_COLS;
         let hop_size = BASELINE_HOP;
-        let fft_size = state.spect.fft_mode().get_untracked().fft_for_lod(LOD_BASELINE);
+        let fft_size = state
+            .spect
+            .fft_mode()
+            .get_untracked()
+            .fft_for_lod(LOD_BASELINE);
 
         // Read only the sample region needed for this tile
         let sample_start = col_start * hop_size;
         let sample_len = TILE_COLS * hop_size + fft_size;
 
         // Prefetch for streaming sources
-        let (did_seek, is_vbr) = streaming_source::prefetch_streaming(audio.source.as_ref(), sample_start as u64, sample_len).await;
+        let (did_seek, is_vbr) = streaming_source::prefetch_streaming(
+            audio.source.as_ref(),
+            sample_start as u64,
+            sample_len,
+        )
+        .await;
         if did_seek {
             if is_vbr {
                 state.show_info_toast("VBR MP3: seek position may be approximate");
@@ -1249,12 +1537,24 @@ pub fn schedule_tile_on_demand(
             return;
         }
 
-        let samples = audio.source.read_region(cv, sample_start as u64, sample_len);
-        let cols = compute_stft_columns(&samples, audio.sample_rate, fft_size, hop_size, 0, TILE_COLS);
+        let samples = audio
+            .source
+            .read_region(cv, sample_start as u64, sample_len);
+        let cols = compute_stft_columns(
+            &samples,
+            audio.sample_rate,
+            fft_size,
+            hop_size,
+            0,
+            TILE_COLS,
+        );
         if cols.is_empty() {
             IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             // Bump signal so render effect retries (e.g. after fast scroll clamping)
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
@@ -1265,13 +1565,22 @@ pub fn schedule_tile_on_demand(
         let current_gen = CACHE_GENERATION.with(|g| *g.borrow());
         if current_gen != gen {
             IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
-        CACHE.with(|c| c.borrow_mut().insert(file_idx, LOD_BASELINE, tile_idx, rendered));
+        CACHE.with(|c| {
+            c.borrow_mut()
+                .insert(file_idx, LOD_BASELINE, tile_idx, rendered)
+        });
         IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
@@ -1281,7 +1590,12 @@ pub fn get_flow_tile(file_idx: usize, lod: u8, tile_idx: usize) -> Option<()> {
     flow_ctx().get(file_idx, lod, tile_idx)
 }
 
-pub fn borrow_flow_tile<R>(file_idx: usize, lod: u8, tile_idx: usize, f: impl FnOnce(&Tile) -> R) -> Option<R> {
+pub fn borrow_flow_tile<R>(
+    file_idx: usize,
+    lod: u8,
+    tile_idx: usize,
+    f: impl FnOnce(&Tile) -> R,
+) -> Option<R> {
     flow_ctx().borrow_tile(file_idx, lod, tile_idx, f)
 }
 
@@ -1307,16 +1621,31 @@ pub fn schedule_flow_tile(
 ) {
     use crate::dsp::fft::compute_stft_columns;
 
-    let key = TileKey { file_idx, lod, tile_idx };
-    if FLOW_CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if FLOW_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
-    if at_spawn_limit() { return; }
+    let key = TileKey {
+        file_idx,
+        lod,
+        tile_idx,
+    };
+    if FLOW_CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if FLOW_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
+    if at_spawn_limit() {
+        return;
+    }
 
     let total_samples = state.library.files().with_untracked(|files| {
-        files.get(file_idx).map(|f| f.audio.source.total_samples() as usize).unwrap_or(0)
+        files
+            .get(file_idx)
+            .map(|f| f.audio.source.total_samples() as usize)
+            .unwrap_or(0)
     });
     let max_tiles = tile_count_for_samples(total_samples, lod);
-    if tile_idx >= max_tiles { return; }
+    if tile_idx >= max_tiles {
+        return;
+    }
 
     FLOW_IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
@@ -1349,9 +1678,10 @@ pub fn schedule_flow_tile(
             }
         }
 
-        let audio = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.audio.clone())
-        });
+        let audio = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_idx).map(|f| f.audio.clone()));
         let Some(audio) = audio else {
             FLOW_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -1365,11 +1695,20 @@ pub fn schedule_flow_tile(
                 use crate::dsp::harmonics;
 
                 let sample_start = col_start * config_hop;
-                let extra = if algo == FlowAlgo::PhaseCoherence { TILE_COLS + 1 } else { TILE_COLS };
+                let extra = if algo == FlowAlgo::PhaseCoherence {
+                    TILE_COLS + 1
+                } else {
+                    TILE_COLS
+                };
                 let sample_len = extra * config_hop + actual_fft;
 
                 // Prefetch for streaming sources
-                streaming_source::prefetch_streaming(audio.source.as_ref(), sample_start as u64, sample_len).await;
+                streaming_source::prefetch_streaming(
+                    audio.source.as_ref(),
+                    sample_start as u64,
+                    sample_len,
+                )
+                .await;
 
                 if !flow_request_still_active(&key) {
                     return;
@@ -1382,7 +1721,10 @@ pub fn schedule_flow_tile(
                     return;
                 }
 
-                let ch_samples = audio.source.read_region(cv, sample_start as u64, sample_end - sample_start);
+                let ch_samples =
+                    audio
+                        .source
+                        .read_region(cv, sample_start as u64, sample_end - sample_start);
                 let samples = &ch_samples[..];
 
                 yield_to_browser().await;
@@ -1396,9 +1738,7 @@ pub fn schedule_flow_tile(
                         samples, TILE_COLS, actual_fft, config_hop,
                     )
                 } else {
-                    harmonics::compute_tile_phase_data(
-                        samples, TILE_COLS, actual_fft, config_hop,
-                    )
+                    harmonics::compute_tile_phase_data(samples, TILE_COLS, actual_fft, config_hop)
                 }
             }
             FlowAlgo::Optical | FlowAlgo::Centroid | FlowAlgo::Gradient => {
@@ -1409,17 +1749,30 @@ pub fn schedule_flow_tile(
                 let region_cols = TILE_COLS + extra_cols;
                 let region_sample_len = region_cols * config_hop + actual_fft;
 
-                streaming_source::prefetch_streaming(audio.source.as_ref(), region_sample_start as u64, region_sample_len).await;
+                streaming_source::prefetch_streaming(
+                    audio.source.as_ref(),
+                    region_sample_start as u64,
+                    region_sample_len,
+                )
+                .await;
 
                 if !flow_request_still_active(&key) {
                     return;
                 }
 
-                let region_samples = audio.source.read_region(cv, region_sample_start as u64, region_sample_len);
+                let region_samples =
+                    audio
+                        .source
+                        .read_region(cv, region_sample_start as u64, region_sample_len);
 
                 let prev_col = if extra_cols > 0 {
                     let prev_cols = compute_stft_columns(
-                        &region_samples, audio.sample_rate, actual_fft, config_hop, 0, 1,
+                        &region_samples,
+                        audio.sample_rate,
+                        actual_fft,
+                        config_hop,
+                        0,
+                        1,
                     );
                     prev_cols.first().map(|c| c.magnitudes.clone())
                 } else {
@@ -1433,29 +1786,38 @@ pub fn schedule_flow_tile(
                 }
 
                 let cols = compute_stft_columns(
-                    &region_samples, audio.sample_rate, actual_fft, config_hop, extra_cols, TILE_COLS,
+                    &region_samples,
+                    audio.sample_rate,
+                    actual_fft,
+                    config_hop,
+                    extra_cols,
+                    TILE_COLS,
                 );
                 if cols.is_empty() {
                     FLOW_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
                     return;
                 }
 
-                spectrogram_renderer::pre_render_flow_columns(
-                    &cols, prev_col.as_deref(), algo,
-                )
+                spectrogram_renderer::pre_render_flow_columns(&cols, prev_col.as_deref(), algo)
             }
         };
 
         let current_gen = FLOW_CACHE_GENERATION.with(|g| *g.borrow());
         if current_gen != gen {
             FLOW_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
         FLOW_CACHE.with(|c| c.borrow_mut().insert(file_idx, lod, tile_idx, rendered));
         FLOW_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
@@ -1465,7 +1827,12 @@ pub fn get_reassign_tile(file_idx: usize, lod: u8, tile_idx: usize) -> Option<()
     reassign_ctx().get(file_idx, lod, tile_idx)
 }
 
-pub fn borrow_reassign_tile<R>(file_idx: usize, lod: u8, tile_idx: usize, f: impl FnOnce(&Tile) -> R) -> Option<R> {
+pub fn borrow_reassign_tile<R>(
+    file_idx: usize,
+    lod: u8,
+    tile_idx: usize,
+    f: impl FnOnce(&Tile) -> R,
+) -> Option<R> {
     reassign_ctx().borrow_tile(file_idx, lod, tile_idx, f)
 }
 
@@ -1481,24 +1848,34 @@ pub fn clear_reassign_file(file_idx: usize) {
 ///
 /// Performs 3 FFTs per frame (standard, time-ramped, derivative-windowed) to
 /// compute corrected time-frequency positions, producing sharper spectrograms.
-pub fn schedule_reassign_tile(
-    state: AppState,
-    file_idx: usize,
-    lod: u8,
-    tile_idx: usize,
-) {
+pub fn schedule_reassign_tile(state: AppState, file_idx: usize, lod: u8, tile_idx: usize) {
     use crate::dsp::fft::compute_reassigned_tile;
 
-    let key = TileKey { file_idx, lod, tile_idx };
-    if REASSIGN_CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if REASSIGN_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
-    if at_spawn_limit() { return; }
+    let key = TileKey {
+        file_idx,
+        lod,
+        tile_idx,
+    };
+    if REASSIGN_CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if REASSIGN_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
+    if at_spawn_limit() {
+        return;
+    }
 
     let total_samples = state.library.files().with_untracked(|files| {
-        files.get(file_idx).map(|f| f.audio.source.total_samples() as usize).unwrap_or(0)
+        files
+            .get(file_idx)
+            .map(|f| f.audio.source.total_samples() as usize)
+            .unwrap_or(0)
     });
     let max_tiles = tile_count_for_samples(total_samples, lod);
-    if tile_idx >= max_tiles { return; }
+    if tile_idx >= max_tiles {
+        return;
+    }
 
     REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
@@ -1537,9 +1914,10 @@ pub fn schedule_reassign_tile(
             }
         }
 
-        let audio = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.audio.clone())
-        });
+        let audio = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_idx).map(|f| f.audio.clone()));
         let Some(audio) = audio else {
             REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -1550,7 +1928,12 @@ pub fn schedule_reassign_tile(
         let sample_len = TILE_COLS * config_hop + actual_fft;
 
         // Prefetch for streaming sources
-        streaming_source::prefetch_streaming(audio.source.as_ref(), sample_start as u64, sample_len).await;
+        streaming_source::prefetch_streaming(
+            audio.source.as_ref(),
+            sample_start as u64,
+            sample_len,
+        )
+        .await;
 
         if !reassign_request_still_active(&key) {
             return;
@@ -1563,7 +1946,10 @@ pub fn schedule_reassign_tile(
             return;
         }
 
-        let ch_samples = audio.source.read_region(cv, sample_start as u64, sample_end - sample_start);
+        let ch_samples =
+            audio
+                .source
+                .read_region(cv, sample_start as u64, sample_end - sample_start);
         let samples = &ch_samples[..];
 
         yield_to_browser().await;
@@ -1572,20 +1958,24 @@ pub fn schedule_reassign_tile(
             return;
         }
 
-        let rendered = compute_reassigned_tile(
-            samples, TILE_COLS, actual_fft, config_hop, -60.0,
-        );
+        let rendered = compute_reassigned_tile(samples, TILE_COLS, actual_fft, config_hop, -60.0);
 
         let current_gen = REASSIGN_CACHE_GENERATION.with(|g| *g.borrow());
         if current_gen != gen {
             REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
         REASSIGN_CACHE.with(|c| c.borrow_mut().insert(file_idx, lod, tile_idx, rendered));
         REASSIGN_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
@@ -1595,16 +1985,18 @@ pub fn get_chroma_tile(file_idx: usize, tile_idx: usize) -> Option<()> {
     CHROMA_CACHE.with(|c| c.borrow().get(file_idx, tile_idx).map(|_| ()))
 }
 
-pub fn borrow_chroma_tile<R>(file_idx: usize, tile_idx: usize, f: impl FnOnce(&Tile) -> R) -> Option<R> {
+pub fn borrow_chroma_tile<R>(
+    file_idx: usize,
+    tile_idx: usize,
+    f: impl FnOnce(&Tile) -> R,
+) -> Option<R> {
     CHROMA_CACHE.with(|c| {
         let mut cache = c.borrow_mut();
         let key = ChromaKey { file_idx, tile_idx };
         if cache.contains_key(&key) {
             cache.touch(key);
             drop(cache);
-            CHROMA_CACHE.with(|c| {
-                c.borrow().get_keyed(&key).map(f)
-            })
+            CHROMA_CACHE.with(|c| c.borrow().get_keyed(&key).map(f))
         } else {
             None
         }
@@ -1635,17 +2027,19 @@ fn clear_chroma_tiles_for_file_keep_max(file_idx: usize) {
 /// - [`ChromaSource::Resonators`] (default) builds a constant-Q resonator
 ///   bank with one resonator per note and reads its magnitudes directly,
 ///   giving uniform pitch selectivity from sub-bass to ultrasound.
-pub fn schedule_chroma_tile(
-    state: AppState,
-    file_idx: usize,
-    tile_idx: usize,
-) {
+pub fn schedule_chroma_tile(state: AppState, file_idx: usize, tile_idx: usize) {
     use crate::state::ChromaSource;
 
     let key = ChromaKey { file_idx, tile_idx };
-    if CHROMA_CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if CHROMA_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
-    if at_spawn_limit() { return; }
+    if CHROMA_CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if CHROMA_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
+    if at_spawn_limit() {
+        return;
+    }
     CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
     match state.chroma.source().get_untracked() {
@@ -1657,12 +2051,7 @@ pub fn schedule_chroma_tile(
 /// FFT-sourced chromagram tile: re-bins linear STFT magnitudes into notes.
 /// Reuses `spectral_store` columns when present, falls back to file-embedded
 /// columns, then to on-demand STFT computation from audio samples.
-fn schedule_chroma_tile_fft(
-    state: AppState,
-    file_idx: usize,
-    tile_idx: usize,
-    key: ChromaKey,
-) {
+fn schedule_chroma_tile_fft(state: AppState, file_idx: usize, tile_idx: usize, key: ChromaKey) {
     use crate::canvas::spectral_store;
     use crate::dsp::chromagram;
     use crate::dsp::fft::compute_stft_columns;
@@ -1672,10 +2061,15 @@ fn schedule_chroma_tile_fft(
 
         let is_current = is_current_file(&state, file_idx);
         if !is_current {
-            for _ in 0..3 { yield_to_browser().await; }
+            for _ in 0..3 {
+                yield_to_browser().await;
+            }
         }
 
-        let still_loaded = state.library.files().with_untracked(|files| file_idx < files.len());
+        let still_loaded = state
+            .library
+            .files()
+            .with_untracked(|files| file_idx < files.len());
         if !still_loaded {
             CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -1683,9 +2077,11 @@ fn schedule_chroma_tile_fft(
 
         let col_start = tile_idx * TILE_COLS;
 
-        let freq_res = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.spectrogram.freq_resolution)
-        }).unwrap_or(1.0);
+        let freq_res = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_idx).map(|f| f.spectrogram.freq_resolution))
+            .unwrap_or(1.0);
 
         let (min_octave, num_octaves) = state.chroma.range().get_untracked().octave_params();
         let gain_db = state.chroma.gain().get_untracked();
@@ -1695,17 +2091,24 @@ fn schedule_chroma_tile_fft(
         // Try spectral_store first, then file columns, then compute on-demand from audio
         // This path needs OWNED columns (used later, outside the store borrow),
         // so clone here — unlike the immediate-use tile renders above.
-        let cols_from_store = spectral_store::with_columns(file_idx, col_start, col_start + TILE_COLS, |cols, _| {
-            cols.iter().map(|&c| c.clone()).collect::<Vec<crate::types::SpectrogramColumn>>()
-        });
+        let cols_from_store =
+            spectral_store::with_columns(file_idx, col_start, col_start + TILE_COLS, |cols, _| {
+                cols.iter()
+                    .map(|&c| c.clone())
+                    .collect::<Vec<crate::types::SpectrogramColumn>>()
+            });
         let cols_from_file = if cols_from_store.is_some() {
             None
         } else {
             state.library.files().with_untracked(|files| {
                 files.get(file_idx).and_then(|f| {
-                    if f.spectrogram.columns.is_empty() { return None; }
+                    if f.spectrogram.columns.is_empty() {
+                        return None;
+                    }
                     let end = (col_start + TILE_COLS).min(f.spectrogram.columns.len());
-                    if col_start >= end { return None; }
+                    if col_start >= end {
+                        return None;
+                    }
                     Some(f.spectrogram.columns[col_start..end].to_vec())
                 })
             })
@@ -1717,9 +2120,10 @@ fn schedule_chroma_tile_fft(
             c
         } else {
             // On-demand: compute STFT from audio samples (same as schedule_tile_on_demand)
-            let audio = state.library.files().with_untracked(|files| {
-                files.get(file_idx).map(|f| f.audio.clone())
-            });
+            let audio = state
+                .library
+                .files()
+                .with_untracked(|files| files.get(file_idx).map(|f| f.audio.clone()));
             let Some(audio) = audio else {
                 CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
                 return;
@@ -1735,10 +2139,20 @@ fn schedule_chroma_tile_fft(
                 audio.source.as_ref(),
                 sample_start as u64,
                 sample_len,
-            ).await;
+            )
+            .await;
 
-            let samples = audio.source.read_region(cv, sample_start as u64, sample_len);
-            let cols = compute_stft_columns(&samples, audio.sample_rate, fft_size, hop_size, 0, TILE_COLS);
+            let samples = audio
+                .source
+                .read_region(cv, sample_start as u64, sample_len);
+            let cols = compute_stft_columns(
+                &samples,
+                audio.sample_rate,
+                fft_size,
+                hop_size,
+                0,
+                TILE_COLS,
+            );
             if cols.is_empty() {
                 CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
                 return;
@@ -1754,7 +2168,12 @@ fn schedule_chroma_tile_fft(
         let (max_class, max_note) = if let Some(gm) = global_max {
             gm
         } else {
-            let from_store = spectral_store::compute_chroma_global_max(file_idx, freq_res, min_octave, num_octaves);
+            let from_store = spectral_store::compute_chroma_global_max(
+                file_idx,
+                freq_res,
+                min_octave,
+                num_octaves,
+            );
             let gm = from_store.unwrap_or_else(|| {
                 chromagram::compute_chroma_max(&stft_cols, freq_res, min_octave, num_octaves)
             });
@@ -1764,11 +2183,24 @@ fn schedule_chroma_tile_fft(
             gm
         };
 
-        let rendered = chromagram::pre_render_chromagram_columns(&stft_cols, freq_res, max_class, max_note, min_octave, num_octaves, gain_db, adapt, floor_db);
+        let rendered = chromagram::pre_render_chromagram_columns(
+            &stft_cols,
+            freq_res,
+            max_class,
+            max_note,
+            min_octave,
+            num_octaves,
+            gain_db,
+            adapt,
+            floor_db,
+        );
 
         CHROMA_CACHE.with(|c| c.borrow_mut().insert(file_idx, tile_idx, rendered));
         CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
@@ -1801,12 +2233,15 @@ fn schedule_chroma_tile_resonator(
 
         let is_current = is_current_file(&state, file_idx);
         if !is_current {
-            for _ in 0..3 { yield_to_browser().await; }
+            for _ in 0..3 {
+                yield_to_browser().await;
+            }
         }
 
-        let audio = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.audio.clone())
-        });
+        let audio = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_idx).map(|f| f.audio.clone()));
         let Some(audio) = audio else {
             CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -1828,7 +2263,8 @@ fn schedule_chroma_tile_resonator(
         let low_note_freq = {
             let midi = ((min_octave + 1) * 12) as f32; // pitch class 0 = C
             440.0_f32 * 2.0_f32.powf((midi - 69.0) / 12.0)
-        }.max(1.0);
+        }
+        .max(1.0);
         let bw_floor = 1.0 / (std::f32::consts::TAU * CHROMA_RESONATOR_TAU_MAX_SECS);
         let low_bw = (low_note_freq / CHROMA_RESONATOR_Q).max(bw_floor);
         let warmup = warmup_samples(sr, low_bw);
@@ -1844,15 +2280,21 @@ fn schedule_chroma_tile_resonator(
             audio.source.as_ref(),
             padded_start as u64,
             padded_len,
-        ).await;
+        )
+        .await;
 
-        let still_loaded = state.library.files().with_untracked(|files| file_idx < files.len());
+        let still_loaded = state
+            .library
+            .files()
+            .with_untracked(|files| file_idx < files.len());
         if !still_loaded {
             CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
         }
 
-        let samples = audio.source.read_region(cv, padded_start as u64, padded_len);
+        let samples = audio
+            .source
+            .read_region(cv, padded_start as u64, padded_len);
         if samples.is_empty() {
             CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -1904,12 +2346,22 @@ fn schedule_chroma_tile_resonator(
         }
 
         let rendered = chromagram::pre_render_chroma_from_columns(
-            &chromas, merged.0, merged.1, min_octave, num_octaves, gain_db, adapt, floor_db,
+            &chromas,
+            merged.0,
+            merged.1,
+            min_octave,
+            num_octaves,
+            gain_db,
+            adapt,
+            floor_db,
         );
 
         CHROMA_CACHE.with(|c| c.borrow_mut().insert(file_idx, tile_idx, rendered));
         CHROMA_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }
 
@@ -2001,7 +2453,9 @@ fn schedule_preload_batch(state: AppState, generation: u32) {
 fn run_preload_batch(state: AppState, generation: u32) {
     // Check generation (cancel if stale)
     let current_gen = state.viewmode.bg_preload_gen().get_untracked();
-    if current_gen != generation { return; }
+    if current_gen != generation {
+        return;
+    }
 
     let batch = BG_PRELOAD.with(|bg| {
         let mut bg = bg.borrow_mut();
@@ -2015,7 +2469,9 @@ fn run_preload_batch(state: AppState, generation: u32) {
             let cache = c.borrow();
             cache.total_bytes() >= cache.max_bytes() / 10 * 9
         });
-        if cache_full { return None; }
+        if cache_full {
+            return None;
+        }
 
         let mut tiles_to_schedule = Vec::new();
         let batch_size = 4;
@@ -2037,13 +2493,19 @@ fn run_preload_batch(state: AppState, generation: u32) {
                     v.push(s.center_tile + dist);
                 }
                 if let Some(idx) = s.center_tile.checked_sub(dist) {
-                    if idx < s.max_tiles { v.push(idx); }
+                    if idx < s.max_tiles {
+                        v.push(idx);
+                    }
                 }
                 v
             };
 
             for t in candidates {
-                let key = TileKey { file_idx: s.file_idx, lod: s.lod, tile_idx: t };
+                let key = TileKey {
+                    file_idx: s.file_idx,
+                    lod: s.lod,
+                    tile_idx: t,
+                };
                 if CACHE.with(|c| c.borrow().contains_key(&key)) {
                     continue; // already cached
                 }
@@ -2083,9 +2545,8 @@ pub async fn yield_to_browser() {
             let cb = Closure::once_into_js(move || {
                 let _ = resolve.call0(&JsValue::NULL);
             });
-            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
-                cb.unchecked_ref(), 0,
-            );
+            let _ =
+                win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), 0);
         });
         let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
     }
@@ -2096,9 +2557,7 @@ pub async fn yield_to_browser() {
 fn apply_display_transform(samples: &[f32], sample_rate: u32, state: AppState) -> Vec<f32> {
     let mode = state.playback.mode().get_untracked();
     match mode {
-        PlaybackMode::Normal => {
-            samples.to_vec()
-        }
+        PlaybackMode::Normal => samples.to_vec(),
         PlaybackMode::TimeExpansion => {
             let factor = crate::dsp::pitch_shift::PitchFactor::from_signed(
                 state.transform.te_factor().get_untracked(),
@@ -2135,7 +2594,12 @@ pub fn get_resonator_tile(file_idx: usize, lod: u8, tile_idx: usize) -> Option<(
     resonator_ctx().get(file_idx, lod, tile_idx)
 }
 
-pub fn borrow_resonator_tile<R>(file_idx: usize, lod: u8, tile_idx: usize, f: impl FnOnce(&Tile) -> R) -> Option<R> {
+pub fn borrow_resonator_tile<R>(
+    file_idx: usize,
+    lod: u8,
+    tile_idx: usize,
+    f: impl FnOnce(&Tile) -> R,
+) -> Option<R> {
     resonator_ctx().borrow_tile(file_idx, lod, tile_idx, f)
 }
 
@@ -2156,7 +2620,12 @@ pub fn resonator_tile_active(file_idx: usize, lod: u8, tile_idx: usize) -> bool 
     resonator_ctx().tile_active(file_idx, lod, tile_idx)
 }
 
-pub fn resonator_debug_stats(file_idx: usize, lod: u8, first_tile: usize, last_tile: usize) -> TileDebugStats {
+pub fn resonator_debug_stats(
+    file_idx: usize,
+    lod: u8,
+    first_tile: usize,
+    last_tile: usize,
+) -> TileDebugStats {
     resonator_ctx().debug_stats(file_idx, lod, first_tile, last_tile)
 }
 
@@ -2171,23 +2640,43 @@ pub fn resonator_debug_stats(file_idx: usize, lod: u8, first_tile: usize, last_t
 pub fn schedule_resonator_tile(state: AppState, file_idx: usize, lod: u8, tile_idx: usize) {
     use crate::dsp::resonators::{compute_resonator_hybrid_columns, warmup_samples};
 
-    let key = TileKey { file_idx, lod, tile_idx };
-    if RESONATOR_CACHE.with(|c| c.borrow().contains_key(&key)) { return; }
-    if RESONATOR_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) { return; }
-    if at_spawn_limit() { return; }
+    let key = TileKey {
+        file_idx,
+        lod,
+        tile_idx,
+    };
+    if RESONATOR_CACHE.with(|c| c.borrow().contains_key(&key)) {
+        return;
+    }
+    if RESONATOR_IN_FLIGHT.with(|s| has_active_in_flight(&mut s.borrow_mut(), &key)) {
+        return;
+    }
+    if at_spawn_limit() {
+        return;
+    }
 
     let total_samples = state.library.files().with_untracked(|files| {
-        files.get(file_idx).map(|f| f.audio.source.total_samples() as usize).unwrap_or(0)
+        files
+            .get(file_idx)
+            .map(|f| f.audio.source.total_samples() as usize)
+            .unwrap_or(0)
     });
     let max_tiles = tile_count_for_samples(total_samples, lod);
-    if tile_idx >= max_tiles { return; }
+    if tile_idx >= max_tiles {
+        return;
+    }
 
     RESONATOR_IN_FLIGHT.with(|s| s.borrow_mut().insert(key, js_sys::Date::now()));
 
     let gen = RESONATOR_CACHE_GENERATION.with(|g| *g.borrow());
 
     let config_hop = LOD_CONFIGS[lod as usize].hop_size;
-    let reson_fft = state.resonator.fft_mode().get_untracked().fft_for_lod(lod).max(16);
+    let reson_fft = state
+        .resonator
+        .fft_mode()
+        .get_untracked()
+        .fft_for_lod(lod)
+        .max(16);
     let bandwidth_hz = state.resonator.bandwidth_hz().get_untracked().max(1.0);
     let alpha_mode = state.resonator.alpha_mode().get_untracked();
     let q = state.resonator.q().get_untracked();
@@ -2197,7 +2686,8 @@ pub fn schedule_resonator_tile(state: AppState, file_idx: usize, lod: u8, tile_i
     // (the debouncer in tile_scheduler updates this signal). `None` keeps
     // the default full-Nyquist (or full-log) range.
     let freq_range = state
-        .resonator.viewport_range()
+        .resonator
+        .viewport_range()
         .get_untracked()
         .map(|(lo, hi)| (lo as f32, hi as f32));
 
@@ -2211,19 +2701,24 @@ pub fn schedule_resonator_tile(state: AppState, file_idx: usize, lod: u8, tile_i
         // Resonators are O(samples * num_bins) — yield extra for expensive LODs.
         if lod >= 2 {
             yield_to_browser().await;
-            if !resonator_request_still_active(&key) { return; }
+            if !resonator_request_still_active(&key) {
+                return;
+            }
         }
         let is_current = is_current_file(&state, file_idx);
         if !is_current {
             for _ in 0..3 {
                 yield_to_browser().await;
-                if !resonator_request_still_active(&key) { return; }
+                if !resonator_request_still_active(&key) {
+                    return;
+                }
             }
         }
 
-        let audio = state.library.files().with_untracked(|files| {
-            files.get(file_idx).map(|f| f.audio.clone())
-        });
+        let audio = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_idx).map(|f| f.audio.clone()));
         let Some(audio) = audio else {
             RESONATOR_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
@@ -2246,18 +2741,25 @@ pub fn schedule_resonator_tile(state: AppState, file_idx: usize, lod: u8, tile_i
             audio.source.as_ref(),
             padded_start as u64,
             padded_len,
-        ).await;
+        )
+        .await;
 
-        if !resonator_request_still_active(&key) { return; }
+        if !resonator_request_still_active(&key) {
+            return;
+        }
 
-        let samples = audio.source.read_region(cv, padded_start as u64, padded_len);
+        let samples = audio
+            .source
+            .read_region(cv, padded_start as u64, padded_len);
         if samples.is_empty() {
             RESONATOR_IN_FLIGHT.with(|s| s.borrow_mut().remove(&key));
             return;
         }
 
         yield_to_browser().await;
-        if !resonator_request_still_active(&key) { return; }
+        if !resonator_request_still_active(&key) {
+            return;
+        }
 
         let cols = compute_resonator_hybrid_columns(
             &samples,
@@ -2278,17 +2780,26 @@ pub fn schedule_resonator_tile(state: AppState, file_idx: usize, lod: u8, tile_i
 
         let current_gen = RESONATOR_CACHE_GENERATION.with(|g| *g.borrow());
         if current_gen != gen {
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
         if cols.is_empty() {
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
             return;
         }
 
         let rendered = spectrogram_renderer::pre_render_columns(&cols);
         RESONATOR_CACHE.with(|c| c.borrow_mut().insert(file_idx, lod, tile_idx, rendered));
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 }

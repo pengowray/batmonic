@@ -22,7 +22,7 @@
 
 use crate::dsp::fft::compute_stft_columns;
 use crate::types::SpectrogramColumn;
-use resonators::{ResonatorBank, ResonatorConfig, alpha_from_tau};
+use resonators::{alpha_from_tau, ResonatorBank, ResonatorConfig};
 
 /// Frequency-bin spacing for a resonator bank.
 ///
@@ -169,7 +169,16 @@ pub fn compute_resonator_columns(
 
     // Tile path runs full-density: density is already baked into `fft_size`
     // (the adaptive FFT shrinks output_bins for loaded files).
-    let setup = build_reso_setup(sample_rate, fft_size, bandwidth_hz, alpha_mode, q, layout, freq_range, 1.0);
+    let setup = build_reso_setup(
+        sample_rate,
+        fft_size,
+        bandwidth_hz,
+        alpha_mode,
+        q,
+        layout,
+        freq_range,
+        1.0,
+    );
     let mut bank = ResonatorBank::new(&setup.configs, sample_rate as f32);
 
     let col_end = col_start + col_count;
@@ -196,7 +205,10 @@ pub fn compute_resonator_columns(
 
         // Library state reflects end of this hop.
         let time_offset = ((frame + 1) * hop_size) as f64 / sample_rate as f64;
-        out.push(SpectrogramColumn { magnitudes: setup.read_mags(&bank), time_offset });
+        out.push(SpectrogramColumn {
+            magnitudes: setup.read_mags(&bank),
+            time_offset,
+        });
     }
 
     out
@@ -226,11 +238,20 @@ pub fn adaptive_tonal_fft(fft_size: usize) -> usize {
 /// scaled by a soft gate (≈1 where the FFT has energy, ≈0 where it's dark),
 /// suppressing single-pole leakage while keeping the sharp line. Shared by the
 /// tile path and the live persistent-bank path.
-pub fn apply_clean_gate(reso: &mut [SpectrogramColumn], fft: &[SpectrogramColumn], fft_size: usize, hop_size: usize) {
+pub fn apply_clean_gate(
+    reso: &mut [SpectrogramColumn],
+    fft: &[SpectrogramColumn],
+    fft_size: usize,
+    hop_size: usize,
+) {
     if fft.is_empty() {
         return;
     }
-    let fmax = fft.iter().flat_map(|c| c.magnitudes.iter().copied()).fold(0.0f32, f32::max).max(1e-9);
+    let fmax = fft
+        .iter()
+        .flat_map(|c| c.magnitudes.iter().copied())
+        .fold(0.0f32, f32::max)
+        .max(1e-9);
     let thresh = (HYBRID_GATE_FRAC * fmax).max(1e-9);
     let shift = center_shift(fft_size, hop_size);
     let flen = fft.len() as isize;
@@ -259,7 +280,11 @@ pub fn apply_adaptive_blend(
     if fast.is_empty() || tonal.is_empty() {
         return;
     }
-    let tmax = tonal.iter().flat_map(|c| c.magnitudes.iter().copied()).fold(0.0f32, f32::max).max(1e-9);
+    let tmax = tonal
+        .iter()
+        .flat_map(|c| c.magnitudes.iter().copied())
+        .fold(0.0f32, f32::max)
+        .max(1e-9);
     let tonal_nb = tonal[0].magnitudes.len();
     let tonal_shift = center_shift(tonal_fft, hop_size);
     let (flen, tlen) = (fast.len() as isize, tonal.len() as isize);
@@ -271,7 +296,8 @@ pub fn apply_adaptive_blend(
         let n = col.magnitudes.len().min(fastc.len());
         for b in 0..n {
             let freq = b as f64 * sample_rate as f64 / fft_size as f64;
-            let tb = ((freq * tonal_fft as f64 / sample_rate as f64).round() as usize).min(tonal_nb - 1);
+            let tb =
+                ((freq * tonal_fft as f64 / sample_rate as f64).round() as usize).min(tonal_nb - 1);
             let d = (tnow[tb] - tpre[tb]).abs() / tmax;
             let w = 1.0 / (1.0 + HYBRID_TONAL_K * d);
             col.magnitudes[b] = w * col.magnitudes[b] + (1.0 - w) * fastc[b];
@@ -305,15 +331,40 @@ pub fn compute_resonator_hybrid_columns(
 ) -> Vec<SpectrogramColumn> {
     match hybrid {
         ResonatorHybridMode::Off => compute_resonator_columns(
-            samples, sample_rate, fft_size, hop_size, col_start, col_count,
-            bandwidth_hz, alpha_mode, q, layout, freq_range,
+            samples,
+            sample_rate,
+            fft_size,
+            hop_size,
+            col_start,
+            col_count,
+            bandwidth_hz,
+            alpha_mode,
+            q,
+            layout,
+            freq_range,
         ),
         ResonatorHybridMode::Clean => {
             let mut cols = compute_resonator_columns(
-                samples, sample_rate, fft_size, hop_size, col_start, col_count,
-                bandwidth_hz, alpha_mode, q, layout, freq_range,
+                samples,
+                sample_rate,
+                fft_size,
+                hop_size,
+                col_start,
+                col_count,
+                bandwidth_hz,
+                alpha_mode,
+                q,
+                layout,
+                freq_range,
             );
-            let fft = compute_stft_columns(samples, sample_rate, fft_size, hop_size, col_start, col_count);
+            let fft = compute_stft_columns(
+                samples,
+                sample_rate,
+                fft_size,
+                hop_size,
+                col_start,
+                col_count,
+            );
             apply_clean_gate(&mut cols, &fft, fft_size, hop_size);
             cols
         }
@@ -322,16 +373,49 @@ pub fn compute_resonator_hybrid_columns(
             // (fast/blurry). Adaptive defines its own tradeoff, so both banks use
             // ConstBandwidth regardless of `alpha_mode`.
             let mut sharp = compute_resonator_columns(
-                samples, sample_rate, fft_size, hop_size, col_start, col_count,
-                bandwidth_hz, ResonatorAlphaMode::ConstBandwidth, q, layout, freq_range,
+                samples,
+                sample_rate,
+                fft_size,
+                hop_size,
+                col_start,
+                col_count,
+                bandwidth_hz,
+                ResonatorAlphaMode::ConstBandwidth,
+                q,
+                layout,
+                freq_range,
             );
             let fast = compute_resonator_columns(
-                samples, sample_rate, fft_size, hop_size, col_start, col_count,
-                adaptive_fast_bw(bandwidth_hz), ResonatorAlphaMode::ConstBandwidth, q, layout, freq_range,
+                samples,
+                sample_rate,
+                fft_size,
+                hop_size,
+                col_start,
+                col_count,
+                adaptive_fast_bw(bandwidth_hz),
+                ResonatorAlphaMode::ConstBandwidth,
+                q,
+                layout,
+                freq_range,
             );
             let tonal_fft = adaptive_tonal_fft(fft_size);
-            let tonal = compute_stft_columns(samples, sample_rate, tonal_fft, hop_size, col_start, col_count);
-            apply_adaptive_blend(&mut sharp, &fast, &tonal, fft_size, tonal_fft, hop_size, sample_rate);
+            let tonal = compute_stft_columns(
+                samples,
+                sample_rate,
+                tonal_fft,
+                hop_size,
+                col_start,
+                col_count,
+            );
+            apply_adaptive_blend(
+                &mut sharp,
+                &fast,
+                &tonal,
+                fft_size,
+                tonal_fft,
+                hop_size,
+                sample_rate,
+            );
             sharp
         }
     }
@@ -352,9 +436,13 @@ impl ResoSetup {
     /// gathering through the log row-map when present.
     fn read_mags(&self, bank: &ResonatorBank) -> Vec<f32> {
         if let Some(map) = &self.row_to_bank {
-            map.iter().map(|&k| bank.magnitude(k) * self.mag_scale).collect()
+            map.iter()
+                .map(|&k| bank.magnitude(k) * self.mag_scale)
+                .collect()
         } else {
-            (0..self.bank_bins).map(|k| bank.magnitude(k) * self.mag_scale).collect()
+            (0..self.bank_bins)
+                .map(|k| bank.magnitude(k) * self.mag_scale)
+                .collect()
         }
     }
 }
@@ -414,9 +502,7 @@ fn build_reso_setup(
                 vec![min]
             } else {
                 let ratio = (max / min).powf(1.0 / (bank_bins - 1) as f32);
-                (0..bank_bins)
-                    .map(|k| min * ratio.powi(k as i32))
-                    .collect()
+                (0..bank_bins).map(|k| min * ratio.powi(k as i32)).collect()
             }
         }
     };
@@ -457,7 +543,12 @@ fn build_reso_setup(
                     .collect(),
             )
         }
-        ResonatorLayout::Log => Some(build_log_row_map(output_bins, &bank_freqs, band_lo, band_hi)),
+        ResonatorLayout::Log => Some(build_log_row_map(
+            output_bins,
+            &bank_freqs,
+            band_lo,
+            band_hi,
+        )),
     };
 
     ResoSetup {
@@ -495,9 +586,23 @@ impl StreamingResonators {
         freq_range: Option<(f32, f32)>,
         density: f32,
     ) -> Self {
-        let setup = build_reso_setup(sample_rate, fft_size, bandwidth_hz, alpha_mode, q, layout, freq_range, density);
+        let setup = build_reso_setup(
+            sample_rate,
+            fft_size,
+            bandwidth_hz,
+            alpha_mode,
+            q,
+            layout,
+            freq_range,
+            density,
+        );
         let bank = ResonatorBank::new(&setup.configs, sample_rate as f32);
-        Self { bank, setup, hop_size, sample_rate }
+        Self {
+            bank,
+            setup,
+            hop_size,
+            sample_rate,
+        }
     }
 
     /// Run `samples` through the bank without emitting columns — used once after
@@ -552,7 +657,8 @@ fn build_log_row_map(
             }
             let idx = bank_freqs
                 .binary_search_by(|&f| {
-                    f.partial_cmp(&row_freq).unwrap_or(std::cmp::Ordering::Equal)
+                    f.partial_cmp(&row_freq)
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 })
                 .unwrap_or_else(|i| i)
                 .min(last_bank);
@@ -563,7 +669,11 @@ fn build_log_row_map(
             let curr = bank_freqs[idx];
             let dprev = (row_freq / prev).ln().abs();
             let dcurr = (row_freq / curr).ln().abs();
-            if dprev <= dcurr { idx - 1 } else { idx }
+            if dprev <= dcurr {
+                idx - 1
+            } else {
+                idx
+            }
         })
         .collect()
 }
@@ -602,7 +712,7 @@ pub fn bench_resonator_bank<F: FnMut() -> f64>(
     sample_rate: u32,
     mut now_ms: F,
 ) -> BenchResult {
-    use resonators::{ResonatorBank, ResonatorConfig, alpha_from_tau};
+    use resonators::{alpha_from_tau, ResonatorBank, ResonatorConfig};
 
     // Match the production adapter: linear freq layout, single bandwidth,
     // beta=1.0 (disables the library's output EWMA).
@@ -661,8 +771,17 @@ mod tests {
             .collect();
 
         let cols = compute_resonator_columns(
-            &samples, sr, fft_size, hop, 0, 100, 200.0,
-            ResonatorAlphaMode::ConstBandwidth, 50.0, ResonatorLayout::Linear, None,
+            &samples,
+            sr,
+            fft_size,
+            hop,
+            0,
+            100,
+            200.0,
+            ResonatorAlphaMode::ConstBandwidth,
+            50.0,
+            ResonatorLayout::Linear,
+            None,
         );
         assert!(!cols.is_empty());
 
@@ -697,10 +816,16 @@ mod tests {
     fn assert_cols_eq(a: &[SpectrogramColumn], b: &[SpectrogramColumn]) {
         assert_eq!(a.len(), b.len(), "column count");
         for (i, (ca, cb)) in a.iter().zip(b.iter()).enumerate() {
-            assert_eq!(ca.magnitudes.len(), cb.magnitudes.len(), "bin count col {i}");
+            assert_eq!(
+                ca.magnitudes.len(),
+                cb.magnitudes.len(),
+                "bin count col {i}"
+            );
             assert!(
                 (ca.time_offset - cb.time_offset).abs() < 1e-9,
-                "time_offset col {i}: {} vs {}", ca.time_offset, cb.time_offset
+                "time_offset col {i}: {} vs {}",
+                ca.time_offset,
+                cb.time_offset
             );
             for (k, (x, y)) in ca.magnitudes.iter().zip(cb.magnitudes.iter()).enumerate() {
                 assert!((x - y).abs() <= 1e-4, "mag col {i} bin {k}: {x} vs {y}");
@@ -716,11 +841,28 @@ mod tests {
         for layout in [ResonatorLayout::Linear, ResonatorLayout::Log] {
             let samples = test_signal(sr, hop * ncols);
             let oneshot = compute_resonator_columns(
-                &samples, sr, fft, hop, 0, ncols, 20.0,
-                ResonatorAlphaMode::ConstBandwidth, 50.0, layout, None,
+                &samples,
+                sr,
+                fft,
+                hop,
+                0,
+                ncols,
+                20.0,
+                ResonatorAlphaMode::ConstBandwidth,
+                50.0,
+                layout,
+                None,
             );
             let mut s = StreamingResonators::new(
-                sr, fft, hop, 20.0, ResonatorAlphaMode::ConstBandwidth, 50.0, layout, None, 1.0,
+                sr,
+                fft,
+                hop,
+                20.0,
+                ResonatorAlphaMode::ConstBandwidth,
+                50.0,
+                layout,
+                None,
+                1.0,
             );
             let streamed = s.push_hops(&samples[..ncols * hop], 0);
             assert_cols_eq(&oneshot, &streamed);
@@ -736,12 +878,28 @@ mod tests {
         let samples = test_signal(sr, hop * ncols);
 
         let mut bulk = StreamingResonators::new(
-            sr, fft, hop, 20.0, ResonatorAlphaMode::ConstBandwidth, 50.0, ResonatorLayout::Linear, None, 1.0,
+            sr,
+            fft,
+            hop,
+            20.0,
+            ResonatorAlphaMode::ConstBandwidth,
+            50.0,
+            ResonatorLayout::Linear,
+            None,
+            1.0,
         );
         let all = bulk.push_hops(&samples[..ncols * hop], 0);
 
         let mut inc = StreamingResonators::new(
-            sr, fft, hop, 20.0, ResonatorAlphaMode::ConstBandwidth, 50.0, ResonatorLayout::Linear, None, 1.0,
+            sr,
+            fft,
+            hop,
+            20.0,
+            ResonatorAlphaMode::ConstBandwidth,
+            50.0,
+            ResonatorLayout::Linear,
+            None,
+            1.0,
         );
         let mut chunked = Vec::new();
         // Uneven chunks to mimic variable per-tick column counts.
@@ -763,8 +921,17 @@ mod tests {
             .map(|i| (std::f32::consts::TAU * f * i as f32 / sr as f32).sin())
             .collect();
         let cols = compute_resonator_columns(
-            &samples, sr, fft, hop, 0, ncols, 20.0,
-            ResonatorAlphaMode::ConstQ, 200.0, ResonatorLayout::Linear, None,
+            &samples,
+            sr,
+            fft,
+            hop,
+            0,
+            ncols,
+            20.0,
+            ResonatorAlphaMode::ConstQ,
+            200.0,
+            ResonatorLayout::Linear,
+            None,
         );
         let last = cols.last().expect("columns");
         assert_eq!(last.magnitudes.len(), fft / 2 + 1);
@@ -794,28 +961,63 @@ mod tests {
             .collect();
         let total = n / hop;
         let plain = compute_resonator_columns(
-            &s, sr, fft, hop, 0, total, 60.0, ResonatorAlphaMode::ConstBandwidth, 50.0, ResonatorLayout::Linear, None,
+            &s,
+            sr,
+            fft,
+            hop,
+            0,
+            total,
+            60.0,
+            ResonatorAlphaMode::ConstBandwidth,
+            50.0,
+            ResonatorLayout::Linear,
+            None,
         );
         let clean = compute_resonator_hybrid_columns(
-            &s, sr, fft, hop, 0, total, 60.0, ResonatorAlphaMode::ConstBandwidth, 50.0, ResonatorLayout::Linear, None,
+            &s,
+            sr,
+            fft,
+            hop,
+            0,
+            total,
+            60.0,
+            ResonatorAlphaMode::ConstBandwidth,
+            50.0,
+            ResonatorLayout::Linear,
+            None,
             ResonatorHybridMode::Clean,
         );
         assert_eq!(plain.len(), clean.len());
-        let peak = |c: &[f32]| c.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).map(|(i, _)| i).unwrap();
+        let peak = |c: &[f32]| {
+            c.iter()
+                .enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                .map(|(i, _)| i)
+                .unwrap()
+        };
         let leak = |c: &[f32], pk: usize| {
             let tot: f64 = c.iter().map(|&m| (m as f64).powi(2)).sum();
-            let near: f64 = c.iter().enumerate()
+            let near: f64 = c
+                .iter()
+                .enumerate()
                 .filter(|(i, _)| (*i as isize - pk as isize).abs() <= 3)
                 .map(|(_, &m)| (m as f64).powi(2))
                 .sum();
-            if tot <= 0.0 { 1.0 } else { (tot - near) / tot }
+            if tot <= 0.0 {
+                1.0
+            } else {
+                (tot - near) / tot
+            }
         };
         let cp = &plain.last().unwrap().magnitudes;
         let cc = &clean.last().unwrap().magnitudes;
         let pk = peak(cp);
         assert_eq!(pk, peak(cc), "Clean moved the ridge");
         let (lp, lc) = (leak(cp, pk), leak(cc, pk));
-        assert!(lc < lp * 0.8, "Clean did not cut leakage: plain={lp:.3} clean={lc:.3}");
+        assert!(
+            lc < lp * 0.8,
+            "Clean did not cut leakage: plain={lp:.3} clean={lc:.3}"
+        );
     }
 
     /// Adaptive blend must run and still localize a sustained tone (tonal ⇒
@@ -831,15 +1033,33 @@ mod tests {
             .collect();
         let total = n / hop;
         let out = compute_resonator_hybrid_columns(
-            &s, sr, fft, hop, 0, total, 20.0, ResonatorAlphaMode::ConstBandwidth, 50.0, ResonatorLayout::Linear, None,
+            &s,
+            sr,
+            fft,
+            hop,
+            0,
+            total,
+            20.0,
+            ResonatorAlphaMode::ConstBandwidth,
+            50.0,
+            ResonatorLayout::Linear,
+            None,
             ResonatorHybridMode::Adaptive,
         );
         assert!(!out.is_empty());
         let last = &out.last().unwrap().magnitudes;
         assert_eq!(last.len(), fft / 2 + 1);
-        let pk = last.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).map(|(i, _)| i).unwrap();
+        let pk = last
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(i, _)| i)
+            .unwrap();
         let expected = (f * fft as f32 / sr as f32).round() as isize;
-        assert!((pk as isize - expected).abs() <= 2, "Adaptive peak {pk} != expected {expected}");
+        assert!(
+            (pk as isize - expected).abs() <= 2,
+            "Adaptive peak {pk} != expected {expected}"
+        );
     }
 
     /// Reduced density must keep the full output row count (the live waterfall's
@@ -857,7 +1077,15 @@ mod tests {
         let expected = (f / (nyq / (output_bins - 1) as f32)).round() as isize;
         for density in [0.5f32, 0.25] {
             let mut s = StreamingResonators::new(
-                sr, fft, hop, 50.0, ResonatorAlphaMode::ConstBandwidth, 50.0, ResonatorLayout::Linear, None, density,
+                sr,
+                fft,
+                hop,
+                50.0,
+                ResonatorAlphaMode::ConstBandwidth,
+                50.0,
+                ResonatorLayout::Linear,
+                None,
+                density,
             );
             let cols = s.push_hops(&samples, 0);
             let last = cols.last().expect("columns");

@@ -1,16 +1,16 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use leptos::ev::MouseEvent;
-use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::spectrogram_renderer::{self, FreqMarkerState, FreqShiftMode};
-use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast};
-use crate::dsp::zc_divide::zc_rate_per_bin;
-use crate::state::{AppState, CanvasTool, FilterQuality, SpectrogramHandle};
 use crate::components::axis_drag::{apply_axis_drag, freq_snap};
 use crate::components::gutter::{BandGutter, TimeGutter};
 use crate::components::playhead::Playhead;
+use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast};
+use crate::dsp::zc_divide::zc_rate_per_bin;
+use crate::state::store_fields::*;
+use crate::state::{AppState, CanvasTool, FilterQuality, SpectrogramHandle};
 use crate::viewport;
+use leptos::ev::MouseEvent;
+use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 const ZC_BIN_DURATION: f64 = 0.001; // 1ms bins
 const TAU: f64 = std::f64::consts::TAU;
@@ -18,11 +18,17 @@ const LABEL_AREA_WIDTH: f64 = 60.0;
 
 /// Pick a nice grid interval (in kHz) for the visible frequency range.
 fn grid_interval_khz(range_khz: f64) -> f64 {
-    if range_khz <= 10.0 { 2.0 }
-    else if range_khz <= 25.0 { 5.0 }
-    else if range_khz <= 60.0 { 10.0 }
-    else if range_khz <= 150.0 { 20.0 }
-    else { 50.0 }
+    if range_khz <= 10.0 {
+        2.0
+    } else if range_khz <= 25.0 {
+        5.0
+    } else if range_khz <= 60.0 {
+        10.0
+    } else if range_khz <= 150.0 {
+        20.0
+    } else {
+        50.0
+    }
 }
 
 #[component]
@@ -34,25 +40,55 @@ pub fn ZcDotChart() -> impl IntoView {
     let axis_drag_raw_start = RwSignal::new(0.0f64);
 
     // BandFF handle hit-test (BandFF-only, no HET)
-    let hit_test_band_ff_handles = move |mouse_y: f64, min_freq: f64, max_freq: f64, canvas_height: f64, threshold: f64| -> Option<SpectrogramHandle> {
+    let hit_test_band_ff_handles = move |mouse_y: f64,
+                                         min_freq: f64,
+                                         max_freq: f64,
+                                         canvas_height: f64,
+                                         threshold: f64|
+          -> Option<SpectrogramHandle> {
         let band_ff_lo = state.filter.band_ff_freq_lo().get_untracked();
         let band_ff_hi = state.filter.band_ff_freq_hi().get_untracked();
-        if band_ff_hi <= band_ff_lo { return None; }
+        if band_ff_hi <= band_ff_lo {
+            return None;
+        }
 
         let mut candidates: Vec<(SpectrogramHandle, f64)> = Vec::new();
-        let y_upper = spectrogram_renderer::freq_to_y(band_ff_hi.min(max_freq), min_freq, max_freq, canvas_height);
-        let y_lower = spectrogram_renderer::freq_to_y(band_ff_lo.max(min_freq), min_freq, max_freq, canvas_height);
+        let y_upper = spectrogram_renderer::freq_to_y(
+            band_ff_hi.min(max_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
+        let y_lower = spectrogram_renderer::freq_to_y(
+            band_ff_lo.max(min_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
         let d_upper = (mouse_y - y_upper).abs();
         let d_lower = (mouse_y - y_lower).abs();
-        if d_upper <= threshold { candidates.push((SpectrogramHandle::BandFfUpper, d_upper)); }
-        if d_lower <= threshold { candidates.push((SpectrogramHandle::BandFfLower, d_lower)); }
+        if d_upper <= threshold {
+            candidates.push((SpectrogramHandle::BandFfUpper, d_upper));
+        }
+        if d_lower <= threshold {
+            candidates.push((SpectrogramHandle::BandFfLower, d_lower));
+        }
 
         let mid_freq = (band_ff_lo + band_ff_hi) / 2.0;
-        let y_mid = spectrogram_renderer::freq_to_y(mid_freq.clamp(min_freq, max_freq), min_freq, max_freq, canvas_height);
+        let y_mid = spectrogram_renderer::freq_to_y(
+            mid_freq.clamp(min_freq, max_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
         let d_mid = (mouse_y - y_mid).abs();
-        if d_mid <= threshold { candidates.push((SpectrogramHandle::BandFfMiddle, d_mid)); }
+        if d_mid <= threshold {
+            candidates.push((SpectrogramHandle::BandFfMiddle, d_mid));
+        }
 
-        if candidates.is_empty() { return None; }
+        if candidates.is_empty() {
+            return None;
+        }
         candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         Some(candidates[0].0)
     };
@@ -78,8 +114,28 @@ pub fn ZcDotChart() -> impl IntoView {
             let raw: &[f32] = file.audio.samples.as_slice();
             if filter_enabled {
                 let filtered = match quality {
-                    FilterQuality::Fast => apply_eq_filter_fast(raw, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
-                    FilterQuality::Spectral => apply_eq_filter(raw, sr, freq_low, freq_high, db_below, db_selected, db_harmonics, db_above, band_mode),
+                    FilterQuality::Fast => apply_eq_filter_fast(
+                        raw,
+                        sr,
+                        freq_low,
+                        freq_high,
+                        db_below,
+                        db_selected,
+                        db_harmonics,
+                        db_above,
+                        band_mode,
+                    ),
+                    FilterQuality::Spectral => apply_eq_filter(
+                        raw,
+                        sr,
+                        freq_low,
+                        freq_high,
+                        db_below,
+                        db_selected,
+                        db_harmonics,
+                        db_above,
+                        band_mode,
+                    ),
                 };
                 zc_rate_per_bin(&filtered, sr, ZC_BIN_DURATION, filter_enabled)
             } else {
@@ -113,22 +169,32 @@ pub fn ZcDotChart() -> impl IntoView {
         let _rsidebar = state.panels.right_collapsed().get();
         let _rsidebar_width = state.panels.right_width().get();
 
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
 
         let rect = canvas.get_bounding_client_rect();
         let display_w = rect.width() as u32;
         let display_h = rect.height() as u32;
-        if display_w == 0 || display_h == 0 { return; }
+        if display_w == 0 || display_h == 0 {
+            return;
+        }
         if canvas.width() != display_w || canvas.height() != display_h {
             canvas.set_width(display_w);
             canvas.set_height(display_h);
         }
-        state.viewmode.spectrogram_canvas_width().set(display_w as f64);
+        state
+            .viewmode
+            .spectrogram_canvas_width()
+            .set(display_w as f64);
 
         let ctx = canvas
-            .get_context("2d").unwrap().unwrap()
-            .dyn_into::<CanvasRenderingContext2d>().unwrap();
+            .get_context("2d")
+            .unwrap()
+            .unwrap()
+            .dyn_into::<CanvasRenderingContext2d>()
+            .unwrap();
 
         let cw = display_w as f64;
         let ch = display_h as f64;
@@ -137,7 +203,9 @@ pub fn ZcDotChart() -> impl IntoView {
         ctx.set_fill_style_str("#0a0a0a");
         ctx.fill_rect(0.0, 0.0, cw, ch);
 
-        let Some(file) = idx.and_then(|i| files.get(i)) else { return };
+        let Some(file) = idx.and_then(|i| files.get(i)) else {
+            return;
+        };
 
         // ── Native Anabat .zc dots branch ─────────────────────────────
         // When the file is an Anabat ZC recording, render its actual
@@ -147,8 +215,12 @@ pub fn ZcDotChart() -> impl IntoView {
         let zc_anabat = file.audio.metadata.zc_data.clone();
 
         let bins: Vec<(f64, bool)> = if zc_anabat.is_none() {
-            let Some(b) = zc_bins.get().as_ref().cloned() else { return };
-            if b.is_empty() { return; }
+            let Some(b) = zc_bins.get().as_ref().cloned() else {
+                return;
+            };
+            if b.is_empty() {
+                return;
+            }
             b
         } else {
             // Sentinel — we won't actually iterate this path for ZC files.
@@ -163,7 +235,9 @@ pub fn ZcDotChart() -> impl IntoView {
         let min_freq = display_min_freq.unwrap_or(0.0);
         let max_freq = display_max_freq.unwrap_or(file_max_freq.max(120_000.0));
         let freq_range = max_freq - min_freq;
-        if freq_range <= 0.0 { return; }
+        if freq_range <= 0.0 {
+            return;
+        }
 
         // Dot area is to the right of the label area
         let dot_area_w = (cw - LABEL_AREA_WIDTH).max(0.0);
@@ -171,20 +245,21 @@ pub fn ZcDotChart() -> impl IntoView {
         // Anabat ZC files have no per-sample time_resolution; fall back
         // to a sensible default so the viewport math doesn't divide by zero.
         let effective_time_res = if zc_anabat.is_some() && time_res <= 0.0 {
-            1e-4  // 100 µs default
+            1e-4 // 100 µs default
         } else {
             time_res
         };
         let visible_time = viewport::visible_time(dot_area_w, zoom, effective_time_res);
-        let Some((start_time, end_time, data_x, _data_width)) = viewport::data_region_px(
-            scroll,
-            visible_time,
-            total_duration,
-            dot_area_w,
-        ) else {
+        let Some((start_time, end_time, data_x, _data_width)) =
+            viewport::data_region_px(scroll, visible_time, total_duration, dot_area_w)
+        else {
             return;
         };
-        let px_per_sec = if visible_time > 0.0 { dot_area_w / visible_time } else { 0.0 };
+        let px_per_sec = if visible_time > 0.0 {
+            dot_area_w / visible_time
+        } else {
+            0.0
+        };
 
         // Clip to dot area for drawing dots and selection
         ctx.save();
@@ -194,8 +269,10 @@ pub fn ZcDotChart() -> impl IntoView {
 
         // Selection highlight
         if let Some(sel) = selection {
-            let x0 = LABEL_AREA_WIDTH + (data_x + (sel.time_start - start_time) * px_per_sec).max(0.0);
-            let x1 = LABEL_AREA_WIDTH + (data_x + (sel.time_end - start_time) * px_per_sec).min(dot_area_w);
+            let x0 =
+                LABEL_AREA_WIDTH + (data_x + (sel.time_start - start_time) * px_per_sec).max(0.0);
+            let x1 = LABEL_AREA_WIDTH
+                + (data_x + (sel.time_end - start_time) * px_per_sec).min(dot_area_w);
             if x1 > x0 {
                 ctx.set_fill_style_str("rgba(50, 120, 200, 0.2)");
                 ctx.fill_rect(x0, 0.0, x1 - x0, ch);
@@ -232,9 +309,15 @@ pub fn ZcDotChart() -> impl IntoView {
             ctx.set_fill_style_str("rgba(120, 220, 120, 0.95)");
             ctx.begin_path();
             for (i, (&t, &f)) in zc.times_s.iter().zip(&zc.freqs_hz).enumerate() {
-                if zc.off_mask.get(i).copied().unwrap_or(false) { continue; }
-                if f <= 0.0 || t < start_time || t > end_time { continue; }
-                if f < min_freq || f > max_freq { continue; }
+                if zc.off_mask.get(i).copied().unwrap_or(false) {
+                    continue;
+                }
+                if f <= 0.0 || t < start_time || t > end_time {
+                    continue;
+                }
+                if f < min_freq || f > max_freq {
+                    continue;
+                }
                 let x = LABEL_AREA_WIDTH + data_x + (t - start_time) * px_per_sec;
                 let y = spectrogram_renderer::freq_to_y(f, min_freq, max_freq, ch);
                 ctx.move_to(x + r_on, y);
@@ -246,9 +329,15 @@ pub fn ZcDotChart() -> impl IntoView {
             ctx.set_fill_style_str("rgba(80, 110, 80, 0.40)");
             ctx.begin_path();
             for (i, (&t, &f)) in zc.times_s.iter().zip(&zc.freqs_hz).enumerate() {
-                if !zc.off_mask.get(i).copied().unwrap_or(false) { continue; }
-                if f <= 0.0 || t < start_time || t > end_time { continue; }
-                if f < min_freq || f > max_freq { continue; }
+                if !zc.off_mask.get(i).copied().unwrap_or(false) {
+                    continue;
+                }
+                if f <= 0.0 || t < start_time || t > end_time {
+                    continue;
+                }
+                if f < min_freq || f > max_freq {
+                    continue;
+                }
                 let x = LABEL_AREA_WIDTH + data_x + (t - start_time) * px_per_sec;
                 let y = spectrogram_renderer::freq_to_y(f, min_freq, max_freq, ch);
                 ctx.move_to(x + r_off, y);
@@ -277,8 +366,12 @@ pub fn ZcDotChart() -> impl IntoView {
         ctx.set_fill_style_str(&format!("rgba(100, {armed_g}, 100, {armed_alpha:.2})"));
         ctx.begin_path();
         for (bin_idx, &(rate_hz, armed)) in bins.iter().enumerate().take(last_bin).skip(first_bin) {
-            if rate_hz <= 0.0 || !armed { continue; }
-            if rate_hz < min_freq || rate_hz > max_freq { continue; }
+            if rate_hz <= 0.0 || !armed {
+                continue;
+            }
+            if rate_hz < min_freq || rate_hz > max_freq {
+                continue;
+            }
             let bin_time = bin_idx as f64 * ZC_BIN_DURATION;
             let x = LABEL_AREA_WIDTH + data_x + (bin_time - start_time) * px_per_sec;
             let y = spectrogram_renderer::freq_to_y(rate_hz, min_freq, max_freq, ch);
@@ -293,8 +386,12 @@ pub fn ZcDotChart() -> impl IntoView {
         ctx.set_fill_style_str(&format!("rgba(60, {unarmed_g}, 60, {unarmed_alpha:.2})"));
         ctx.begin_path();
         for (bin_idx, &(rate_hz, armed)) in bins.iter().enumerate().take(last_bin).skip(first_bin) {
-            if rate_hz <= 0.0 || armed { continue; }
-            if rate_hz < min_freq || rate_hz > max_freq { continue; }
+            if rate_hz <= 0.0 || armed {
+                continue;
+            }
+            if rate_hz < min_freq || rate_hz > max_freq {
+                continue;
+            }
             let bin_time = bin_idx as f64 * ZC_BIN_DURATION;
             let x = LABEL_AREA_WIDTH + data_x + (bin_time - start_time) * px_per_sec;
             let y = spectrogram_renderer::freq_to_y(rate_hz, min_freq, max_freq, ch);
@@ -304,7 +401,10 @@ pub fn ZcDotChart() -> impl IntoView {
         ctx.fill();
 
         // Draw "play here" marker when not playing
-        if state.playback.start_mode().get() .uses_from_here() && !is_playing && canvas_tool == CanvasTool::Hand {
+        if state.playback.start_mode().get().uses_from_here()
+            && !is_playing
+            && canvas_tool == CanvasTool::Hand
+        {
             let here_x = LABEL_AREA_WIDTH + dot_area_w * viewport::PLAY_FROM_HERE_FRACTION;
             let here_time = viewport::play_from_here_time(scroll, visible_time);
             state.playback.from_here_time().set(here_time);
@@ -327,12 +427,17 @@ pub fn ZcDotChart() -> impl IntoView {
         if band_ff_hi > band_ff_lo {
             spectrogram_renderer::draw_band_ff_overlay(
                 &ctx,
-                band_ff_lo, band_ff_hi,
-                min_freq, max_freq,
-                ch, cw,
-                spec_hover, spec_drag,
+                band_ff_lo,
+                band_ff_hi,
+                min_freq,
+                max_freq,
+                ch,
+                cw,
+                spec_hover,
+                spec_drag,
                 state.status.is_mobile().get_untracked(),
-                state.interaction.active_focus().get_untracked() == Some(crate::state::ActiveFocus::FrequencyFocus),
+                state.interaction.active_focus().get_untracked()
+                    == Some(crate::state::ActiveFocus::FrequencyFocus),
                 state.interaction.pointer_is_down().get_untracked(),
                 state.interaction.mouse_freq().get_untracked(),
             );
@@ -357,10 +462,11 @@ pub fn ZcDotChart() -> impl IntoView {
             (Some(a), Some(b)) => (Some(a.min(b)), Some(a.max(b))),
             _ => (None, None),
         };
-        let band_ff_drag_active = matches!(spec_drag,
-            Some(SpectrogramHandle::BandFfUpper) |
-            Some(SpectrogramHandle::BandFfLower) |
-            Some(SpectrogramHandle::BandFfMiddle)
+        let band_ff_drag_active = matches!(
+            spec_drag,
+            Some(SpectrogramHandle::BandFfUpper)
+                | Some(SpectrogramHandle::BandFfLower)
+                | Some(SpectrogramHandle::BandFfMiddle)
         );
         let in_label = mouse_freq.is_some() && mouse_cx < LABEL_AREA_WIDTH;
         let label_hover_op = if in_label { 1.0 } else { 0.0 };
@@ -399,7 +505,9 @@ pub fn ZcDotChart() -> impl IntoView {
         let follow = state.view.follow_cursor().get();
         let suspended = state.view.follow_suspended().get_untracked();
 
-        if !follow { return; }
+        if !follow {
+            return;
+        }
         if !is_playing {
             if suspended {
                 state.view.follow_suspended().set(false);
@@ -408,10 +516,14 @@ pub fn ZcDotChart() -> impl IntoView {
             return;
         }
 
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let display_w = canvas.width() as f64;
-        if display_w == 0.0 { return; }
+        if display_w == 0.0 {
+            return;
+        }
 
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked();
@@ -421,7 +533,7 @@ pub fn ZcDotChart() -> impl IntoView {
             .unwrap_or((1.0, 0.0));
         let zoom = state.view.zoom_level().get_untracked();
         let scroll = state.view.scroll_offset().get_untracked();
-        let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
+        let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
 
         let visible_time = viewport::visible_time(display_w, zoom, time_res);
         let playhead_rel = playhead - scroll;
@@ -443,10 +555,28 @@ pub fn ZcDotChart() -> impl IntoView {
 
         if visible_time < viewport::FOLLOW_EXACT_THRESHOLD_SECS {
             let target_scroll = playhead - visible_time * viewport::FOLLOW_CURSOR_FRACTION;
-            state.view.scroll_offset().set(viewport::clamp_scroll_for_mode(target_scroll, duration, visible_time, from_here_mode));
-        } else if playhead_rel > visible_time * viewport::FOLLOW_CURSOR_EDGE_FRACTION || playhead_rel < 0.0 {
+            state
+                .view
+                .scroll_offset()
+                .set(viewport::clamp_scroll_for_mode(
+                    target_scroll,
+                    duration,
+                    visible_time,
+                    from_here_mode,
+                ));
+        } else if playhead_rel > visible_time * viewport::FOLLOW_CURSOR_EDGE_FRACTION
+            || playhead_rel < 0.0
+        {
             let target_scroll = playhead - visible_time * viewport::FOLLOW_CURSOR_FRACTION;
-            state.view.scroll_offset().set(viewport::clamp_scroll_for_mode(target_scroll, duration, visible_time, from_here_mode));
+            state
+                .view
+                .scroll_offset()
+                .set(viewport::clamp_scroll_for_mode(
+                    target_scroll,
+                    duration,
+                    visible_time,
+                    from_here_mode,
+                ));
         }
     });
 
@@ -454,11 +584,16 @@ pub fn ZcDotChart() -> impl IntoView {
     let get_freq_range = move || -> (f64, f64) {
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked();
-        let file_max = idx.and_then(|i| files.get(i))
+        let file_max = idx
+            .and_then(|i| files.get(i))
             .map(|f| f.spectrogram.max_freq)
             .unwrap_or(96_000.0);
         let min_freq = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-        let max_freq = state.view.max_display_freq().get_untracked().unwrap_or(file_max);
+        let max_freq = state
+            .view
+            .max_display_freq()
+            .get_untracked()
+            .unwrap_or(file_max);
         (min_freq, max_freq)
     };
 
@@ -470,7 +605,9 @@ pub fn ZcDotChart() -> impl IntoView {
         let px_x = ev.client_x() as f64 - rect.left();
         let px_y = ev.client_y() as f64 - rect.top();
         let ch = canvas.height() as f64;
-        if ch <= 0.0 { return None; }
+        if ch <= 0.0 {
+            return None;
+        }
         let (min_freq, max_freq) = get_freq_range();
         let freq = spectrogram_renderer::y_to_freq(px_y, min_freq, max_freq, ch);
         Some((px_x, px_y, freq))
@@ -484,7 +621,9 @@ pub fn ZcDotChart() -> impl IntoView {
         let px_x = touch.client_x() as f64 - rect.left();
         let px_y = touch.client_y() as f64 - rect.top();
         let ch = canvas.height() as f64;
-        if ch <= 0.0 { return None; }
+        if ch <= 0.0 {
+            return None;
+        }
         let (min_freq, max_freq) = get_freq_range();
         let freq = spectrogram_renderer::y_to_freq(px_y, min_freq, max_freq, ch);
         Some((px_x, px_y, freq))
@@ -494,7 +633,10 @@ pub fn ZcDotChart() -> impl IntoView {
         ev.prevent_default();
         if ev.ctrl_key() {
             let delta = if ev.delta_y() > 0.0 { 0.9 } else { 1.1 };
-            state.view.zoom_level().update(|z| *z = (*z * delta).clamp(0.02, 100.0));
+            state
+                .view
+                .zoom_level()
+                .update(|z| *z = (*z * delta).clamp(0.02, 100.0));
         } else {
             let raw_delta = ev.delta_y() + ev.delta_x();
             let files = state.library.files().get_untracked();
@@ -502,20 +644,35 @@ pub fn ZcDotChart() -> impl IntoView {
             let (visible_time, duration) = if let Some(file) = files.get(idx) {
                 let zoom = state.view.zoom_level().get_untracked();
                 let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-                (viewport::visible_time(canvas_w, zoom, file.spectrogram.time_resolution), file.audio.duration_secs)
+                (
+                    viewport::visible_time(canvas_w, zoom, file.spectrogram.time_resolution),
+                    file.audio.duration_secs,
+                )
             } else {
                 return;
             };
-            let delta = raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
-            let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
+            let delta =
+                raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
+            let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
             state.suspend_follow();
-            state.view.scroll_offset().update(|s| *s = viewport::clamp_scroll_for_mode(*s + delta, duration, visible_time, from_here_mode));
+            state.view.scroll_offset().update(|s| {
+                *s = viewport::clamp_scroll_for_mode(
+                    *s + delta,
+                    duration,
+                    visible_time,
+                    from_here_mode,
+                )
+            });
         }
     };
 
     let on_mousedown = move |ev: MouseEvent| {
-        if ev.button() != 0 { return; }
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if ev.button() != 0 {
+            return;
+        }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
 
         // BandFF handle drag takes priority over everything
         if let Some(handle) = state.interaction.spec_hover_handle().get_untracked() {
@@ -532,21 +689,32 @@ pub fn ZcDotChart() -> impl IntoView {
                 let snapped = (freq / snap).round() * snap;
                 axis_drag_raw_start.set(freq);
                 state.interaction.axis_drag_start_freq().set(Some(snapped));
-                state.interaction.axis_drag_current_freq().set(Some(snapped));
+                state
+                    .interaction
+                    .axis_drag_current_freq()
+                    .set(Some(snapped));
                 state.interaction.is_dragging().set(true);
                 ev.prevent_default();
                 return;
             }
         }
 
-        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+            return;
+        }
         if state.playback.is_playing().get_untracked() {
             let t = state.playback.playhead_time().get_untracked();
-            state.viewmode.bookmarks().update(|bm| bm.push(crate::state::Bookmark { time: t }));
+            state
+                .viewmode
+                .bookmarks()
+                .update(|bm| bm.push(crate::state::Bookmark { time: t }));
             return;
         }
         state.interaction.is_dragging().set(true);
-        hand_drag_start.set((ev.client_x() as f64, state.view.scroll_offset().get_untracked()));
+        hand_drag_start.set((
+            ev.client_x() as f64,
+            state.view.scroll_offset().get_untracked(),
+        ));
     };
 
     let on_mousemove = move |ev: MouseEvent| {
@@ -556,16 +724,22 @@ pub fn ZcDotChart() -> impl IntoView {
             state.interaction.mouse_canvas_x().set(px_x);
             let in_label_area = px_x < LABEL_AREA_WIDTH;
             state.interaction.mouse_in_label_area().set(in_label_area);
-            state.interaction.label_hover_opacity().set(if in_label_area { 1.0 } else { 0.0 });
+            state
+                .interaction
+                .label_hover_opacity()
+                .set(if in_label_area { 1.0 } else { 0.0 });
 
             if state.interaction.is_dragging().get_untracked() {
                 // BandFF handle drag takes highest priority
                 if let Some(handle) = state.interaction.spec_drag_handle().get_untracked() {
-                    let Some(canvas_el) = canvas_ref.get() else { return };
+                    let Some(canvas_el) = canvas_ref.get() else {
+                        return;
+                    };
                     let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                     let ch = canvas.height() as f64;
                     let (min_freq, max_freq) = get_freq_range();
-                    let freq_at_mouse = spectrogram_renderer::y_to_freq(px_y, min_freq, max_freq, ch);
+                    let freq_at_mouse =
+                        spectrogram_renderer::y_to_freq(px_y, min_freq, max_freq, ch);
                     let file_max_freq = {
                         let files = state.library.files().get_untracked();
                         let idx = state.library.current_index().get_untracked();
@@ -599,33 +773,55 @@ pub fn ZcDotChart() -> impl IntoView {
                 }
 
                 // Axis drag takes second priority
-                if state.interaction.axis_drag_start_freq().get_untracked().is_some() {
+                if state
+                    .interaction
+                    .axis_drag_start_freq()
+                    .get_untracked()
+                    .is_some()
+                {
                     let raw_start = axis_drag_raw_start.get_untracked();
                     apply_axis_drag(state, raw_start, freq, ev.shift_key());
                     return;
                 }
 
                 // Hand panning
-                if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+                if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+                    return;
+                }
                 let (start_client_x, start_scroll) = hand_drag_start.get_untracked();
                 let dx = ev.client_x() as f64 - start_client_x;
                 let cw = state.viewmode.spectrogram_canvas_width().get_untracked();
-                if cw == 0.0 { return; }
+                if cw == 0.0 {
+                    return;
+                }
                 let files = state.library.files().get_untracked();
                 let idx = state.library.current_index().get_untracked();
                 let file = idx.and_then(|i| files.get(i));
-                let time_res = file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+                let time_res = file
+                    .as_ref()
+                    .map(|f| f.spectrogram.time_resolution)
+                    .unwrap_or(1.0);
                 let zoom = state.view.zoom_level().get_untracked();
                 let visible_time = viewport::visible_time(cw, zoom, time_res);
                 let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
-                let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
+                let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
                 let dt = -(dx / cw) * visible_time;
                 state.suspend_follow();
-                state.view.scroll_offset().set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
+                state
+                    .view
+                    .scroll_offset()
+                    .set(viewport::clamp_scroll_for_mode(
+                        start_scroll + dt,
+                        duration,
+                        visible_time,
+                        from_here_mode,
+                    ));
             } else {
                 // Not dragging: do BandFF handle hover detection (skip in label area)
                 if !in_label_area {
-                    let Some(canvas_el) = canvas_ref.get() else { return };
+                    let Some(canvas_el) = canvas_ref.get() else {
+                        return;
+                    };
                     let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                     let ch = canvas.height() as f64;
                     let (min_freq, max_freq) = get_freq_range();
@@ -640,13 +836,23 @@ pub fn ZcDotChart() -> impl IntoView {
 
     let on_mouseup = move |_ev: MouseEvent| {
         // End BandFF handle drag
-        if state.interaction.spec_drag_handle().get_untracked().is_some() {
+        if state
+            .interaction
+            .spec_drag_handle()
+            .get_untracked()
+            .is_some()
+        {
             state.interaction.spec_drag_handle().set(None);
             state.interaction.is_dragging().set(false);
             return;
         }
         // End axis drag
-        if state.interaction.axis_drag_start_freq().get_untracked().is_some() {
+        if state
+            .interaction
+            .axis_drag_start_freq()
+            .get_untracked()
+            .is_some()
+        {
             let stack = state.viewmode.focus_stack().get_untracked();
             let range = stack.effective_range_ignoring_hfr();
             if range.hi - range.lo > 500.0 && !stack.hfr_enabled() {
@@ -666,7 +872,12 @@ pub fn ZcDotChart() -> impl IntoView {
         state.interaction.label_hover_opacity().set(0.0);
         state.interaction.spec_hover_handle().set(None);
         state.interaction.spec_drag_handle().set(None);
-        if state.interaction.axis_drag_start_freq().get_untracked().is_some() {
+        if state
+            .interaction
+            .axis_drag_start_freq()
+            .get_untracked()
+            .is_some()
+        {
             state.interaction.axis_drag_start_freq().set(None);
             state.interaction.axis_drag_current_freq().set(None);
         }
@@ -675,7 +886,9 @@ pub fn ZcDotChart() -> impl IntoView {
 
     // Touch event handlers (mobile)
     let on_touchstart = move |ev: web_sys::TouchEvent| {
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
         let touches = ev.touches();
         let n = touches.length();
 
@@ -686,8 +899,14 @@ pub fn ZcDotChart() -> impl IntoView {
                 let files = state.library.files().get_untracked();
                 let idx = state.library.current_index().get_untracked();
                 let file = idx.and_then(|i| files.get(i));
-                let time_res = file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
-                let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX);
+                let time_res = file
+                    .as_ref()
+                    .map(|f| f.spectrogram.time_resolution)
+                    .unwrap_or(1.0);
+                let duration = file
+                    .as_ref()
+                    .map(|f| f.audio.duration_secs)
+                    .unwrap_or(f64::MAX);
                 pinch_state.set(Some(PinchState::horizontal(
                     dist,
                     state.view.zoom_level().get_untracked(),
@@ -702,14 +921,18 @@ pub fn ZcDotChart() -> impl IntoView {
             return;
         }
 
-        if n != 1 { return; }
+        if n != 1 {
+            return;
+        }
         pinch_state.set(None);
 
         let touch = touches.get(0).unwrap();
 
         // BandFF handle drag via touch (wider threshold)
         if let Some((_px_x, px_y, _freq)) = touch_to_yf(&touch) {
-            let Some(canvas_el) = canvas_ref.get() else { return };
+            let Some(canvas_el) = canvas_ref.get() else {
+                return;
+            };
             let canvas: &HtmlCanvasElement = canvas_el.as_ref();
             let ch = canvas.height() as f64;
             let (min_freq, max_freq) = get_freq_range();
@@ -721,28 +944,40 @@ pub fn ZcDotChart() -> impl IntoView {
             }
         }
 
-        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+            return;
+        }
         if state.playback.is_playing().get_untracked() {
             let t = state.playback.playhead_time().get_untracked();
-            state.viewmode.bookmarks().update(|bm| bm.push(crate::state::Bookmark { time: t }));
+            state
+                .viewmode
+                .bookmarks()
+                .update(|bm| bm.push(crate::state::Bookmark { time: t }));
             return;
         }
         ev.prevent_default();
         state.interaction.is_dragging().set(true);
-        hand_drag_start.set((touch.client_x() as f64, state.view.scroll_offset().get_untracked()));
+        hand_drag_start.set((
+            touch.client_x() as f64,
+            state.view.scroll_offset().get_untracked(),
+        ));
     };
 
     let on_touchmove = move |ev: web_sys::TouchEvent| {
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
         let touches = ev.touches();
         let n = touches.length();
 
         if n == 2 {
             if let Some(ps) = pinch_state.get_untracked() {
                 ev.prevent_default();
-                use crate::components::pinch::{two_finger_geometry, apply_pinch};
+                use crate::components::pinch::{apply_pinch, two_finger_geometry};
                 if let Some((mid_x, dist)) = two_finger_geometry(&touches) {
-                    let Some(canvas_el) = canvas_ref.get() else { return };
+                    let Some(canvas_el) = canvas_ref.get() else {
+                        return;
+                    };
                     let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                     let rect = canvas.get_bounding_client_rect();
                     let cw = canvas.width() as f64;
@@ -755,13 +990,17 @@ pub fn ZcDotChart() -> impl IntoView {
             return;
         }
 
-        if n != 1 { return; }
+        if n != 1 {
+            return;
+        }
         let touch = touches.get(0).unwrap();
 
         // BandFF handle drag via touch
         if let Some(handle) = state.interaction.spec_drag_handle().get_untracked() {
             if let Some((_px_x, px_y, _freq)) = touch_to_yf(&touch) {
-                let Some(canvas_el) = canvas_ref.get() else { return };
+                let Some(canvas_el) = canvas_ref.get() else {
+                    return;
+                };
                 let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                 let ch = canvas.height() as f64;
                 let (min_freq, max_freq) = get_freq_range();
@@ -799,24 +1038,41 @@ pub fn ZcDotChart() -> impl IntoView {
             return;
         }
 
-        if !state.interaction.is_dragging().get_untracked() { return; }
-        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand { return; }
+        if !state.interaction.is_dragging().get_untracked() {
+            return;
+        }
+        if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand {
+            return;
+        }
         ev.prevent_default();
         let (start_client_x, start_scroll) = hand_drag_start.get_untracked();
         let dx = touch.client_x() as f64 - start_client_x;
         let cw = state.viewmode.spectrogram_canvas_width().get_untracked();
-        if cw == 0.0 { return; }
+        if cw == 0.0 {
+            return;
+        }
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked();
         let file = idx.and_then(|i| files.get(i));
-        let time_res = file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+        let time_res = file
+            .as_ref()
+            .map(|f| f.spectrogram.time_resolution)
+            .unwrap_or(1.0);
         let zoom = state.view.zoom_level().get_untracked();
         let visible_time = viewport::visible_time(cw, zoom, time_res);
         let duration = file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(0.0);
-        let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
+        let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
         let dt = -(dx / cw) * visible_time;
         state.suspend_follow();
-        state.view.scroll_offset().set(viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode));
+        state
+            .view
+            .scroll_offset()
+            .set(viewport::clamp_scroll_for_mode(
+                start_scroll + dt,
+                duration,
+                visible_time,
+                from_here_mode,
+            ));
     };
 
     let on_touchend = move |_ev: web_sys::TouchEvent| {
@@ -825,14 +1081,22 @@ pub fn ZcDotChart() -> impl IntoView {
             pinch_state.set(None);
         }
         // End BandFF handle drag
-        if state.interaction.spec_drag_handle().get_untracked().is_some() {
+        if state
+            .interaction
+            .spec_drag_handle()
+            .get_untracked()
+            .is_some()
+        {
             state.interaction.spec_drag_handle().set(None);
             state.interaction.is_dragging().set(false);
             return;
         }
         if remaining == 1 {
             if let Some(touch) = _ev.touches().get(0) {
-                hand_drag_start.set((touch.client_x() as f64, state.view.scroll_offset().get_untracked()));
+                hand_drag_start.set((
+                    touch.client_x() as f64,
+                    state.view.scroll_offset().get_untracked(),
+                ));
                 if state.interaction.canvas_tool().get_untracked() == CanvasTool::Hand {
                     state.interaction.is_dragging().set(true);
                 }

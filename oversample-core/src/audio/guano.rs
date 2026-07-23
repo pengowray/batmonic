@@ -81,8 +81,7 @@ pub fn parse_guano(bytes: &[u8]) -> Option<GuanoMetadata> {
         let data_end = data_start + chunk_size;
 
         if chunk_id == b"guan" && data_end <= bytes.len() {
-            let text = std::str::from_utf8(&bytes[data_start..data_end])
-                .ok()?;
+            let text = std::str::from_utf8(&bytes[data_start..data_end]).ok()?;
             return Some(parse_guano_text(text));
         }
 
@@ -152,7 +151,9 @@ pub fn build_recording_guano(
     };
 
     // Make/Model: only for external mics (USB). Never use for internal/phone mic.
-    let is_external_mic = extra.mic_interface.as_deref()
+    let is_external_mic = extra
+        .mic_interface
+        .as_deref()
         .map(|i| i.contains("USB"))
         .unwrap_or(false);
 

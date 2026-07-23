@@ -1,38 +1,38 @@
-use leptos::prelude::*;
-use crate::state::store_fields::*;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use crate::state::{
-    AppState, ChromaColormap, ChromaRange, ChromaSource, DisplayFilterMode, FftMode, FileSettings,
-    FlowColorScheme, GainMode, LayerPanel, MainView, MicStrategy,
-    PlayStartMode, PlaybackMode, ResonatorAlphaMode, ResonatorDensity, ResonatorFftMode, ResonatorHybridMode, ResonatorLayout,
-    SpectrogramDisplay, WaveformView, RESONATOR_BW_SLIDER_MAX, resonator_bw_to_slider,
-    resonator_slider_to_bw,
-};
-use crate::audio::playback;
 use crate::audio::microphone;
+use crate::audio::playback;
+use crate::components::analysis_panel::AnalysisPanel;
+use crate::components::annotation_label_editor::AnnotationLabelEditor;
+use crate::components::bat_book_ref_panel::BatBookRefPanel;
+use crate::components::bat_book_strip::BatBookStrip;
+use crate::components::bottom_toolbar::BottomToolbar;
+use crate::components::chromagram_view::ChromagramView;
 use crate::components::file_sidebar::FileSidebar;
+use crate::components::file_sidebar::{fetch_demo_index, load_single_demo};
+use crate::components::hearing_bar::HearingBar;
+use crate::components::overflow_menu::CanvasOverflowMenus;
+use crate::components::overview::{OverviewPanel, OverviewToolbar};
+use crate::components::play_controls::{BookmarkPopup, ToastDisplay};
 use crate::components::right_sidebar::RightSidebar;
 use crate::components::spectrogram::Spectrogram;
-use crate::components::waveform::Waveform;
 use crate::components::toolbar::Toolbar;
-use crate::components::analysis_panel::AnalysisPanel;
-use crate::components::overview::{OverviewPanel, OverviewToolbar};
-use crate::components::hearing_bar::HearingBar;
 use crate::components::view_bar::ViewBar;
-use crate::components::play_controls::{ToastDisplay, BookmarkPopup};
-use crate::components::bottom_toolbar::BottomToolbar;
+use crate::components::waveform::Waveform;
 use crate::components::wiki_browser::WikiBrowser;
 use crate::components::xc_browser::XcBrowser;
 use crate::components::zc_chart::ZcDotChart;
-use crate::components::chromagram_view::ChromagramView;
-use crate::components::file_sidebar::{fetch_demo_index, load_single_demo};
-use crate::components::bat_book_strip::BatBookStrip;
-use crate::components::bat_book_ref_panel::BatBookRefPanel;
-use crate::components::annotation_label_editor::AnnotationLabelEditor;
-use crate::components::overflow_menu::CanvasOverflowMenus;
+use crate::state::store_fields::*;
+use crate::state::{
+    resonator_bw_to_slider, resonator_slider_to_bw, AppState, ChromaColormap, ChromaRange,
+    ChromaSource, DisplayFilterMode, FftMode, FileSettings, FlowColorScheme, GainMode, LayerPanel,
+    MainView, MicStrategy, PlayStartMode, PlaybackMode, ResonatorAlphaMode, ResonatorDensity,
+    ResonatorFftMode, ResonatorHybridMode, ResonatorLayout, SpectrogramDisplay, WaveformView,
+    RESONATOR_BW_SLIDER_MAX,
+};
 use crate::viewport;
 use crate::web_util::sleep_ms;
+use leptos::prelude::*;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 
 /// Recognise the Wikimedia forms of the URL hash: `#commons:File:Foo.wav`,
 /// `#wiki:<any wikimedia url>`, or a bare `#File:Foo.wav`. Returns the
@@ -43,7 +43,10 @@ fn wikimedia_hash_target(hash: &str) -> Option<String> {
     // index landing mid-character would panic.
     let rest = PREFIXES
         .iter()
-        .find(|p| hash.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p)))
+        .find(|p| {
+            hash.get(..p.len())
+                .is_some_and(|h| h.eq_ignore_ascii_case(p))
+        })
         .map(|p| &hash[p.len()..])
         .filter(|rest| !rest.is_empty())
         .or_else(|| {
@@ -54,11 +57,13 @@ fn wikimedia_hash_target(hash: &str) -> Option<String> {
         })?;
     // A URL carries its own percent-encoding that `parse_input` handles; only
     // bare titles need decoding here.
-    Some(if rest.starts_with("http://") || rest.starts_with("https://") {
-        rest.to_string()
-    } else {
-        crate::wikimedia::decode_component(rest)
-    })
+    Some(
+        if rest.starts_with("http://") || rest.starts_with("https://") {
+            rest.to_string()
+        } else {
+            crate::wikimedia::decode_component(rest)
+        },
+    )
 }
 
 #[component]
@@ -96,7 +101,8 @@ pub fn App() -> impl IntoView {
                 let rest = trimmed[9..].trim_start_matches('-').to_ascii_lowercase();
                 let mut parts = rest.split('-').filter(|s| !s.is_empty());
                 let signal = signal_from_str(parts.next().unwrap_or("chirp"));
-                let rate = parts.next()
+                let rate = parts
+                    .next()
                     .and_then(|s| s.parse::<u32>().ok())
                     .map(|khz| khz.clamp(8, 1000) * 1000)
                     .unwrap_or(256_000);
@@ -105,15 +111,18 @@ pub fn App() -> impl IntoView {
                     sleep_ms(400).await;
                     synthetic_mic::start(state, signal, rate);
                 });
-            } else if trimmed.len() >= 3 && trimmed[..2].eq_ignore_ascii_case("XC") && trimmed[2..].chars().all(|c| c.is_ascii_digit()) {
+            } else if trimmed.len() >= 3
+                && trimmed[..2].eq_ignore_ascii_case("XC")
+                && trimmed[2..].chars().all(|c| c.is_ascii_digit())
+            {
                 let xc_id = trimmed.to_uppercase();
                 let load_id = state.loading_start(&xc_id);
                 wasm_bindgen_futures::spawn_local(async move {
                     match fetch_demo_index().await {
                         Ok(entries) => {
-                            let found = entries.iter().find(|e| {
-                                e.filename.to_uppercase().contains(&xc_id)
-                            });
+                            let found = entries
+                                .iter()
+                                .find(|e| e.filename.to_uppercase().contains(&xc_id));
                             if let Some(entry) = found {
                                 if let Err(e) = load_single_demo(entry, state, load_id).await {
                                     log::error!("Failed to load {}: {}", xc_id, e);
@@ -152,15 +161,23 @@ pub fn App() -> impl IntoView {
     if state.is_tauri {
         wasm_bindgen_futures::spawn_local(async move {
             use crate::tauri_bridge::tauri_invoke_typed_no_args;
-            let Ok(recordings) = tauri_invoke_typed_no_args::<Vec<oversample_ipc::mic::RecoveredRecording>>(
-                "mic_recover_recordings",
-            ).await else {
+            let Ok(recordings) = tauri_invoke_typed_no_args::<
+                Vec<oversample_ipc::mic::RecoveredRecording>,
+            >("mic_recover_recordings")
+            .await
+            else {
                 return;
             };
             let count = recordings.len();
             if count > 0 {
-                log::info!("Recovered {} crashed recording(s) from previous session", count);
-                let first_path = recordings.first().map(|r| r.path.clone()).unwrap_or_default();
+                log::info!(
+                    "Recovered {} crashed recording(s) from previous session",
+                    count
+                );
+                let first_path = recordings
+                    .first()
+                    .map(|r| r.path.clone())
+                    .unwrap_or_default();
                 state.show_info_toast(format!(
                     "Recovered {} recording{} from previous session ({})",
                     count,
@@ -175,11 +192,17 @@ pub fn App() -> impl IntoView {
             // on desktop) is dropped silently. Quick call regardless of
             // whether any .wav.part files were found — the MediaStore row can
             // outlive the internal partial file.
-            if let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::plugins::CleanupResult>(
-                "plugin:media-store|cleanupPendingEntries",
-            ).await {
+            if let Ok(result) =
+                tauri_invoke_typed_no_args::<oversample_ipc::plugins::CleanupResult>(
+                    "plugin:media-store|cleanupPendingEntries",
+                )
+                .await
+            {
                 if result.deleted > 0 {
-                    log::info!("Cleaned up {} orphaned MediaStore pending entries", result.deleted);
+                    log::info!(
+                        "Cleaned up {} orphaned MediaStore pending entries",
+                        result.deleted
+                    );
                 }
             }
         });
@@ -235,7 +258,8 @@ pub fn App() -> impl IntoView {
                 let product = field("product");
                 let device_name = field("deviceName");
                 wasm_bindgen_futures::spawn_local(async move {
-                    microphone::handle_usb_hotplug(&state_usb, &event, &product, &device_name).await;
+                    microphone::handle_usb_hotplug(&state_usb, &event, &product, &device_name)
+                        .await;
                 });
             },
         );
@@ -289,14 +313,12 @@ pub fn App() -> impl IntoView {
                 return;
             }
 
-            let live = state.mic.listening().get_untracked()
-                || state.mic.recording().get_untracked();
+            let live =
+                state.mic.listening().get_untracked() || state.mic.recording().get_untracked();
             if live {
                 crate::audio::microphone::clear_live_dsp_state(&state);
 
-                if mode == crate::state::PlaybackMode::TimeExpansion
-                    && prev_mode.get() != mode
-                {
+                if mode == crate::state::PlaybackMode::TimeExpansion && prev_mode.get() != mode {
                     state.show_info_toast(
                         "Time-expansion isn't applicable to live audio — playing back at 1:1.",
                     );
@@ -377,7 +399,10 @@ pub fn App() -> impl IntoView {
             prev_usb.set_value(now);
             if now && !was {
                 state.mic.chip_dismissed().set(false);
-                let name = state.mic.device_name().get_untracked()
+                let name = state
+                    .mic
+                    .device_name()
+                    .get_untracked()
                     .unwrap_or_else(|| "USB mic".to_string());
                 state.show_info_toast(format!("Mic detected: {name}"));
             }
@@ -439,14 +464,20 @@ pub fn App() -> impl IntoView {
         // sliding leftward from a from-here offset.
         // Also use the waterfall's total duration (which grows indefinitely) instead
         // of the file's duration (which is capped at ~10s by the circular buffer trim).
-        let is_live = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+        let is_live =
+            state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
         let effective_duration = if is_live && crate::canvas::live_waterfall::is_active() {
             crate::canvas::live_waterfall::total_columns() as f64 * time_res
         } else {
             duration
         };
         let effective_from_here = from_here_mode && !is_live;
-        let clamped = viewport::clamp_scroll_for_mode(scroll, effective_duration, visible_time, effective_from_here);
+        let clamped = viewport::clamp_scroll_for_mode(
+            scroll,
+            effective_duration,
+            visible_time,
+            effective_from_here,
+        );
         if (clamped - scroll).abs() > f64::EPSILON {
             state.view.scroll_offset().set(clamped);
         }
@@ -487,7 +518,8 @@ pub fn App() -> impl IntoView {
         let idx = state.library.current_index().get();
         let (min, max) = if let Some(i) = idx {
             state.library.files().with_untracked(|files| {
-                files.get(i)
+                files
+                    .get(i)
                     .map(|f| (f.min_display_freq, f.max_display_freq))
                     .unwrap_or((None, None))
             })
@@ -509,7 +541,8 @@ pub fn App() -> impl IntoView {
         let idx = state.library.current_index().get_untracked();
         if let Some(i) = idx {
             let needs_write = state.library.files().with_untracked(|files| {
-                files.get(i)
+                files
+                    .get(i)
                     .map(|f| f.min_display_freq != min || f.max_display_freq != max)
                     .unwrap_or(false)
             });
@@ -520,7 +553,9 @@ pub fn App() -> impl IntoView {
                 // [cross-file state-scoping model]
                 let mt_members = state.library.files().with_untracked(|files| {
                     let names: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
-                    let groups = crate::components::file_sidebar::file_groups::compute_all_groups(&names, files);
+                    let groups = crate::components::file_sidebar::file_groups::compute_all_groups(
+                        &names, files,
+                    );
                     crate::scope::share_members(crate::scope::Setting::VerticalRange, &groups, i)
                 });
                 state.library.files().update(|files| {
@@ -624,12 +659,20 @@ pub fn App() -> impl IntoView {
             DisplayFilterMode::Off => 0,
             DisplayFilterMode::Auto => {
                 // Only decimate when xform display is active
-                if xform_on { 44100 } else { 0 }
+                if xform_on {
+                    44100
+                } else {
+                    0
+                }
             }
             DisplayFilterMode::Same => {
                 // Decimate to browser's native output sample rate so Web Audio doesn't resample
                 let bsr = state.display.browser_sample_rate().get();
-                if bsr > 0 { bsr } else { 0 }
+                if bsr > 0 {
+                    bsr
+                } else {
+                    0
+                }
             }
             DisplayFilterMode::Custom => state.display.decimate_rate().get(),
         };
@@ -658,8 +701,12 @@ pub fn App() -> impl IntoView {
                 return;
             }
             let files = state.library.files().get_untracked();
-            let Some(idx) = file_idx else { return; };
-            let Some(file) = files.get(idx).cloned() else { return; };
+            let Some(idx) = file_idx else {
+                return;
+            };
+            let Some(file) = files.get(idx).cloned() else {
+                return;
+            };
 
             learning.set(true);
             let sample_rate = file.audio.sample_rate;
@@ -673,9 +720,12 @@ pub fn App() -> impl IntoView {
             wasm_bindgen_futures::spawn_local(async move {
                 crate::canvas::tile_cache::yield_to_browser().await;
                 let floor = crate::dsp::spectral_sub::learn_noise_floor_async(
-                    &samples, sample_rate, 0.5, // 500ms from file start
+                    &samples,
+                    sample_rate,
+                    0.5, // 500ms from file start
                     crate::canvas::tile_cache::yield_to_browser,
-                ).await;
+                )
+                .await;
                 if let Some(f) = floor {
                     state.display.auto_noise_floor().set(Some(f));
                 }
@@ -711,7 +761,10 @@ pub fn App() -> impl IntoView {
         Effect::new(move |_| {
             let new_idx = state.library.current_index().get();
             let new_id = new_idx.and_then(|i| {
-                state.library.files().with_untracked(|f| f.get(i).map(|lf| lf.id))
+                state
+                    .library
+                    .files()
+                    .with_untracked(|f| f.get(i).map(|lf| lf.id))
             });
 
             let old_id = prev_id.get();
@@ -730,7 +783,10 @@ pub fn App() -> impl IntoView {
             // Resolve the outgoing file's CURRENT index by id (it may have
             // shifted; `None` means it was removed → nothing to save).
             let old_oi = old_id.and_then(|oid| {
-                state.library.files().with_untracked(|f| f.iter().position(|lf| lf.id == oid))
+                state
+                    .library
+                    .files()
+                    .with_untracked(|f| f.iter().position(|lf| lf.id == oid))
             });
 
             // Save current settings (gain + denoise) to the outgoing file and its
@@ -742,7 +798,9 @@ pub fn App() -> impl IntoView {
                 let settings = FileSettings::from_state(&state);
                 let seq_members = state.library.files().with_untracked(|files| {
                     let names: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
-                    let groups = crate::components::file_sidebar::file_groups::compute_all_groups(&names, files);
+                    let groups = crate::components::file_sidebar::file_groups::compute_all_groups(
+                        &names, files,
+                    );
                     crate::scope::share_members(crate::scope::Setting::AudioCharacter, &groups, oi)
                 });
                 state.library.files().update(|files| {
@@ -770,15 +828,21 @@ pub fn App() -> impl IntoView {
             // MODE (on/off + saved playback/bandpass) is GLOBAL and persists.
             // [state-scoping: focus + HFR-global]
             if let Some(oid) = old_id {
-                let user_range = state.viewmode.focus_stack().with_untracked(|s| s.user_range());
+                let user_range = state
+                    .viewmode
+                    .focus_stack()
+                    .with_untracked(|s| s.user_range());
                 state.library.per_file_view().update(|m| {
-                    m.entry(oid).or_default().focus =
-                        Some(crate::state::FocusSnapshot { user_range, overrides: Vec::new() });
+                    m.entry(oid).or_default().focus = Some(crate::state::FocusSnapshot {
+                        user_range,
+                        overrides: Vec::new(),
+                    });
                 });
             }
             let incoming_range = new_id.and_then(|nid| {
                 state.library.per_file_view().with_untracked(|m| {
-                    m.get(&nid).and_then(|s| s.focus.as_ref().map(|f| f.user_range))
+                    m.get(&nid)
+                        .and_then(|s| s.focus.as_ref().map(|f| f.user_range))
                 })
             });
             // Keep the HFR mode (global); set the per-file user range and clear
@@ -806,11 +870,17 @@ pub fn App() -> impl IntoView {
                 };
                 let mt_ids = state.library.files().with_untracked(|files| {
                     let names: Vec<String> = files.iter().map(|f| f.name.clone()).collect();
-                    let groups = crate::components::file_sidebar::file_groups::compute_all_groups(&names, files);
-                    crate::scope::share_members(crate::scope::Setting::HorizontalScroll, &groups, oi)
-                        .iter()
-                        .filter_map(|&j| files.get(j).map(|f| f.id))
-                        .collect::<Vec<u64>>()
+                    let groups = crate::components::file_sidebar::file_groups::compute_all_groups(
+                        &names, files,
+                    );
+                    crate::scope::share_members(
+                        crate::scope::Setting::HorizontalScroll,
+                        &groups,
+                        oi,
+                    )
+                    .iter()
+                    .filter_map(|&j| files.get(j).map(|f| f.id))
+                    .collect::<Vec<u64>>()
                 });
                 state.library.per_file_view().update(|m| {
                     for id in mt_ids {
@@ -819,7 +889,10 @@ pub fn App() -> impl IntoView {
                 });
             }
             let incoming_view = new_id.and_then(|nid| {
-                state.library.per_file_view().with_untracked(|m| m.get(&nid).and_then(|s| s.view))
+                state
+                    .library
+                    .per_file_view()
+                    .with_untracked(|m| m.get(&nid).and_then(|s| s.view))
             });
             state
                 .view
@@ -846,7 +919,9 @@ pub fn App() -> impl IntoView {
     // Auto-save annotations to OPFS (browser) or central store (Tauri) when dirty.
     Effect::new(move |_| {
         let dirty = state.annotations.dirty().get();
-        if !dirty { return; }
+        if !dirty {
+            return;
+        }
         state.annotations.dirty().set(false);
         let idx = match state.library.current_index().get_untracked() {
             Some(i) => i,
@@ -857,177 +932,257 @@ pub fn App() -> impl IntoView {
 
     // Global keyboard shortcut: Space = play/stop
     let state_kb = state;
-    let handler = Closure::<dyn Fn(web_sys::KeyboardEvent)>::new(move |ev: web_sys::KeyboardEvent| {
-        // Ignore if focus is on an input/select/textarea
-        if let Some(target) = ev.target() {
-            if let Ok(el) = target.dyn_into::<web_sys::HtmlElement>() {
-                let tag = el.tag_name();
-                if tag == "INPUT" || tag == "SELECT" || tag == "TEXTAREA" {
-                    return;
+    let handler =
+        Closure::<dyn Fn(web_sys::KeyboardEvent)>::new(move |ev: web_sys::KeyboardEvent| {
+            // Ignore if focus is on an input/select/textarea
+            if let Some(target) = ev.target() {
+                if let Ok(el) = target.dyn_into::<web_sys::HtmlElement>() {
+                    let tag = el.tag_name();
+                    if tag == "INPUT" || tag == "SELECT" || tag == "TEXTAREA" {
+                        return;
+                    }
                 }
             }
-        }
-        if ev.key() == " " {
-            ev.prevent_default();
-            if state_kb.library.current_index().get_untracked().is_some() {
-                if state_kb.playback.is_playing().get_untracked() {
-                    playback::stop(&state_kb);
-                } else {
-                    match state_kb.playback.start_mode().get_untracked() {
-                        PlayStartMode::All => playback::play_from_start(&state_kb),
-                        PlayStartMode::FromHere => playback::play_from_here(&state_kb),
-                        PlayStartMode::Selected => {
-                            if playback::effective_selection(&state_kb).is_some() {
-                                playback::play(&state_kb);
-                            } else {
-                                playback::play_from_start(&state_kb);
-                            }
-                        }
-                        PlayStartMode::Auto => {
-                            if let Some(sel) = playback::effective_selection(&state_kb) {
-                                if playback::is_selection_in_viewport(&state_kb, &sel) {
+            if ev.key() == " " {
+                ev.prevent_default();
+                if state_kb.library.current_index().get_untracked().is_some() {
+                    if state_kb.playback.is_playing().get_untracked() {
+                        playback::stop(&state_kb);
+                    } else {
+                        match state_kb.playback.start_mode().get_untracked() {
+                            PlayStartMode::All => playback::play_from_start(&state_kb),
+                            PlayStartMode::FromHere => playback::play_from_here(&state_kb),
+                            PlayStartMode::Selected => {
+                                if playback::effective_selection(&state_kb).is_some() {
                                     playback::play(&state_kb);
+                                } else {
+                                    playback::play_from_start(&state_kb);
+                                }
+                            }
+                            PlayStartMode::Auto => {
+                                if let Some(sel) = playback::effective_selection(&state_kb) {
+                                    if playback::is_selection_in_viewport(&state_kb, &sel) {
+                                        playback::play(&state_kb);
+                                    } else if state_kb.view.scroll_offset().get_untracked() <= 0.0 {
+                                        playback::play_from_start(&state_kb);
+                                    } else {
+                                        playback::play_from_here(&state_kb);
+                                    }
                                 } else if state_kb.view.scroll_offset().get_untracked() <= 0.0 {
                                     playback::play_from_start(&state_kb);
                                 } else {
                                     playback::play_from_here(&state_kb);
                                 }
-                            } else if state_kb.view.scroll_offset().get_untracked() <= 0.0 {
-                                playback::play_from_start(&state_kb);
-                            } else {
-                                playback::play_from_here(&state_kb);
                             }
                         }
                     }
                 }
             }
-        }
-        if (ev.key() == "l" || ev.key() == "L") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
-            ev.prevent_default();
-            let st = state_kb;
-            wasm_bindgen_futures::spawn_local(async move {
-                microphone::toggle_listen(&st).await;
-            });
-        }
-        if (ev.key() == "r" || ev.key() == "R") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
-            ev.prevent_default();
-            let st = state_kb;
-            wasm_bindgen_futures::spawn_local(async move {
-                microphone::toggle_record(&st).await;
-            });
-        }
-        if (ev.key() == "h" || ev.key() == "H") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
-            ev.prevent_default();
-            state_kb.viewmode.hfr_enabled().update(|v| *v = !*v);
-        }
-        if (ev.key() == "b" || ev.key() == "B") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
-            ev.prevent_default();
-            state_kb.bat_book.open().update(|v| *v = !*v);
-        }
-        // M = drop a marker annotation at the current playhead position.
-        if (ev.key() == "m" || ev.key() == "M") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
-            // If something else wants the key (label editor, etc.), skip.
-            if state_kb.annotations.editing().get_untracked() { return; }
-            ev.prevent_default();
-            let t = state_kb.playback.playhead_time().get_untracked();
-            crate::components::overflow_menu::add_marker_at_time(&state_kb, t);
-        }
-        // Q = toggle frequency bounds on current selection or selected annotations (region ↔ segment)
-        if (ev.key() == "q" || ev.key() == "Q") && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key() {
-            if state_kb.toggle_q_freq_bounds() {
-                ev.prevent_default();
-            }
-        }
-        // Ctrl+Z / Cmd+Z = Undo, Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y = Redo
-        if (ev.key() == "z" || ev.key() == "Z") && (ev.ctrl_key() || ev.meta_key()) && !ev.alt_key() {
-            ev.prevent_default();
-            if ev.shift_key() {
-                state_kb.redo_annotations();
-            } else {
-                state_kb.undo_annotations();
-            }
-        }
-        if ev.key() == "y" && (ev.ctrl_key() || ev.meta_key()) && !ev.shift_key() && !ev.alt_key() {
-            ev.prevent_default();
-            state_kb.redo_annotations();
-        }
-        // Navigation: arrow keys, PgUp/PgDn, Ctrl+Home/End
-        let is_ctrl = ev.ctrl_key() || ev.meta_key();
-        let nav_action = match ev.key().as_str() {
-            "ArrowLeft" | "ArrowRight" => Some(ev.key()),
-            "PageUp" | "PageDown" => Some(ev.key()),
-            "Home" | "End" if is_ctrl => Some(ev.key()),
-            _ => None,
-        };
-        if let Some(key) = nav_action {
-            ev.prevent_default();
-            let files = state_kb.library.files().get_untracked();
-            let timeline = state_kb.timeline.active().get_untracked();
-            let (time_res, duration) = if let Some(ref tl) = timeline {
-                let tr = tl.segments.first().and_then(|s| files.get(s.file_index))
-                    .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
-                (tr, tl.total_duration_secs)
-            } else {
-                let idx = state_kb.library.current_index().get_untracked().unwrap_or(0);
-                match files.get(idx) {
-                    Some(file) => (file.spectrogram.time_resolution, file.audio.duration_secs),
-                    None => (1.0, 0.0),
-                }
-            };
+            if (ev.key() == "l" || ev.key() == "L")
+                && !ev.ctrl_key()
+                && !ev.meta_key()
+                && !ev.alt_key()
             {
-                let zoom = state_kb.view.zoom_level().get_untracked();
-                let canvas_w = state_kb.viewmode.spectrogram_canvas_width().get_untracked();
-                let visible_time = viewport::visible_time(canvas_w, zoom, time_res);
-                let from_here_mode = state_kb.playback.start_mode().get_untracked().uses_from_here();
-                let (_min_scroll, max_scroll) = viewport::scroll_bounds_for_mode(duration, visible_time, from_here_mode);
-                let new_scroll = match key.as_str() {
-                    "Home" => viewport::clamp_scroll_for_mode(0.0, duration, visible_time, from_here_mode),
-                    "End" => max_scroll,
-                    "ArrowLeft" => viewport::clamp_scroll_for_mode(state_kb.view.scroll_offset().get_untracked() - visible_time * 0.2, duration, visible_time, from_here_mode),
-                    "ArrowRight" => viewport::clamp_scroll_for_mode(state_kb.view.scroll_offset().get_untracked() + visible_time * 0.2, duration, visible_time, from_here_mode),
-                    "PageUp" => viewport::clamp_scroll_for_mode(state_kb.view.scroll_offset().get_untracked() - visible_time * 0.8, duration, visible_time, from_here_mode),
-                    "PageDown" => viewport::clamp_scroll_for_mode(state_kb.view.scroll_offset().get_untracked() + visible_time * 0.8, duration, visible_time, from_here_mode),
-                    _ => state_kb.view.scroll_offset().get_untracked(),
+                ev.prevent_default();
+                let st = state_kb;
+                wasm_bindgen_futures::spawn_local(async move {
+                    microphone::toggle_listen(&st).await;
+                });
+            }
+            if (ev.key() == "r" || ev.key() == "R")
+                && !ev.ctrl_key()
+                && !ev.meta_key()
+                && !ev.alt_key()
+            {
+                ev.prevent_default();
+                let st = state_kb;
+                wasm_bindgen_futures::spawn_local(async move {
+                    microphone::toggle_record(&st).await;
+                });
+            }
+            if (ev.key() == "h" || ev.key() == "H")
+                && !ev.ctrl_key()
+                && !ev.meta_key()
+                && !ev.alt_key()
+            {
+                ev.prevent_default();
+                state_kb.viewmode.hfr_enabled().update(|v| *v = !*v);
+            }
+            if (ev.key() == "b" || ev.key() == "B")
+                && !ev.ctrl_key()
+                && !ev.meta_key()
+                && !ev.alt_key()
+            {
+                ev.prevent_default();
+                state_kb.bat_book.open().update(|v| *v = !*v);
+            }
+            // M = drop a marker annotation at the current playhead position.
+            if (ev.key() == "m" || ev.key() == "M")
+                && !ev.ctrl_key()
+                && !ev.meta_key()
+                && !ev.alt_key()
+            {
+                // If something else wants the key (label editor, etc.), skip.
+                if state_kb.annotations.editing().get_untracked() {
+                    return;
+                }
+                ev.prevent_default();
+                let t = state_kb.playback.playhead_time().get_untracked();
+                crate::components::overflow_menu::add_marker_at_time(&state_kb, t);
+            }
+            // Q = toggle frequency bounds on current selection or selected annotations (region ↔ segment)
+            if (ev.key() == "q" || ev.key() == "Q")
+                && !ev.ctrl_key()
+                && !ev.meta_key()
+                && !ev.alt_key()
+            {
+                if state_kb.toggle_q_freq_bounds() {
+                    ev.prevent_default();
+                }
+            }
+            // Ctrl+Z / Cmd+Z = Undo, Ctrl+Shift+Z / Cmd+Shift+Z / Ctrl+Y = Redo
+            if (ev.key() == "z" || ev.key() == "Z")
+                && (ev.ctrl_key() || ev.meta_key())
+                && !ev.alt_key()
+            {
+                ev.prevent_default();
+                if ev.shift_key() {
+                    state_kb.redo_annotations();
+                } else {
+                    state_kb.undo_annotations();
+                }
+            }
+            if ev.key() == "y"
+                && (ev.ctrl_key() || ev.meta_key())
+                && !ev.shift_key()
+                && !ev.alt_key()
+            {
+                ev.prevent_default();
+                state_kb.redo_annotations();
+            }
+            // Navigation: arrow keys, PgUp/PgDn, Ctrl+Home/End
+            let is_ctrl = ev.ctrl_key() || ev.meta_key();
+            let nav_action = match ev.key().as_str() {
+                "ArrowLeft" | "ArrowRight" => Some(ev.key()),
+                "PageUp" | "PageDown" => Some(ev.key()),
+                "Home" | "End" if is_ctrl => Some(ev.key()),
+                _ => None,
+            };
+            if let Some(key) = nav_action {
+                ev.prevent_default();
+                let files = state_kb.library.files().get_untracked();
+                let timeline = state_kb.timeline.active().get_untracked();
+                let (time_res, duration) = if let Some(ref tl) = timeline {
+                    let tr = tl
+                        .segments
+                        .first()
+                        .and_then(|s| files.get(s.file_index))
+                        .map(|f| f.spectrogram.time_resolution)
+                        .unwrap_or(1.0);
+                    (tr, tl.total_duration_secs)
+                } else {
+                    let idx = state_kb
+                        .library
+                        .current_index()
+                        .get_untracked()
+                        .unwrap_or(0);
+                    match files.get(idx) {
+                        Some(file) => (file.spectrogram.time_resolution, file.audio.duration_secs),
+                        None => (1.0, 0.0),
+                    }
                 };
-                state_kb.suspend_follow();
-                state_kb.view.scroll_offset().set(new_scroll);
+                {
+                    let zoom = state_kb.view.zoom_level().get_untracked();
+                    let canvas_w = state_kb.viewmode.spectrogram_canvas_width().get_untracked();
+                    let visible_time = viewport::visible_time(canvas_w, zoom, time_res);
+                    let from_here_mode = state_kb
+                        .playback
+                        .start_mode()
+                        .get_untracked()
+                        .uses_from_here();
+                    let (_min_scroll, max_scroll) =
+                        viewport::scroll_bounds_for_mode(duration, visible_time, from_here_mode);
+                    let new_scroll = match key.as_str() {
+                        "Home" => viewport::clamp_scroll_for_mode(
+                            0.0,
+                            duration,
+                            visible_time,
+                            from_here_mode,
+                        ),
+                        "End" => max_scroll,
+                        "ArrowLeft" => viewport::clamp_scroll_for_mode(
+                            state_kb.view.scroll_offset().get_untracked() - visible_time * 0.2,
+                            duration,
+                            visible_time,
+                            from_here_mode,
+                        ),
+                        "ArrowRight" => viewport::clamp_scroll_for_mode(
+                            state_kb.view.scroll_offset().get_untracked() + visible_time * 0.2,
+                            duration,
+                            visible_time,
+                            from_here_mode,
+                        ),
+                        "PageUp" => viewport::clamp_scroll_for_mode(
+                            state_kb.view.scroll_offset().get_untracked() - visible_time * 0.8,
+                            duration,
+                            visible_time,
+                            from_here_mode,
+                        ),
+                        "PageDown" => viewport::clamp_scroll_for_mode(
+                            state_kb.view.scroll_offset().get_untracked() + visible_time * 0.8,
+                            duration,
+                            visible_time,
+                            from_here_mode,
+                        ),
+                        _ => state_kb.view.scroll_offset().get_untracked(),
+                    };
+                    state_kb.suspend_follow();
+                    state_kb.view.scroll_offset().set(new_scroll);
+                }
             }
-        }
-        if ev.key() == "Escape" {
-            if state_kb.bat_book.ref_open().get_untracked() {
-                state_kb.bat_book.ref_open().set(false);
-                return;
+            if ev.key() == "Escape" {
+                if state_kb.bat_book.ref_open().get_untracked() {
+                    state_kb.bat_book.ref_open().set(false);
+                    return;
+                }
+                if state_kb.dialogs.xc_browser_open().get_untracked() {
+                    state_kb.dialogs.xc_browser_open().set(false);
+                    return;
+                }
+                if state_kb.dialogs.wiki_browser_open().get_untracked() {
+                    state_kb.dialogs.wiki_browser_open().set(false);
+                    return;
+                }
+                if state_kb.mic.listening().get_untracked()
+                    || state_kb.mic.recording().get_untracked()
+                {
+                    microphone::stop_all(&state_kb);
+                }
             }
-            if state_kb.dialogs.xc_browser_open().get_untracked() {
-                state_kb.dialogs.xc_browser_open().set(false);
-                return;
-            }
-            if state_kb.dialogs.wiki_browser_open().get_untracked() {
-                state_kb.dialogs.wiki_browser_open().set(false);
-                return;
-            }
-            if state_kb.mic.listening().get_untracked() || state_kb.mic.recording().get_untracked() {
-                microphone::stop_all(&state_kb);
-            }
-        }
-        // Backtick: activate clean view (hide overlays)
-        if ev.key() == "`" && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key()
-            && !state_kb.viewmode.clean_view().get_untracked() {
+            // Backtick: activate clean view (hide overlays)
+            if ev.key() == "`"
+                && !ev.ctrl_key()
+                && !ev.meta_key()
+                && !ev.alt_key()
+                && !state_kb.viewmode.clean_view().get_untracked()
+            {
                 state_kb.viewmode.clean_view().set(true);
             }
-    });
+        });
     let window = web_sys::window().unwrap();
     let _ = window.add_event_listener_with_callback("keydown", handler.as_ref().unchecked_ref());
     handler.forget();
 
     // Keyup handler: release clean view on backtick release
     let state_ku = state;
-    let keyup_handler = Closure::<dyn Fn(web_sys::KeyboardEvent)>::new(move |ev: web_sys::KeyboardEvent| {
-        if ev.key() == "`" {
-            state_ku.viewmode.clean_view().set(false);
-        }
-    });
-    let _ = window.add_event_listener_with_callback("keyup", keyup_handler.as_ref().unchecked_ref());
+    let keyup_handler =
+        Closure::<dyn Fn(web_sys::KeyboardEvent)>::new(move |ev: web_sys::KeyboardEvent| {
+            if ev.key() == "`" {
+                state_ku.viewmode.clean_view().set(false);
+            }
+        });
+    let _ =
+        window.add_event_listener_with_callback("keyup", keyup_handler.as_ref().unchecked_ref());
     keyup_handler.forget();
 
     // Reset clean view if window loses focus (so it doesn't stick)
@@ -1058,7 +1213,8 @@ pub fn App() -> impl IntoView {
                 }
             }
         });
-        let _ = window.add_event_listener_with_callback("resize", on_resize.as_ref().unchecked_ref());
+        let _ =
+            window.add_event_listener_with_callback("resize", on_resize.as_ref().unchecked_ref());
         on_resize.forget();
     }
 
@@ -1067,9 +1223,20 @@ pub fn App() -> impl IntoView {
             // Sidebars are position:fixed overlays, so single column for main content
             "grid-template-columns: 1fr; grid-template-rows: auto 1fr".to_string()
         } else {
-            let left = if state.panels.left_collapsed().get() { 0 } else { state.panels.left_width().get() as i32 };
-            let right = if state.panels.right_collapsed().get() { 0 } else { state.panels.right_width().get() as i32 };
-            format!("grid-template-columns: {}px 1fr {}px; grid-template-rows: auto 1fr", left, right)
+            let left = if state.panels.left_collapsed().get() {
+                0
+            } else {
+                state.panels.left_width().get() as i32
+            };
+            let right = if state.panels.right_collapsed().get() {
+                0
+            } else {
+                state.panels.right_width().get() as i32
+            };
+            format!(
+                "grid-template-columns: {}px 1fr {}px; grid-template-rows: auto 1fr",
+                left, right
+            )
         }
     };
 
@@ -1083,7 +1250,8 @@ pub fn App() -> impl IntoView {
         let on_drop = Closure::<dyn Fn(web_sys::Event)>::new(|ev: web_sys::Event| {
             ev.prevent_default();
         });
-        let _ = doc.add_event_listener_with_callback("dragover", on_dragover.as_ref().unchecked_ref());
+        let _ =
+            doc.add_event_listener_with_callback("dragover", on_dragover.as_ref().unchecked_ref());
         let _ = doc.add_event_listener_with_callback("drop", on_drop.as_ref().unchecked_ref());
         on_dragover.forget();
         on_drop.forget();
@@ -1097,8 +1265,8 @@ pub fn App() -> impl IntoView {
     // output actually kept flowing while hidden and, if not, surface a one-time
     // battery-optimization hint.
     {
-        use std::rc::Rc;
         use std::cell::Cell;
+        use std::rc::Rc;
 
         /// Raise the one-time background-audio guidance hint when capture
         /// (recording) or audible output (listening) demonstrably stalled while
@@ -1112,14 +1280,22 @@ pub fn App() -> impl IntoView {
             het_hide: f64,
         ) {
             // Only meaningful on mobile Tauri, and only nag once.
-            if !state.is_tauri || !state.status.is_mobile().get_untracked() { return; }
-            if state.dialogs.background_hint_dismissed().get_untracked() { return; }
-            if state.dialogs.background_audio_hint().get_untracked() { return; }
+            if !state.is_tauri || !state.status.is_mobile().get_untracked() {
+                return;
+            }
+            if state.dialogs.background_hint_dismissed().get_untracked() {
+                return;
+            }
+            if state.dialogs.background_audio_hint().get_untracked() {
+                return;
+            }
 
             let wall_elapsed = (js_sys::Date::now() - wall_hide) / 1000.0;
             // Need a non-trivial interval to judge — avoids false positives on a
             // quick app-switch where throttling never had time to bite.
-            if wall_elapsed < 5.0 { return; }
+            if wall_elapsed < 5.0 {
+                return;
+            }
 
             let sr = state.mic.sample_rate().get_untracked().max(1) as f64;
             let mut throttled = false;
@@ -1127,14 +1303,22 @@ pub fn App() -> impl IntoView {
             // Capture check (recording only — mic_samples_recorded isn't advanced
             // during listen-only): did samples keep pace with wall time?
             if state.mic.recording().get_untracked() {
-                let actual = state.mic.samples_recorded().get_untracked().saturating_sub(samples_hide) as f64;
-                if actual < wall_elapsed * sr * 0.5 { throttled = true; }
+                let actual = state
+                    .mic
+                    .samples_recorded()
+                    .get_untracked()
+                    .saturating_sub(samples_hide) as f64;
+                if actual < wall_elapsed * sr * 0.5 {
+                    throttled = true;
+                }
             }
 
             // Audible-output check (listening): did the audio clock advance?
             if state.mic.listening().get_untracked() {
                 if let Some(now) = het_now {
-                    if now - het_hide < wall_elapsed * 0.5 { throttled = true; }
+                    if now - het_hide < wall_elapsed * 0.5 {
+                        throttled = true;
+                    }
                 }
             }
 
@@ -1148,8 +1332,11 @@ pub fn App() -> impl IntoView {
         let snapshot: Rc<Cell<Option<(f64, usize, f64)>>> = Rc::new(Cell::new(None));
         let doc_vis = web_sys::window().unwrap().document().unwrap();
         let on_visibility = Closure::<dyn Fn()>::new(move || {
-            let Some(doc) = web_sys::window().and_then(|w| w.document()) else { return };
-            let live = state_vis.mic.listening().get_untracked() || state_vis.mic.recording().get_untracked();
+            let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+                return;
+            };
+            let live = state_vis.mic.listening().get_untracked()
+                || state_vis.mic.recording().get_untracked();
             if doc.hidden() {
                 if live {
                     let het = crate::audio::mic_backend::het_context_time().unwrap_or(0.0);
@@ -1170,11 +1357,20 @@ pub fn App() -> impl IntoView {
                     crate::audio::mic_backend::stop_het_playback();
                 }
                 if let Some((wall_hide, samples_hide, het_hide)) = snapshot.take() {
-                    maybe_warn_background_throttle(&state_vis, wall_hide, samples_hide, het_now, het_hide);
+                    maybe_warn_background_throttle(
+                        &state_vis,
+                        wall_hide,
+                        samples_hide,
+                        het_now,
+                        het_hide,
+                    );
                 }
             }
         });
-        let _ = doc_vis.add_event_listener_with_callback("visibilitychange", on_visibility.as_ref().unchecked_ref());
+        let _ = doc_vis.add_event_listener_with_callback(
+            "visibilitychange",
+            on_visibility.as_ref().unchecked_ref(),
+        );
         on_visibility.forget();
     }
 
@@ -1189,38 +1385,51 @@ pub fn App() -> impl IntoView {
         struct DragDropEvent {
             payload: DragDropPayload,
         }
-        let callback = wasm_bindgen::closure::Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(move |ev: wasm_bindgen::JsValue| {
-            // Payload shape: { event, payload: { paths: [...], position: {x, y} } }
-            let Ok(event) = serde_wasm_bindgen::from_value::<DragDropEvent>(ev) else {
-                return;
-            };
-            let file_paths = event.payload.paths;
-            if file_paths.is_empty() { return; }
-
-            log::info!("Tauri drag-drop: {} file(s)", file_paths.len());
-            for path in file_paths {
-                let name = path.rsplit(['/', '\\']).next().unwrap_or(&path).to_string();
-                // Filter to audio-ish extensions
-                let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
-                if !matches!(ext.as_str(), "wav" | "w4v" | "flac" | "ogg" | "mp3" | "m4a" | "m4b") {
-                    log::info!("Skipping non-audio drop: {name}");
-                    continue;
+        let callback = wasm_bindgen::closure::Closure::<dyn FnMut(wasm_bindgen::JsValue)>::new(
+            move |ev: wasm_bindgen::JsValue| {
+                // Payload shape: { event, payload: { paths: [...], position: {x, y} } }
+                let Ok(event) = serde_wasm_bindgen::from_value::<DragDropEvent>(ev) else {
+                    return;
+                };
+                let file_paths = event.payload.paths;
+                if file_paths.is_empty() {
+                    return;
                 }
-                let state = state_drop;
-                let load_id = state.loading_start(&name);
-                let name_for_err = name.clone();
-                leptos::task::spawn_local(async move {
-                    match crate::components::file_sidebar::load_native_file(path, state, load_id).await {
-                        Ok(()) => {}
-                        Err(e) => {
-                            log::error!("Failed to load {}: {}", name_for_err, e);
-                            state.show_error_toast(&format!("Couldn't open {name_for_err}: {e}"));
-                        }
+
+                log::info!("Tauri drag-drop: {} file(s)", file_paths.len());
+                for path in file_paths {
+                    let name = path.rsplit(['/', '\\']).next().unwrap_or(&path).to_string();
+                    // Filter to audio-ish extensions
+                    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
+                    if !matches!(
+                        ext.as_str(),
+                        "wav" | "w4v" | "flac" | "ogg" | "mp3" | "m4a" | "m4b"
+                    ) {
+                        log::info!("Skipping non-audio drop: {name}");
+                        continue;
                     }
-                    state.loading_done(load_id);
-                });
-            }
-        });
+                    let state = state_drop;
+                    let load_id = state.loading_start(&name);
+                    let name_for_err = name.clone();
+                    leptos::task::spawn_local(async move {
+                        match crate::components::file_sidebar::load_native_file(
+                            path, state, load_id,
+                        )
+                        .await
+                        {
+                            Ok(()) => {}
+                            Err(e) => {
+                                log::error!("Failed to load {}: {}", name_for_err, e);
+                                state.show_error_toast(&format!(
+                                    "Couldn't open {name_for_err}: {e}"
+                                ));
+                            }
+                        }
+                        state.loading_done(load_id);
+                    });
+                }
+            },
+        );
         crate::tauri_bridge::tauri_listen("tauri://drag-drop", callback);
 
         // Expose a global the Android notification "Stop" action calls (via
@@ -1248,23 +1457,37 @@ pub fn App() -> impl IntoView {
     // Registered unconditionally — harmless on desktop, needed if layout switches to mobile.
     {
         let state_back = state;
-        let on_popstate = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::Event)>::new(move |_: web_sys::Event| {
-            if !state_back.status.is_mobile().get_untracked() { return; }
-            if !state_back.panels.right_collapsed().get_untracked() {
-                state_back.panels.right_collapsed().set(true);
-                let _ = web_sys::window().unwrap().history().unwrap()
-                    .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", None);
-            } else if !state_back.panels.left_collapsed().get_untracked() {
-                state_back.panels.left_collapsed().set(true);
-                let _ = web_sys::window().unwrap().history().unwrap()
-                    .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", None);
-            }
-        });
-        let _ = window.add_event_listener_with_callback("popstate", on_popstate.as_ref().unchecked_ref());
+        let on_popstate = wasm_bindgen::closure::Closure::<dyn Fn(web_sys::Event)>::new(
+            move |_: web_sys::Event| {
+                if !state_back.status.is_mobile().get_untracked() {
+                    return;
+                }
+                if !state_back.panels.right_collapsed().get_untracked() {
+                    state_back.panels.right_collapsed().set(true);
+                    let _ = web_sys::window()
+                        .unwrap()
+                        .history()
+                        .unwrap()
+                        .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", None);
+                } else if !state_back.panels.left_collapsed().get_untracked() {
+                    state_back.panels.left_collapsed().set(true);
+                    let _ = web_sys::window()
+                        .unwrap()
+                        .history()
+                        .unwrap()
+                        .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", None);
+                }
+            },
+        );
+        let _ = window
+            .add_event_listener_with_callback("popstate", on_popstate.as_ref().unchecked_ref());
         on_popstate.forget();
         // Push initial history entry so back button has something to pop
-        let _ = window.history().unwrap()
-            .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", None);
+        let _ =
+            window
+                .history()
+                .unwrap()
+                .push_state_with_url(&wasm_bindgen::JsValue::NULL, "", None);
     }
 
     // Monitor visualViewport.scale to detect pinch-zoom on mobile browsers.
@@ -1276,26 +1499,47 @@ pub fn App() -> impl IntoView {
             let vv_obj = js_sys::Reflect::get(
                 &js_sys::global(),
                 &wasm_bindgen::JsValue::from_str("visualViewport"),
-            ).ok().filter(|v| !v.is_undefined() && !v.is_null());
-            let scale = vv_obj.as_ref()
-                .and_then(|vv| js_sys::Reflect::get(vv, &wasm_bindgen::JsValue::from_str("scale")).ok())
+            )
+            .ok()
+            .filter(|v| !v.is_undefined() && !v.is_null());
+            let scale = vv_obj
+                .as_ref()
+                .and_then(|vv| {
+                    js_sys::Reflect::get(vv, &wasm_bindgen::JsValue::from_str("scale")).ok()
+                })
                 .and_then(|s| s.as_f64())
                 .unwrap_or(1.0);
             let zoomed = scale > 1.05;
             // Track visual viewport position for button placement
             if let Some(ref vv) = vv_obj {
-                let offset_top = js_sys::Reflect::get(vv, &wasm_bindgen::JsValue::from_str("offsetTop"))
-                    .ok().and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let offset_left = js_sys::Reflect::get(vv, &wasm_bindgen::JsValue::from_str("offsetLeft"))
-                    .ok().and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let offset_top =
+                    js_sys::Reflect::get(vv, &wasm_bindgen::JsValue::from_str("offsetTop"))
+                        .ok()
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                let offset_left =
+                    js_sys::Reflect::get(vv, &wasm_bindgen::JsValue::from_str("offsetLeft"))
+                        .ok()
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
                 let vp_width = js_sys::Reflect::get(vv, &wasm_bindgen::JsValue::from_str("width"))
-                    .ok().and_then(|v| v.as_f64()).unwrap_or(0.0);
-                state_vp.status.visual_viewport_rect().set((offset_top, offset_left, vp_width, scale));
+                    .ok()
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                state_vp.status.visual_viewport_rect().set((
+                    offset_top,
+                    offset_left,
+                    vp_width,
+                    scale,
+                ));
             }
             let prev = state_vp.status.viewport_zoomed().get_untracked();
             state_vp.status.viewport_zoomed().set(zoomed);
             // Toggle body class so CSS can override touch-action on canvas areas
-            if let Some(body) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.body()) {
+            if let Some(body) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.body())
+            {
                 if zoomed {
                     let _ = body.class_list().add_1("viewport-zoomed");
                 } else {
@@ -1311,20 +1555,27 @@ pub fn App() -> impl IntoView {
             }
         });
         let window = web_sys::window().unwrap();
-        if let Ok(vv) = js_sys::Reflect::get(
-            &window,
-            &wasm_bindgen::JsValue::from_str("visualViewport"),
-        ) {
+        if let Ok(vv) =
+            js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("visualViewport"))
+        {
             if !vv.is_undefined() && !vv.is_null() {
                 // Listen to both "resize" and "scroll" — different platforms fire
                 // different events during pinch-zoom gestures.
-                let add_fn_val = js_sys::Reflect::get(
-                    &vv, &wasm_bindgen::JsValue::from_str("addEventListener"),
-                ).ok();
+                let add_fn_val =
+                    js_sys::Reflect::get(&vv, &wasm_bindgen::JsValue::from_str("addEventListener"))
+                        .ok();
                 if let Some(add_fn_val) = add_fn_val {
                     if let Ok(add_fn) = add_fn_val.dyn_into::<js_sys::Function>() {
-                        let _ = add_fn.call2(&vv, &wasm_bindgen::JsValue::from_str("resize"), check_zoom.as_ref());
-                        let _ = add_fn.call2(&vv, &wasm_bindgen::JsValue::from_str("scroll"), check_zoom.as_ref());
+                        let _ = add_fn.call2(
+                            &vv,
+                            &wasm_bindgen::JsValue::from_str("resize"),
+                            check_zoom.as_ref(),
+                        );
+                        let _ = add_fn.call2(
+                            &vv,
+                            &wasm_bindgen::JsValue::from_str("scroll"),
+                            check_zoom.as_ref(),
+                        );
                     }
                 }
             }
@@ -1336,20 +1587,24 @@ pub fn App() -> impl IntoView {
             let touchend_cb = wasm_bindgen::closure::Closure::<dyn Fn()>::new(move || {
                 // Defer to next frame so the viewport scale has settled
                 let check_ref2 = check_ref.clone();
-                let _ = web_sys::window().unwrap().request_animation_frame(
-                    check_ref2.unchecked_ref(),
-                );
+                let _ = web_sys::window()
+                    .unwrap()
+                    .request_animation_frame(check_ref2.unchecked_ref());
             });
-            let _ = window.add_event_listener_with_callback(
-                "touchend",
-                touchend_cb.as_ref().unchecked_ref(),
-            );
+            let _ = window
+                .add_event_listener_with_callback("touchend", touchend_cb.as_ref().unchecked_ref());
             touchend_cb.forget();
         }
         check_zoom.forget();
     }
 
-    let app_class = move || if state.status.is_mobile().get() { "app mobile" } else { "app" };
+    let app_class = move || {
+        if state.status.is_mobile().get() {
+            "app mobile"
+        } else {
+            "app"
+        }
+    };
 
     view! {
         <div class=app_class style=grid_style>
@@ -1383,7 +1638,9 @@ pub fn App() -> impl IntoView {
 #[component]
 fn MainArea() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let has_file = move || state.library.current_index().get().is_some() || state.timeline.active().get().is_some();
+    let has_file = move || {
+        state.library.current_index().get().is_some() || state.timeline.active().get().is_some()
+    };
 
     // Click/tap anywhere in the main area closes open layer panels (and sidebar on mobile)
     let on_main_click = move |_: web_sys::MouseEvent| {
@@ -1739,7 +1996,11 @@ fn resonator_quick_sample_rate(state: AppState) -> f64 {
 }
 
 fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
+    if active {
+        "layer-panel-opt sel"
+    } else {
+        "layer-panel-opt"
+    }
 }
 
 /// Turn the XForm display-processing panel on: enable it with all per-stage
@@ -1751,17 +2012,25 @@ pub fn enable_xform(state: &AppState) {
     state.display.filter_eq().set(DisplayFilterMode::Same);
     state.display.filter_notch().set(DisplayFilterMode::Same);
     state.display.filter_nr().set(DisplayFilterMode::Same);
-    state.display.filter_transform().set(DisplayFilterMode::Same);
+    state
+        .display
+        .filter_transform()
+        .set(DisplayFilterMode::Same);
     state.display.filter_gain().set(DisplayFilterMode::Same);
     state.display.filter_decimate().set(DisplayFilterMode::Same);
     // Eagerly resolve "Same" → mirror current playback state.
-    state.display.eq().set(state.filter.enabled().get_untracked());
-    state.display.noise_filter().set(
-        state.noise_reduce.enabled().get_untracked() || state.notch.enabled().get_untracked(),
-    );
-    state.display.transform().set(
-        state.playback.mode().get_untracked() != PlaybackMode::Normal,
-    );
+    state
+        .display
+        .eq()
+        .set(state.filter.enabled().get_untracked());
+    state
+        .display
+        .noise_filter()
+        .set(state.noise_reduce.enabled().get_untracked() || state.notch.enabled().get_untracked());
+    state
+        .display
+        .transform()
+        .set(state.playback.mode().get_untracked() != PlaybackMode::Normal);
 }
 
 /// Turn the XForm panel off and reset all derived display_* signals so the
@@ -1782,14 +2051,19 @@ pub fn disable_xform(state: &AppState) {
 pub fn MainViewButton() -> impl IntoView {
     use crate::components::popup::{Align, PopupPanel, Side};
     let state = expect_context::<AppState>();
-    let is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::MainView));
-    let no_file = move || state.library.current_index().get().is_none() && state.timeline.active().get().is_none();
+    let is_open =
+        Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::MainView));
+    let no_file = move || {
+        state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
+    };
 
     // Helper: handle all side-effects of a view switch synchronously,
     // so the spectrogram render Effect always sees consistent state.
     let switch_view = move |new_view: MainView| {
         let old_view = state.viewmode.main_view().get_untracked();
-        if new_view == old_view { return; }
+        if new_view == old_view {
+            return;
+        }
         // XForm is an independent toggle now (see XformButton) — the view
         // switch only changes which renderer is shown. The xform_enabled
         // state persists across view changes; it's gated to spectro-like
@@ -1801,7 +2075,9 @@ pub fn MainViewButton() -> impl IntoView {
     // already-selected view: toggle its settings popup. Mirrors the
     // playback mode radio group's "click again to open settings".
     let select_view = move |new_view: MainView| {
-        if no_file() { return; }
+        if no_file() {
+            return;
+        }
         let cur = state.viewmode.main_view().get_untracked();
         if cur == new_view {
             toggle_panel(&state, LayerPanel::MainView);
@@ -1820,9 +2096,13 @@ pub fn MainViewButton() -> impl IntoView {
             let mut s = String::from("layer-btn mode-radio-btn");
             if is_sel {
                 s.push_str(" selected has-settings");
-                if is_open.get() { s.push_str(" open"); }
+                if is_open.get() {
+                    s.push_str(" open");
+                }
             }
-            if no_file() { s.push_str(" disabled"); }
+            if no_file() {
+                s.push_str(" disabled");
+            }
             s
         })
     };
@@ -2702,4 +2982,3 @@ pub fn MainViewButton() -> impl IntoView {
         </div>
     }
 }
-

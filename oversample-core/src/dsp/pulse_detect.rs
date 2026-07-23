@@ -1,5 +1,5 @@
-use crate::types::{AudioData, SpectrogramData};
 use crate::dsp::zc_divide::{cascaded_lp, smooth_envelope};
+use crate::types::{AudioData, SpectrogramData};
 
 #[derive(Clone, Debug)]
 pub struct DetectedPulse {
@@ -85,12 +85,7 @@ pub fn detect_pulses(
     let min_dur_samples = ((sr as f64 * params.min_pulse_duration_ms / 1000.0) as usize).max(1);
     let max_dur_samples = ((sr as f64 * params.max_pulse_duration_ms / 1000.0) as usize).max(1);
 
-    let raw_pulses = detect_raw_pulses(
-        &envelope,
-        threshold_high,
-        threshold_low,
-        min_gap_samples,
-    );
+    let raw_pulses = detect_raw_pulses(&envelope, threshold_high, threshold_low, min_gap_samples);
 
     // Step 5: Filter by duration and build results
     let mut pulses = Vec::new();
@@ -226,11 +221,7 @@ fn detect_raw_pulses(
 }
 
 /// Find the dominant frequency in the spectrogram within a time range.
-fn find_peak_frequency(
-    spectrogram: &SpectrogramData,
-    start_time: f64,
-    end_time: f64,
-) -> f64 {
+fn find_peak_frequency(spectrogram: &SpectrogramData, start_time: f64, end_time: f64) -> f64 {
     let columns = &spectrogram.columns;
     if columns.is_empty() {
         return 0.0;
@@ -315,8 +306,12 @@ mod tests {
     fn detect_raw_pulses_merges_close_bursts() {
         // Two bursts separated by 2 samples below threshold, min_gap=5 → merge.
         let mut env = vec![0.01f32; 100];
-        for i in 30..35 { env[i] = 1.0; }
-        for i in 37..42 { env[i] = 0.8; }
+        for i in 30..35 {
+            env[i] = 1.0;
+        }
+        for i in 37..42 {
+            env[i] = 0.8;
+        }
         let pulses = detect_raw_pulses(&env, 0.5, 0.1, 5);
         assert_eq!(pulses.len(), 1, "close bursts should be merged");
     }
@@ -324,8 +319,12 @@ mod tests {
     #[test]
     fn detect_raw_pulses_keeps_well_separated_bursts() {
         let mut env = vec![0.01f32; 100];
-        for i in 10..15 { env[i] = 1.0; }
-        for i in 80..85 { env[i] = 1.0; }
+        for i in 10..15 {
+            env[i] = 1.0;
+        }
+        for i in 80..85 {
+            env[i] = 1.0;
+        }
         let pulses = detect_raw_pulses(&env, 0.5, 0.1, 5);
         assert_eq!(pulses.len(), 2);
     }
@@ -334,7 +333,9 @@ mod tests {
     fn detect_raw_pulses_closes_open_pulse_at_end_of_signal() {
         // Pulse that never falls back below low threshold — should still be reported.
         let mut env = vec![0.01f32; 100];
-        for i in 90..100 { env[i] = 1.0; }
+        for i in 90..100 {
+            env[i] = 1.0;
+        }
         let pulses = detect_raw_pulses(&env, 0.5, 0.1, 1);
         assert_eq!(pulses.len(), 1);
         assert_eq!(pulses[0].1, 100); // pulse_end = envelope length

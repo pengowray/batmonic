@@ -1,13 +1,13 @@
-use leptos::prelude::*;
-use crate::state::store_fields::*;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::closure::Closure;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use crate::canvas::{tile_cache, spectral_store};
-use crate::canvas::tile_cache::TILE_COLS;
 use crate::canvas::spectrogram_renderer::FlowAlgo;
+use crate::canvas::tile_cache::TILE_COLS;
+use crate::canvas::{spectral_store, tile_cache};
+use crate::state::store_fields::*;
 use crate::state::AppState;
+use leptos::prelude::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
 
 fn visible_tile_order(first_tile: usize, last_tile: usize, center_tile: usize) -> Vec<usize> {
     if first_tile > last_tile {
@@ -58,7 +58,9 @@ pub fn schedule_normal_tiles(
     let vis_start = scroll_col.max(0.0).min((total_cols as f64 - 1.0).max(0.0));
     let vis_end = (vis_start + display_w / zoom).min(total_cols as f64);
 
-    if vis_end <= vis_start { return; }
+    if vis_end <= vis_start {
+        return;
+    }
 
     // Tile range at ideal LOD
     let vis_start_lod = vis_start * ratio;
@@ -74,13 +76,21 @@ pub fn schedule_normal_tiles(
     // During playback, also protect tiles near the pre-play scroll position
     if is_playing {
         let pre_scroll = state.view.pre_play_scroll().get_untracked();
-        let pre_col = (pre_scroll / time_res).max(0.0).min((total_cols as f64 - 1.0).max(0.0));
+        let pre_col = (pre_scroll / time_res)
+            .max(0.0)
+            .min((total_cols as f64 - 1.0).max(0.0));
         let pre_end_col = (pre_col + display_w / zoom).min(total_cols as f64);
-        let pre_center = (((pre_col * ratio) + (pre_end_col * ratio)) / 2.0 / TILE_COLS as f64) as usize;
+        let pre_center =
+            (((pre_col * ratio) + (pre_end_col * ratio)) / 2.0 / TILE_COLS as f64) as usize;
 
-        tile_cache::cancel_far_in_flight_multi(file_idx, ideal_lod, &[
-            (viewport_center_tile, keep_cancel), (pre_center, keep_cancel)
-        ]);
+        tile_cache::cancel_far_in_flight_multi(
+            file_idx,
+            ideal_lod,
+            &[
+                (viewport_center_tile, keep_cancel),
+                (pre_center, keep_cancel),
+            ],
+        );
     } else {
         tile_cache::cancel_far_in_flight(file_idx, ideal_lod, viewport_center_tile, keep_cancel);
     }
@@ -93,11 +103,10 @@ pub fn schedule_normal_tiles(
 
     for &t in &tile_order {
         // Schedule reassignment tiles when enabled (skip coarse overview LODs 0-1)
-        if use_reassign
-            && tile_cache::get_reassign_tile(file_idx, ideal_lod, t).is_none() {
-                tile_cache::schedule_reassign_tile(state, file_idx, ideal_lod, t);
-                any_missing = true;
-            }
+        if use_reassign && tile_cache::get_reassign_tile(file_idx, ideal_lod, t).is_none() {
+            tile_cache::schedule_reassign_tile(state, file_idx, ideal_lod, t);
+            any_missing = true;
+        }
 
         // Always schedule normal tiles (for fallback and non-reassign mode)
         if tile_cache::get_tile(file_idx, ideal_lod, t).is_none() {
@@ -109,20 +118,22 @@ pub fn schedule_normal_tiles(
     for &t in &tile_order {
         // Also ensure a baseline-LOD fallback tile exists (for smooth transitions)
         if ideal_lod != tile_cache::LOD_BASELINE {
-            let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
+            let (fb_tile, _, _) =
+                tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
             if tile_cache::get_tile(file_idx, tile_cache::LOD_BASELINE, fb_tile).is_none()
-                && !is_loading {
-                    let tile_start = fb_tile * TILE_COLS;
-                    let tile_end = (tile_start + TILE_COLS).min(total_cols);
-                    if spectral_store::has_store(file_idx)
-                        && spectral_store::tile_complete(file_idx, tile_start, tile_end)
-                    {
-                        tile_cache::schedule_tile_from_store(state, file_idx, fb_tile);
-                    } else {
-                        tile_cache::schedule_tile_on_demand(state, file_idx, fb_tile);
-                    }
-                    any_missing = true;
+                && !is_loading
+            {
+                let tile_start = fb_tile * TILE_COLS;
+                let tile_end = (tile_start + TILE_COLS).min(total_cols);
+                if spectral_store::has_store(file_idx)
+                    && spectral_store::tile_complete(file_idx, tile_start, tile_end)
+                {
+                    tile_cache::schedule_tile_from_store(state, file_idx, fb_tile);
+                } else {
+                    tile_cache::schedule_tile_on_demand(state, file_idx, fb_tile);
                 }
+                any_missing = true;
+            }
         }
     }
 
@@ -150,18 +161,27 @@ pub fn schedule_normal_tiles(
     // Recovery: if visible tiles are missing, force a retry after 250ms.
     // Skip the expensive count_missing_visible() call when the scheduling
     // loops above found no missing tiles (common case during panning).
-    if !any_missing { return; }
+    if !any_missing {
+        return;
+    }
     let missing = tile_cache::count_missing_visible(file_idx, ideal_lod, first_tile, last_tile);
     if missing > 0 {
         let state_recovery = state;
         let disposed_rc = disposed.clone();
         let recovery_cb = Closure::once(move || {
-            if disposed_rc.load(Ordering::Relaxed) { return; }
-            state_recovery.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            if disposed_rc.load(Ordering::Relaxed) {
+                return;
+            }
+            state_recovery
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
         });
-        let _ = web_sys::window().unwrap()
+        let _ = web_sys::window()
+            .unwrap()
             .set_timeout_with_callback_and_timeout_and_arguments_0(
-                recovery_cb.as_ref().unchecked_ref(), 250,
+                recovery_cb.as_ref().unchecked_ref(),
+                250,
             );
         recovery_cb.forget();
     }
@@ -182,7 +202,9 @@ pub fn schedule_flow_tiles(
 
     let vis_start = scroll_col.max(0.0).min((total_cols as f64 - 1.0).max(0.0));
     let vis_end = (vis_start + display_w / zoom).min(total_cols as f64);
-    if vis_end <= vis_start { return; }
+    if vis_end <= vis_start {
+        return;
+    }
 
     // Convert to ideal-LOD tile space
     let vis_start_lod = vis_start * ratio;
@@ -198,9 +220,16 @@ pub fn schedule_flow_tiles(
 
         // Also ensure a baseline-LOD fallback exists for smooth transitions
         if ideal_lod != tile_cache::LOD_BASELINE {
-            let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
+            let (fb_tile, _, _) =
+                tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
             if tile_cache::get_flow_tile(file_idx, tile_cache::LOD_BASELINE, fb_tile).is_none() {
-                tile_cache::schedule_flow_tile(state, file_idx, tile_cache::LOD_BASELINE, fb_tile, algo);
+                tile_cache::schedule_flow_tile(
+                    state,
+                    file_idx,
+                    tile_cache::LOD_BASELINE,
+                    fb_tile,
+                    algo,
+                );
             }
         }
     }
@@ -223,7 +252,9 @@ pub fn schedule_resonator_tiles(
 
     let vis_start = scroll_col.max(0.0).min((total_cols as f64 - 1.0).max(0.0));
     let vis_end = (vis_start + display_w / zoom).min(total_cols as f64);
-    if vis_end <= vis_start { return; }
+    if vis_end <= vis_start {
+        return;
+    }
 
     let vis_start_lod = vis_start * ratio;
     let vis_end_lod = vis_end * ratio;
@@ -235,9 +266,16 @@ pub fn schedule_resonator_tiles(
             tile_cache::schedule_resonator_tile(state, file_idx, ideal_lod, t);
         }
         if ideal_lod != tile_cache::LOD_BASELINE {
-            let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
-            if tile_cache::get_resonator_tile(file_idx, tile_cache::LOD_BASELINE, fb_tile).is_none() {
-                tile_cache::schedule_resonator_tile(state, file_idx, tile_cache::LOD_BASELINE, fb_tile);
+            let (fb_tile, _, _) =
+                tile_cache::fallback_tile_info(ideal_lod, t, tile_cache::LOD_BASELINE);
+            if tile_cache::get_resonator_tile(file_idx, tile_cache::LOD_BASELINE, fb_tile).is_none()
+            {
+                tile_cache::schedule_resonator_tile(
+                    state,
+                    file_idx,
+                    tile_cache::LOD_BASELINE,
+                    fb_tile,
+                );
             }
         }
     }
@@ -258,7 +296,10 @@ pub fn setup_cache_clearing_effects(state: AppState) {
         crate::canvas::tile_cache::clear_all_tiles();
         crate::canvas::tile_cache::clear_flow_cache();
         crate::canvas::tile_cache::clear_reassign_cache();
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 
     // Clear magnitude tiles when display transform/decimation toggles
@@ -278,7 +319,10 @@ pub fn setup_cache_clearing_effects(state: AppState) {
             let decim_changed = decim != prev_decim.get_untracked();
             if xform_on || prev_xform.get_untracked() || decim_changed {
                 crate::canvas::tile_cache::clear_all_tiles();
-                state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+                state
+                    .viewmode
+                    .tile_ready_signal()
+                    .update(|n| *n = n.wrapping_add(1));
             }
             prev_xform.set(xform_on);
             prev_decim.set(decim);
@@ -301,7 +345,10 @@ pub fn setup_cache_clearing_effects(state: AppState) {
         let _mode = state.resonator.fft_mode().get();
         let _layout = state.resonator.layout().get();
         crate::canvas::tile_cache::clear_resonator_cache();
-        state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+        state
+            .viewmode
+            .tile_ready_signal()
+            .update(|n| *n = n.wrapping_add(1));
     });
 
     // Viewport-zoom: debounce view-freq-range changes for 500ms, then commit
@@ -327,7 +374,10 @@ pub fn setup_cache_clearing_effects(state: AppState) {
             if state.resonator.viewport_range().get_untracked().is_some() {
                 state.resonator.viewport_range().set(None);
                 crate::canvas::tile_cache::clear_resonator_cache();
-                state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+                state
+                    .viewmode
+                    .tile_ready_signal()
+                    .update(|n| *n = n.wrapping_add(1));
             }
             // Even with the feature off, bump the generation so any
             // already-scheduled timer becomes stale.
@@ -339,7 +389,9 @@ pub fn setup_cache_clearing_effects(state: AppState) {
         let target_lo = min.unwrap_or(0.0);
         let file_max = state.library.files().with_untracked(|files| {
             let idx = state.library.current_index().get_untracked();
-            idx.and_then(|i| files.get(i)).map(|f| f.spectrogram.max_freq).unwrap_or(192_000.0)
+            idx.and_then(|i| files.get(i))
+                .map(|f| f.spectrogram.max_freq)
+                .unwrap_or(192_000.0)
         });
         let target_hi = max.unwrap_or(file_max).min(file_max);
         if target_hi <= target_lo + 1.0 {
@@ -360,12 +412,21 @@ pub fn setup_cache_clearing_effects(state: AppState) {
         });
 
         let cb = Closure::once(move || {
-            if VIEWPORT_DEBOUNCE_GEN.with(|g| g.get()) != my_gen { return; }
+            if VIEWPORT_DEBOUNCE_GEN.with(|g| g.get()) != my_gen {
+                return;
+            }
             // Verify the viewport is still what we want to commit (the
             // user might have toggled the feature off mid-debounce).
-            if !state.resonator.viewport_bins().get_untracked() { return; }
+            if !state.resonator.viewport_bins().get_untracked() {
+                return;
+            }
             let min_now = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-            let max_now = state.view.max_display_freq().get_untracked().unwrap_or(file_max).min(file_max);
+            let max_now = state
+                .view
+                .max_display_freq()
+                .get_untracked()
+                .unwrap_or(file_max)
+                .min(file_max);
             if (min_now - target_lo).abs() > 0.5 || (max_now - target_hi).abs() > 0.5 {
                 // View shifted after the last settled point — don't
                 // commit a stale target; the current Effect run will
@@ -374,7 +435,10 @@ pub fn setup_cache_clearing_effects(state: AppState) {
             }
             state.resonator.viewport_range().set(Some(target));
             crate::canvas::tile_cache::clear_resonator_cache();
-            state.viewmode.tile_ready_signal().update(|n| *n = n.wrapping_add(1));
+            state
+                .viewmode
+                .tile_ready_signal()
+                .update(|n| *n = n.wrapping_add(1));
         });
 
         if let Some(win) = web_sys::window() {

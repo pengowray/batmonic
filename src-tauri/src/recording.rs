@@ -98,7 +98,9 @@ impl RecordingBuffer {
 
     /// Max pre-roll ring length (mono samples) for the current sample rate.
     fn preroll_cap(&self) -> usize {
-        (self.sample_rate as usize).saturating_mul(PREROLL_RING_SECS).max(1)
+        (self.sample_rate as usize)
+            .saturating_mul(PREROLL_RING_SECS)
+            .max(1)
     }
 
     /// Append mono native samples to the pre-roll ring, trimming the oldest to
@@ -106,17 +108,23 @@ impl RecordingBuffer {
     pub fn push_preroll_i16(&mut self, data: &[i16]) {
         self.preroll_i16.extend(data.iter().copied());
         let cap = self.preroll_cap();
-        while self.preroll_i16.len() > cap { self.preroll_i16.pop_front(); }
+        while self.preroll_i16.len() > cap {
+            self.preroll_i16.pop_front();
+        }
     }
     pub fn push_preroll_i32(&mut self, data: &[i32]) {
         self.preroll_i32.extend(data.iter().copied());
         let cap = self.preroll_cap();
-        while self.preroll_i32.len() > cap { self.preroll_i32.pop_front(); }
+        while self.preroll_i32.len() > cap {
+            self.preroll_i32.pop_front();
+        }
     }
     pub fn push_preroll_f32(&mut self, data: &[f32]) {
         self.preroll_f32.extend(data.iter().copied());
         let cap = self.preroll_cap();
-        while self.preroll_f32.len() > cap { self.preroll_f32.pop_front(); }
+        while self.preroll_f32.len() > cap {
+            self.preroll_f32.pop_front();
+        }
     }
 
     /// Drop all pre-roll rings (e.g. when a fresh listen session starts).
@@ -361,7 +369,10 @@ pub fn list_input_devices() -> Vec<DeviceInfo> {
     let mut devices: Vec<DeviceInfo> = Vec::new();
     if let Ok(input_devices) = host.input_devices() {
         for device in input_devices {
-            let name = device.description().map(|d| d.name().to_string()).unwrap_or_else(|_| "Unknown".into());
+            let name = device
+                .description()
+                .map(|d| d.name().to_string())
+                .unwrap_or_else(|_| "Unknown".into());
             let is_default = name == default_name;
             let mut ranges = Vec::new();
             if let Ok(configs) = device.supported_input_configs() {
@@ -386,7 +397,10 @@ pub fn list_input_devices() -> Vec<DeviceInfo> {
                 existing.is_default |= is_default;
                 for r in ranges {
                     let dominated = existing.sample_rate_ranges.iter().any(|e| {
-                        e.min == r.min && e.max == r.max && e.channels == r.channels && e.format == r.format
+                        e.min == r.min
+                            && e.max == r.max
+                            && e.channels == r.channels
+                            && e.format == r.format
                     });
                     if !dominated {
                         existing.sample_rate_ranges.push(r);
@@ -408,7 +422,7 @@ pub fn list_input_devices() -> Vec<DeviceInfo> {
 /// Returns None for auto (0) — accept any format.
 fn preferred_format_for_bit_depth(max_bit_depth: u16) -> Option<cpal::SampleFormat> {
     match max_bit_depth {
-        0 => None,        // auto
+        0 => None, // auto
         1..=16 => Some(cpal::SampleFormat::I16),
         17..=32 => Some(cpal::SampleFormat::I32),
         _ => None,
@@ -429,14 +443,21 @@ pub fn open_mic(
     let host = cpal::default_host();
     let device = if let Some(name) = device_name {
         // Try to find the requested device by name
-        let found = host
-            .input_devices()
-            .ok()
-            .and_then(|mut devs| devs.find(|d| d.description().ok().map(|desc| desc.name() == name).unwrap_or(false)));
+        let found = host.input_devices().ok().and_then(|mut devs| {
+            devs.find(|d| {
+                d.description()
+                    .ok()
+                    .map(|desc| desc.name() == name)
+                    .unwrap_or(false)
+            })
+        });
         match found {
             Some(d) => d,
             None => {
-                eprintln!("Requested device '{}' not found, falling back to default", name);
+                eprintln!(
+                    "Requested device '{}' not found, falling back to default",
+                    name
+                );
                 host.default_input_device()
                     .ok_or_else(|| "No microphone found. Check your audio settings.".to_string())?
             }
@@ -446,7 +467,10 @@ pub fn open_mic(
             .ok_or_else(|| "No microphone found. Check your audio settings.".to_string())?
     };
 
-    let device_name = device.description().map(|d| d.name().to_string()).unwrap_or_else(|_| "Unknown".into());
+    let device_name = device
+        .description()
+        .map(|d| d.name().to_string())
+        .unwrap_or_else(|_| "Unknown".into());
     let supported_rates = collect_supported_rates(&device);
 
     let pref_fmt = preferred_format_for_bit_depth(max_bit_depth);
@@ -474,12 +498,16 @@ pub fn open_mic(
 
         // Filter by preferred format if set
         let format_filtered: Vec<_> = if let Some(fmt) = pref_fmt {
-            let filtered: Vec<_> = all_configs.iter()
+            let filtered: Vec<_> = all_configs
+                .iter()
                 .filter(|c| c.sample_format() == fmt)
                 .cloned()
                 .collect();
             if filtered.is_empty() {
-                eprintln!("Mic config: no configs with format {:?}, ignoring bit depth preference", fmt);
+                eprintln!(
+                    "Mic config: no configs with format {:?}, ignoring bit depth preference",
+                    fmt
+                );
                 all_configs.clone()
             } else {
                 filtered
@@ -490,12 +518,16 @@ pub fn open_mic(
 
         // Filter by channel count if set
         let chan_filtered: Vec<_> = if requested_channels > 0 {
-            let filtered: Vec<_> = format_filtered.iter()
+            let filtered: Vec<_> = format_filtered
+                .iter()
                 .filter(|c| c.channels() == requested_channels)
                 .cloned()
                 .collect();
             if filtered.is_empty() {
-                eprintln!("Mic config: no configs with {} channels, ignoring channel preference", requested_channels);
+                eprintln!(
+                    "Mic config: no configs with {} channels, ignoring channel preference",
+                    requested_channels
+                );
                 format_filtered
             } else {
                 filtered
@@ -509,7 +541,8 @@ pub fn open_mic(
             negotiate_sample_rate_from(&chan_filtered, requested_max_rate)
         } else {
             // Auto rate: pick the config with the highest max rate
-            chan_filtered.iter()
+            chan_filtered
+                .iter()
                 .max_by_key(|c| c.max_sample_rate())
                 .map(|c| {
                     let rate = c.max_sample_rate();
@@ -527,9 +560,7 @@ pub fn open_mic(
                 cfg
             }
             None => {
-                eprintln!(
-                    "Mic config negotiation: no matching config, using device default"
-                );
+                eprintln!("Mic config negotiation: no matching config, using device default");
                 device
                     .default_input_config()
                     .map_err(|e| format!("Failed to get mic config: {}", e))?
@@ -563,8 +594,12 @@ pub fn open_mic(
                     let mut buf = buf.lock().unwrap();
                     if rec.load(Ordering::Relaxed) {
                         if channels > 1 {
-                            let mono: Vec<i16> = data.chunks(channels)
-                                .map(|frame| (frame.iter().map(|&s| s as i32).sum::<i32>() / channels as i32) as i16)
+                            let mono: Vec<i16> = data
+                                .chunks(channels)
+                                .map(|frame| {
+                                    (frame.iter().map(|&s| s as i32).sum::<i32>() / channels as i32)
+                                        as i16
+                                })
                                 .collect();
                             buf.total_samples += mono.len();
                             buf.samples_i16.extend_from_slice(&mono);
@@ -575,8 +610,12 @@ pub fn open_mic(
                     } else if strm.load(Ordering::Relaxed) {
                         // Listening: keep the rolling pre-roll ring (native fmt).
                         if channels > 1 {
-                            let mono: Vec<i16> = data.chunks(channels)
-                                .map(|frame| (frame.iter().map(|&s| s as i32).sum::<i32>() / channels as i32) as i16)
+                            let mono: Vec<i16> = data
+                                .chunks(channels)
+                                .map(|frame| {
+                                    (frame.iter().map(|&s| s as i32).sum::<i32>() / channels as i32)
+                                        as i16
+                                })
                                 .collect();
                             buf.push_preroll_i16(&mono);
                         } else {
@@ -585,8 +624,12 @@ pub fn open_mic(
                     }
                     if strm.load(Ordering::Relaxed) || rec.load(Ordering::Relaxed) {
                         if channels > 1 {
-                            let f32_data: Vec<f32> = data.chunks(channels)
-                                .map(|frame| frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / channels as f32)
+                            let f32_data: Vec<f32> = data
+                                .chunks(channels)
+                                .map(|frame| {
+                                    frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>()
+                                        / channels as f32
+                                })
                                 .collect();
                             buf.pending_f32.extend_from_slice(&f32_data);
                         } else {
@@ -618,8 +661,12 @@ pub fn open_mic(
                     }
                     if rec.load(Ordering::Relaxed) {
                         if channels > 1 {
-                            let mono: Vec<i32> = data.chunks(channels)
-                                .map(|frame| (frame.iter().map(|&s| s as i64).sum::<i64>() / channels as i64) as i32)
+                            let mono: Vec<i32> = data
+                                .chunks(channels)
+                                .map(|frame| {
+                                    (frame.iter().map(|&s| s as i64).sum::<i64>() / channels as i64)
+                                        as i32
+                                })
                                 .collect();
                             buf.total_samples += mono.len();
                             buf.samples_i32.extend_from_slice(&mono);
@@ -630,8 +677,12 @@ pub fn open_mic(
                     } else if strm.load(Ordering::Relaxed) {
                         // Listening: keep the rolling pre-roll ring (native fmt).
                         if channels > 1 {
-                            let mono: Vec<i32> = data.chunks(channels)
-                                .map(|frame| (frame.iter().map(|&s| s as i64).sum::<i64>() / channels as i64) as i32)
+                            let mono: Vec<i32> = data
+                                .chunks(channels)
+                                .map(|frame| {
+                                    (frame.iter().map(|&s| s as i64).sum::<i64>() / channels as i64)
+                                        as i32
+                                })
                                 .collect();
                             buf.push_preroll_i32(&mono);
                         } else {
@@ -640,8 +691,12 @@ pub fn open_mic(
                     }
                     if strm.load(Ordering::Relaxed) || rec.load(Ordering::Relaxed) {
                         if channels > 1 {
-                            let f32_data: Vec<f32> = data.chunks(channels)
-                                .map(|frame| frame.iter().map(|&s| s as f32 / 2147483648.0).sum::<f32>() / channels as f32)
+                            let f32_data: Vec<f32> = data
+                                .chunks(channels)
+                                .map(|frame| {
+                                    frame.iter().map(|&s| s as f32 / 2147483648.0).sum::<f32>()
+                                        / channels as f32
+                                })
                                 .collect();
                             buf.pending_f32.extend_from_slice(&f32_data);
                         } else {
@@ -662,7 +717,8 @@ pub fn open_mic(
                     let mut buf = buf.lock().unwrap();
                     if rec.load(Ordering::Relaxed) {
                         if channels > 1 {
-                            let mono: Vec<f32> = data.chunks(channels)
+                            let mono: Vec<f32> = data
+                                .chunks(channels)
                                 .map(|frame| frame.iter().sum::<f32>() / channels as f32)
                                 .collect();
                             buf.total_samples += mono.len();
@@ -674,7 +730,8 @@ pub fn open_mic(
                     } else if strm.load(Ordering::Relaxed) {
                         // Listening: keep the rolling pre-roll ring (native fmt).
                         if channels > 1 {
-                            let mono: Vec<f32> = data.chunks(channels)
+                            let mono: Vec<f32> = data
+                                .chunks(channels)
                                 .map(|frame| frame.iter().sum::<f32>() / channels as f32)
                                 .collect();
                             buf.push_preroll_f32(&mono);
@@ -684,7 +741,8 @@ pub fn open_mic(
                     }
                     if strm.load(Ordering::Relaxed) || rec.load(Ordering::Relaxed) {
                         if channels > 1 {
-                            let f32_data: Vec<f32> = data.chunks(channels)
+                            let f32_data: Vec<f32> = data
+                                .chunks(channels)
                                 .map(|frame| frame.iter().sum::<f32>() / channels as f32)
                                 .collect();
                             buf.pending_f32.extend_from_slice(&f32_data);
@@ -845,7 +903,9 @@ pub fn build_tauri_guano(
     let start_time = *timestamp - chrono::Duration::milliseconds((duration_secs * 1000.0) as i64);
     let ts = start_time.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
 
-    let is_usb = params.connection_type.as_deref()
+    let is_usb = params
+        .connection_type
+        .as_deref()
         .map(|c| c.contains("USB"))
         .unwrap_or(false);
 
@@ -860,20 +920,36 @@ pub fn build_tauri_guano(
         mic_interface: params.connection_type.clone(),
         mic_name,
         mic_audio_device: None, // Web Audio API only — not applicable to native
-        mic_make: if is_usb { params.mic_make.clone() } else { None },
+        mic_make: if is_usb {
+            params.mic_make.clone()
+        } else {
+            None
+        },
         loc_position: params.location.as_ref().map(|l| (l.latitude, l.longitude)),
         loc_elevation: params.location.as_ref().and_then(|l| l.elevation),
         loc_accuracy: params.location.as_ref().and_then(|l| l.accuracy),
-        device_make: if params.is_mobile { params.device_make.clone() } else { None },
-        device_model: if params.is_mobile { params.device_model.clone() } else { None },
+        device_make: if params.is_mobile {
+            params.device_make.clone()
+        } else {
+            None
+        },
+        device_model: if params.is_mobile {
+            params.device_model.clone()
+        } else {
+            None
+        },
         preroll_secs: params.preroll_secs,
     };
 
     guano::build_recording_guano(
-        sample_rate, duration_secs, filename,
+        sample_rate,
+        duration_secs,
+        filename,
         true, // is_tauri
         params.is_mobile,
-        &extra, &ts, &params.app_version,
+        &extra,
+        &ts,
+        &params.app_version,
     )
 }
 
@@ -898,8 +974,8 @@ pub fn get_samples_f32(buffer: &RecordingBuffer) -> Vec<f32> {
 /// Closes the fd after writing. Only used on Android.
 #[cfg(target_os = "android")]
 pub fn write_wav_to_fd(fd: i32, wav_data: &[u8]) -> Result<(), String> {
-    use std::os::unix::io::FromRawFd;
     use std::io::Write;
+    use std::os::unix::io::FromRawFd;
 
     let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
     file.write_all(wav_data)

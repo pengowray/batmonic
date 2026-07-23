@@ -200,15 +200,31 @@ fn score_yc0(
                 let frac = scaled - scaled.round();
                 let af = frac.abs();
                 sum_abs_frac += af;
-                if af < NEAR_INTEGER_THRESHOLD { near_int += 1; }
+                if af < NEAR_INTEGER_THRESHOLD {
+                    near_int += 1;
+                }
                 total += 1;
             }
             prev_y = Some(y);
         }
     }
-    let mean_abs_frac = if total > 0 { sum_abs_frac / total as f64 } else { f64::NAN };
-    let near_integer_frac = if total > 0 { near_int as f64 / total as f64 } else { 0.0 };
-    Yc0Search { yc0, mean_abs_frac, near_integer_frac, near_integer_match: near_int, near_integer_total: total }
+    let mean_abs_frac = if total > 0 {
+        sum_abs_frac / total as f64
+    } else {
+        f64::NAN
+    };
+    let near_integer_frac = if total > 0 {
+        near_int as f64 / total as f64
+    } else {
+        0.0
+    };
+    Yc0Search {
+        yc0,
+        mean_abs_frac,
+        near_integer_frac,
+        near_integer_match: near_int,
+        near_integer_total: total,
+    }
 }
 
 /// Detect AudioMoth firmware signature.
@@ -244,7 +260,8 @@ pub fn detect(
         return AudioMothResult {
             explanation: "File is zero-padded (low bits literally zero) \u{2014} the \
                           AudioMoth integer-multiple test cannot discriminate from \
-                          generic zero-padded recorders in this case".into(),
+                          generic zero-padded recorders in this case"
+                .into(),
             ..default
         };
     }
@@ -279,9 +296,14 @@ pub fn detect(
     for &start in &starts {
         let seg = &samples[start..start + WINDOW];
         let mean: f64 = seg.iter().map(|&s| to_y(s)).sum::<f64>() / seg.len() as f64;
-        let var: f64 = seg.iter()
-            .map(|&s| { let d = to_y(s) - mean; d * d })
-            .sum::<f64>() / seg.len() as f64;
+        let var: f64 = seg
+            .iter()
+            .map(|&s| {
+                let d = to_y(s) - mean;
+                d * d
+            })
+            .sum::<f64>()
+            / seg.len() as f64;
         if var.sqrt() >= SIGNAL_STDEV_GATE {
             usable_starts.push(start);
         } else {
@@ -314,7 +336,9 @@ pub fn detect(
         for &os_div in OS_DIV_CANDIDATES {
             let sample_multiplier = 16.0 / os_div as f64;
             let gain_total = design_gain * sample_multiplier;
-            if gain_total < 1.5 { continue; }
+            if gain_total < 1.5 {
+                continue;
+            }
             let s = score_yc0(&samples, &usable_starts, yc0, gain_total, to_y);
             per_candidate.push(AudioMothScore {
                 cutoff_hz: cutoff,
@@ -329,9 +353,13 @@ pub fn detect(
         }
     }
 
-    let best = per_candidate.iter()
-        .min_by(|a, b| a.mean_abs_frac.partial_cmp(&b.mean_abs_frac)
-            .unwrap_or(std::cmp::Ordering::Equal))
+    let best = per_candidate
+        .iter()
+        .min_by(|a, b| {
+            a.mean_abs_frac
+                .partial_cmp(&b.mean_abs_frac)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .cloned();
 
     let (verdict, explanation) = match best.as_ref() {
@@ -344,10 +372,14 @@ pub fn detect(
                  mean |D/G − round(D/G)| = {:.3} vs 0.25 uniform baseline; \
                  {}/{} = {:.1}% within \u{00B1}0.1. OS\u{00D7}div = {} \
                  \u{2014} strong AudioMoth-firmware signature.",
-                s.gain_total, 16.0 / s.os_times_div as f64,
-                s.cutoff_hz, s.mean_abs_frac,
-                s.near_integer_match, s.near_integer_total,
-                s.near_integer_frac * 100.0, s.os_times_div,
+                s.gain_total,
+                16.0 / s.os_times_div as f64,
+                s.cutoff_hz,
+                s.mean_abs_frac,
+                s.near_integer_match,
+                s.near_integer_total,
+                s.near_integer_frac * 100.0,
+                s.os_times_div,
             ),
         ),
         Some(s) if s.mean_abs_frac < 0.10 => (
@@ -414,7 +446,8 @@ mod tests {
     }
 
     fn quantise_to_int16(samples: Vec<f64>) -> Vec<f32> {
-        samples.into_iter()
+        samples
+            .into_iter()
             .map(|v| (v.round().clamp(-32768.0, 32767.0) / 32768.0) as f32)
             .collect()
     }
@@ -494,7 +527,10 @@ mod tests {
         let samples = quantise_to_int16(y);
         let r = detect(&samples, fs_output, 16, false, false);
         assert!(
-            matches!(r.verdict, AudioMothVerdict::Match | AudioMothVerdict::Possible),
+            matches!(
+                r.verdict,
+                AudioMothVerdict::Match | AudioMothVerdict::Possible
+            ),
             "expected Match or Possible at G=2, got {:?}",
             r,
         );
@@ -522,10 +558,12 @@ mod tests {
         // Generate plausibly-AudioMoth-shaped data but pretend LSB analysis
         // already flagged it as zero-padded. Should return NotApplicable.
         let fs = 192_000u32;
-        let samples: Vec<f32> = (0..8 * WINDOW).map(|i| {
-            let t = i as f64 / fs as f64;
-            ((2.0 * PI * 12_000.0 * t).sin() * 0.3) as f32
-        }).collect();
+        let samples: Vec<f32> = (0..8 * WINDOW)
+            .map(|i| {
+                let t = i as f64 / fs as f64;
+                ((2.0 * PI * 12_000.0 * t).sin() * 0.3) as f32
+            })
+            .collect();
         let r = detect(&samples, fs, 16, false, true /* zero-padded */);
         assert!(matches!(r.verdict, AudioMothVerdict::NotApplicable));
     }

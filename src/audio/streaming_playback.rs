@@ -5,20 +5,20 @@
 //! The user hears sound almost immediately while subsequent chunks are
 //! processed in the background.
 
-use web_sys::{AudioContext, AudioContextOptions};
-use wasm_bindgen_futures::JsFuture;
 use std::cell::RefCell;
 use std::sync::Arc;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{AudioContext, AudioContextOptions};
 
+use crate::audio::playback::{apply_bandpass, apply_gain};
 use crate::audio::source::{AudioSource, ChannelView};
 use crate::audio::streaming_source;
-use crate::state::{PlaybackMode, FilterQuality, GainMode};
 use crate::dsp::agc::{AgcConfig, AgcProcessor};
+use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast, BandMode};
 use crate::dsp::heterodyne::{heterodyne_comb_mix, heterodyne_mix};
 use crate::dsp::pitch_shift::{pitch_shift_realtime, PitchFactor};
 use crate::dsp::zc_divide::zc_divide;
-use crate::dsp::filters::{apply_eq_filter, apply_eq_filter_fast, BandMode};
-use crate::audio::playback::{apply_bandpass, apply_gain};
+use crate::state::{FilterQuality, GainMode, PlaybackMode};
 
 // Chunk size (~0.5s at 192kHz, ~2s at 44.1kHz) + filter warmup (lets the
 // heterodyne lowpass / bandpass settle before the audible region, avoiding
@@ -68,7 +68,11 @@ thread_local! {
 /// (audit lows #8/#12). For an exact length or a bounded selection, clamp to
 /// `end_sample`, re-reading `total_samples()` so an over-estimated tail trims to
 /// real EOF instead of scheduling trailing zeros.
-fn playback_end_bound(source: &Arc<dyn AudioSource>, end_sample: usize, play_to_eof: bool) -> usize {
+fn playback_end_bound(
+    source: &Arc<dyn AudioSource>,
+    end_sample: usize,
+    play_to_eof: bool,
+) -> usize {
     if play_to_eof {
         source.total_samples() as usize
     } else {
@@ -96,12 +100,16 @@ pub fn playback_drained() -> bool {
 pub fn audio_buffer_ahead_secs() -> Option<f64> {
     // Once the scheduler has queued the final chunk, the remaining lead time
     // only shrinks — that's expected end-of-stream drain, not an underrun.
-    if SCHEDULER_DONE.with(|d| d.get()) { return None; }
+    if SCHEDULER_DONE.with(|d| d.get()) {
+        return None;
+    }
     STREAM_CTX.with(|ctx| {
         let borrow = ctx.borrow();
         let audio_ctx = borrow.as_ref()?;
         let sched = SCHEDULED_END.with(|s| s.get());
-        if sched <= 0.0 { return None; }
+        if sched <= 0.0 {
+            return None;
+        }
         Some(sched - audio_ctx.current_time())
     })
 }
@@ -162,8 +170,7 @@ fn selection_bandpass_active(sample_rate: u32, params: &PlaybackParams) -> bool 
                 | PlaybackMode::PhaseVocoder
                 | PlaybackMode::ZeroCrossing
         )
-        && (params.sel_freq_low > 0.0
-            || params.sel_freq_high < (sample_rate as f64 / 2.0))
+        && (params.sel_freq_low > 0.0 || params.sel_freq_high < (sample_rate as f64 / 2.0))
 }
 
 /// Duration of fade-in when starting playback (milliseconds).
@@ -212,7 +219,11 @@ pub(crate) fn is_streaming() -> bool {
 /// `playback.rs` and `start_stream` previously re-derived by hand.
 pub(crate) fn te_speed_ratio(te_factor: f64) -> f64 {
     let abs_f = te_factor.abs().max(1.0);
-    if te_factor > 0.0 { 1.0 / abs_f } else { abs_f }
+    if te_factor > 0.0 {
+        1.0 / abs_f
+    } else {
+        abs_f
+    }
 }
 
 /// Start streaming playback of a sample range.
@@ -240,8 +251,7 @@ pub(crate) fn start_stream(
     };
 
     // Stereo output: stereo source + Stereo view (all modes, not just Normal)
-    let stereo_out = source.channel_count() >= 2
-        && channel_view == ChannelView::Stereo;
+    let stereo_out = source.channel_count() >= 2 && channel_view == ChannelView::Stereo;
 
     // Reuse existing AudioContext if its sample rate matches; otherwise create new.
     let ctx = STREAM_CTX.with(|c| {
@@ -310,7 +320,11 @@ async fn chunk_loop(
     play_to_eof: bool,
 ) {
     let mut pos = start_sample;
-    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift);
+    let pv_hq_mode = params.pv_hq
+        && matches!(
+            params.mode,
+            PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift
+        );
 
     // Gain computation depends on mode:
     // - Off: no gain at all (0 dB)
@@ -324,7 +338,10 @@ async fn chunk_loop(
 
     // AGC processor for Adaptive mode — persists across chunks for smooth gain transitions
     let agc = if is_adaptive {
-        Some(RefCell::new(AgcProcessor::new(AgcConfig::default(), final_rate)))
+        Some(RefCell::new(AgcProcessor::new(
+            AgcConfig::default(),
+            final_rate,
+        )))
     } else {
         None
     };
@@ -353,18 +370,34 @@ async fn chunk_loop(
 
     for _ in 0..PREBUFFER_CHUNKS {
         let effective_end = playback_end_bound(&source, end_sample, play_to_eof);
-        if pos >= effective_end { break; }
+        if pos >= effective_end {
+            break;
+        }
         let current_gen = STREAM_GEN.with(|g| *g.borrow());
-        if current_gen != generation { return; }
+        if current_gen != generation {
+            return;
+        }
 
         let (final_samples, left, right, new_pos) = process_one_chunk(
-            &source, channel_view, stereo_out, source_rate, &params,
-            global_gain, agc.as_ref(),
-            pos, start_sample, effective_end,
-        ).await;
+            &source,
+            channel_view,
+            stereo_out,
+            source_rate,
+            &params,
+            global_gain,
+            agc.as_ref(),
+            pos,
+            start_sample,
+            effective_end,
+        )
+        .await;
         pos = new_pos;
 
-        prebuf.push(PreBuf { samples: final_samples, left, right });
+        prebuf.push(PreBuf {
+            samples: final_samples,
+            left,
+            right,
+        });
 
         // Yield between pre-buffer chunks so the UI stays responsive
         yield_to_browser().await;
@@ -389,7 +422,14 @@ async fn chunk_loop(
         if !buf.samples.is_empty() {
             if stereo_out {
                 if let (Some(ref left), Some(ref right)) = (buf.left, buf.right) {
-                    schedule_buffer_stereo(&ctx, &gain_node, left, right, final_rate, scheduled_time);
+                    schedule_buffer_stereo(
+                        &ctx,
+                        &gain_node,
+                        left,
+                        right,
+                        final_rate,
+                        scheduled_time,
+                    );
                     if pv_hq_mode {
                         scheduled_time += stride_duration;
                     } else {
@@ -419,21 +459,40 @@ async fn chunk_loop(
         // play-to-EOF stream, or clamp to end_sample otherwise (see
         // `playback_end_bound`). No-op for exact-length sources.
         let effective_end = playback_end_bound(&source, end_sample, play_to_eof);
-        if pos >= effective_end { break; }
+        if pos >= effective_end {
+            break;
+        }
         let current_gen = STREAM_GEN.with(|g| *g.borrow());
-        if current_gen != generation { break; }
+        if current_gen != generation {
+            break;
+        }
 
         let (final_samples, left, right, new_pos) = process_one_chunk(
-            &source, channel_view, stereo_out, source_rate, &params,
-            global_gain, agc.as_ref(),
-            pos, start_sample, effective_end,
-        ).await;
+            &source,
+            channel_view,
+            stereo_out,
+            source_rate,
+            &params,
+            global_gain,
+            agc.as_ref(),
+            pos,
+            start_sample,
+            effective_end,
+        )
+        .await;
         pos = new_pos;
 
         if !final_samples.is_empty() {
             if stereo_out {
                 if let (Some(ref left), Some(ref right)) = (left, right) {
-                    schedule_buffer_stereo(&ctx, &gain_node, left, right, final_rate, scheduled_time);
+                    schedule_buffer_stereo(
+                        &ctx,
+                        &gain_node,
+                        left,
+                        right,
+                        final_rate,
+                        scheduled_time,
+                    );
                     if pv_hq_mode {
                         scheduled_time += stride_duration;
                     } else {
@@ -489,7 +548,11 @@ async fn process_one_chunk(
     start_sample: usize,
     end_sample: usize,
 ) -> (Vec<f32>, Option<Vec<f32>>, Option<Vec<f32>>, usize) {
-    let pv_hq_mode = params.pv_hq && matches!(params.mode, PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift);
+    let pv_hq_mode = params.pv_hq
+        && matches!(
+            params.mode,
+            PlaybackMode::PhaseVocoder | PlaybackMode::PitchShift
+        );
 
     let warmup_start = pos.saturating_sub(FILTER_WARMUP);
     let chunk_end = (pos + CHUNK_SAMPLES).min(end_sample);
@@ -500,7 +563,10 @@ async fn process_one_chunk(
     // overlap instead of being trimmed.
     let trailing_end = if pv_hq_mode {
         (chunk_end + PV_HQ_OVERLAP).min(end_sample)
-    } else if matches!(params.mode, PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder) {
+    } else if matches!(
+        params.mode,
+        PlaybackMode::PitchShift | PlaybackMode::PhaseVocoder
+    ) {
         (chunk_end + FILTER_WARMUP).min(end_sample)
     } else {
         chunk_end
@@ -508,9 +574,18 @@ async fn process_one_chunk(
     let trailing_len = trailing_end - chunk_end;
 
     // Prefetch for streaming sources
-    streaming_source::prefetch_streaming(source.as_ref(), warmup_start as u64, trailing_end - warmup_start).await;
+    streaming_source::prefetch_streaming(
+        source.as_ref(),
+        warmup_start as u64,
+        trailing_end - warmup_start,
+    )
+    .await;
 
-    let chunk_with_warmup = source.read_region(channel_view, warmup_start as u64, trailing_end - warmup_start);
+    let chunk_with_warmup = source.read_region(
+        channel_view,
+        warmup_start as u64,
+        trailing_end - warmup_start,
+    );
     let filtered = apply_filters(&chunk_with_warmup, source_rate, params);
     let processed = apply_dsp_mode(&filtered, source_rate, params);
 
@@ -564,8 +639,16 @@ async fn process_one_chunk(
         let (left, right) = if stereo_out {
             let l_proc = process_ch(ChannelView::Channel(0));
             let r_proc = process_ch(ChannelView::Channel(1));
-            let mut l = if trim_start < l_proc.len() { l_proc[trim_start..].to_vec() } else { l_proc };
-            let mut r = if trim_start < r_proc.len() { r_proc[trim_start..].to_vec() } else { r_proc };
+            let mut l = if trim_start < l_proc.len() {
+                l_proc[trim_start..].to_vec()
+            } else {
+                l_proc
+            };
+            let mut r = if trim_start < r_proc.len() {
+                r_proc[trim_start..].to_vec()
+            } else {
+                r_proc
+            };
             apply_pv_hq_fading(&mut l);
             apply_pv_hq_fading(&mut r);
             apply_gain(&mut l, global_gain);
@@ -601,8 +684,16 @@ async fn process_one_chunk(
             let r_proc = process_ch(ChannelView::Channel(1));
             let l_trim_end = l_proc.len().saturating_sub(trailing_len);
             let r_trim_end = r_proc.len().saturating_sub(trailing_len);
-            let mut l = if trim_start < l_trim_end { l_proc[trim_start..l_trim_end].to_vec() } else { l_proc };
-            let mut r = if trim_start < r_trim_end { r_proc[trim_start..r_trim_end].to_vec() } else { r_proc };
+            let mut l = if trim_start < l_trim_end {
+                l_proc[trim_start..l_trim_end].to_vec()
+            } else {
+                l_proc
+            };
+            let mut r = if trim_start < r_trim_end {
+                r_proc[trim_start..r_trim_end].to_vec()
+            } else {
+                r_proc
+            };
             apply_gain(&mut l, global_gain);
             apply_gain(&mut r, global_gain);
             if let Some(agc_cell) = agc {
@@ -617,27 +708,43 @@ async fn process_one_chunk(
     }
 }
 
-
-pub(crate) fn apply_filters(samples: &[f32], sample_rate: u32, params: &PlaybackParams) -> Vec<f32> {
+pub(crate) fn apply_filters(
+    samples: &[f32],
+    sample_rate: u32,
+    params: &PlaybackParams,
+) -> Vec<f32> {
     let mut result = if params.filter_enabled {
         match params.filter_quality {
             FilterQuality::Fast => apply_eq_filter_fast(
-                samples, sample_rate,
-                params.filter_freq_low, params.filter_freq_high,
-                params.filter_db_below, params.filter_db_selected,
-                params.filter_db_harmonics, params.filter_db_above,
+                samples,
+                sample_rate,
+                params.filter_freq_low,
+                params.filter_freq_high,
+                params.filter_db_below,
+                params.filter_db_selected,
+                params.filter_db_harmonics,
+                params.filter_db_above,
                 params.filter_band_mode,
             ),
             FilterQuality::Spectral => apply_eq_filter(
-                samples, sample_rate,
-                params.filter_freq_low, params.filter_freq_high,
-                params.filter_db_below, params.filter_db_selected,
-                params.filter_db_harmonics, params.filter_db_above,
+                samples,
+                sample_rate,
+                params.filter_freq_low,
+                params.filter_freq_high,
+                params.filter_db_below,
+                params.filter_db_selected,
+                params.filter_db_harmonics,
+                params.filter_db_above,
                 params.filter_band_mode,
             ),
         }
     } else if selection_bandpass_active(sample_rate, params) {
-        apply_bandpass(samples, sample_rate, params.sel_freq_low, params.sel_freq_high)
+        apply_bandpass(
+            samples,
+            sample_rate,
+            params.sel_freq_low,
+            params.sel_freq_high,
+        )
     } else {
         samples.to_vec()
     };
@@ -645,7 +752,9 @@ pub(crate) fn apply_filters(samples: &[f32], sample_rate: u32, params: &Playback
     // Apply notch filters after EQ/bandpass
     if params.notch_enabled && !params.notch_bands.is_empty() {
         result = crate::dsp::notch::apply_notch_filters(
-            &result, sample_rate, &params.notch_bands,
+            &result,
+            sample_rate,
+            &params.notch_bands,
             params.notch_harmonic_suppression,
         );
     }
@@ -654,7 +763,11 @@ pub(crate) fn apply_filters(samples: &[f32], sample_rate: u32, params: &Playback
     if params.noise_reduce_enabled {
         if let Some(ref floor) = params.noise_reduce_floor {
             result = crate::dsp::spectral_sub::apply_spectral_subtraction(
-                &result, sample_rate, floor, params.noise_reduce_strength, 0.05,
+                &result,
+                sample_rate,
+                floor,
+                params.noise_reduce_strength,
+                0.05,
                 params.notch_harmonic_suppression,
             );
         }
@@ -695,22 +808,26 @@ fn ps_post_shift(samples: &[f32], sample_rate: u32, params: &PlaybackParams) -> 
         PlaybackMode::PitchShift => params.ps_factor,
         PlaybackMode::PhaseVocoder => params.pv_factor,
         _ => return samples.to_vec(),
-    }.magnitude();
+    }
+    .magnitude();
     // Cutoff just above the final output band (= bandpass upper edge / factor)
     // with safety margin. The post-pitch signal already has its spectrum
     // compressed by `factor`, so 20 kHz is usually plenty.
     let nyquist = sample_rate as f64 * 0.5;
-    let cutoff = (params.filter_freq_high / factor + 5_000.0)
-        .clamp(20_000.0, nyquist * 0.9);
+    let cutoff = (params.filter_freq_high / factor + 5_000.0).clamp(20_000.0, nyquist * 0.9);
     heterodyne_mix(samples, sample_rate, shift, cutoff)
 }
 
-pub(crate) fn apply_dsp_mode(samples: &[f32], sample_rate: u32, params: &PlaybackParams) -> Vec<f32> {
+pub(crate) fn apply_dsp_mode(
+    samples: &[f32],
+    sample_rate: u32,
+    params: &PlaybackParams,
+) -> Vec<f32> {
     match params.mode {
         PlaybackMode::Normal => samples.to_vec(),
         PlaybackMode::Heterodyne => {
-            let has_sel = params.has_selection
-                && (params.sel_freq_low > 0.0 || params.sel_freq_high > 0.0);
+            let has_sel =
+                params.has_selection && (params.sel_freq_low > 0.0 || params.sel_freq_high > 0.0);
             if params.het_comb_count <= 1 {
                 // Single carrier: tune to the selection centre (or het_freq).
                 let lo = if has_sel {
@@ -722,7 +839,11 @@ pub(crate) fn apply_dsp_mode(samples: &[f32], sample_rate: u32, params: &Playbac
             } else {
                 // Comb: tile upward from the BOTTOM of the target band — the
                 // selection's low edge, or the tuned het_freq anchor.
-                let base = if has_sel { params.sel_freq_low } else { params.het_freq };
+                let base = if has_sel {
+                    params.sel_freq_low
+                } else {
+                    params.het_freq
+                };
                 let carriers = het_carriers(base, params.het_comb_spacing, params.het_comb_count);
                 heterodyne_comb_mix(samples, sample_rate, &carriers, params.het_cutoff)
             }
@@ -736,16 +857,26 @@ pub(crate) fn apply_dsp_mode(samples: &[f32], sample_rate: u32, params: &Playbac
             ps_post_shift(&pitched, sample_rate, params)
         }
         PlaybackMode::PhaseVocoder => {
-            let pitched = crate::dsp::phase_vocoder::phase_vocoder_pitch_shift(samples, params.pv_factor);
+            let pitched =
+                crate::dsp::phase_vocoder::phase_vocoder_pitch_shift(samples, params.pv_factor);
             ps_post_shift(&pitched, sample_rate, params)
         }
-        PlaybackMode::ZeroCrossing => {
-            zc_divide(samples, sample_rate, params.zc_factor as u32, params.filter_enabled)
-        }
+        PlaybackMode::ZeroCrossing => zc_divide(
+            samples,
+            sample_rate,
+            params.zc_factor as u32,
+            params.filter_enabled,
+        ),
     }
 }
 
-fn schedule_buffer(ctx: &AudioContext, dest: &web_sys::GainNode, samples: &[f32], sample_rate: u32, when: f64) {
+fn schedule_buffer(
+    ctx: &AudioContext,
+    dest: &web_sys::GainNode,
+    samples: &[f32],
+    sample_rate: u32,
+    when: f64,
+) {
     let Ok(buffer) = ctx.create_buffer(1, samples.len() as u32, sample_rate as f32) else {
         return;
     };
@@ -758,7 +889,14 @@ fn schedule_buffer(ctx: &AudioContext, dest: &web_sys::GainNode, samples: &[f32]
     let _ = source.start_with_when(when);
 }
 
-fn schedule_buffer_stereo(ctx: &AudioContext, dest: &web_sys::GainNode, left: &[f32], right: &[f32], sample_rate: u32, when: f64) {
+fn schedule_buffer_stereo(
+    ctx: &AudioContext,
+    dest: &web_sys::GainNode,
+    left: &[f32],
+    right: &[f32],
+    sample_rate: u32,
+    when: f64,
+) {
     let len = left.len().min(right.len());
     let Ok(buffer) = ctx.create_buffer(2, len as u32, sample_rate as f32) else {
         return;
@@ -810,7 +948,10 @@ mod tests {
             het_carriers(20_000.0, 10_000.0, 3),
             vec![20_000.0, 30_000.0, 40_000.0]
         );
-        assert_eq!(het_carriers(30_000.0, 12_000.0, 2), vec![30_000.0, 42_000.0]);
+        assert_eq!(
+            het_carriers(30_000.0, 12_000.0, 2),
+            vec![30_000.0, 42_000.0]
+        );
         // The base is always the lowest carrier — the comb never dips below it.
         let c = het_carriers(30_000.0, 12_000.0, 4);
         let lowest = c.iter().cloned().fold(f64::INFINITY, f64::min);

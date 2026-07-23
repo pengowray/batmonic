@@ -5,13 +5,17 @@
 //! `MicBackend` methods in `mic_backend`. Finalization is handled by
 //! `live_recording`.
 
+use crate::audio::live_recording::FinalizeParams;
+use crate::audio::mic_backend::StopResult;
 use crate::state::store_fields::*;
+use crate::state::{
+    AppState, GpsLocation, MicAcquisitionState, MicBackend, MicPendingAction, MicStrategy,
+};
+use crate::tauri_bridge::{
+    tauri_invoke, tauri_invoke_no_args, tauri_invoke_typed_args, tauri_invoke_typed_no_args,
+};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
-use crate::state::{AppState, GpsLocation, MicStrategy, MicBackend, MicAcquisitionState, MicPendingAction};
-use crate::audio::mic_backend::StopResult;
-use crate::audio::live_recording::FinalizeParams;
-use crate::tauri_bridge::{tauri_invoke, tauri_invoke_no_args, tauri_invoke_typed_no_args, tauri_invoke_typed_args};
 
 // ── GPS location acquisition ────────────────────────────────────────────
 
@@ -19,23 +23,35 @@ use crate::tauri_bridge::{tauri_invoke, tauri_invoke_no_args, tauri_invoke_typed
 /// Returns None if not connected or unavailable.
 async fn get_wifi_ssid() -> Option<String> {
     let result: oversample_ipc::plugins::WifiSsidResult =
-        tauri_invoke_typed_no_args("plugin:geolocation|getWifiSsid").await.ok()?;
+        tauri_invoke_typed_no_args("plugin:geolocation|getWifiSsid")
+            .await
+            .ok()?;
     result.ssid
 }
 
 /// Fetch the Android device make/model from the native plugin.
 /// Results are cached in state after first call (cached_device_make / cached_device_model).
 async fn fetch_device_model(state: &AppState) {
-    if state.recording_meta.cached_model().get_untracked().is_some() {
+    if state
+        .recording_meta
+        .cached_model()
+        .get_untracked()
+        .is_some()
+    {
         return;
     }
     let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::plugins::DeviceModelResult>(
         "plugin:geolocation|getDeviceModel",
-    ).await else {
+    )
+    .await
+    else {
         return;
     };
     if !result.manufacturer.is_empty() {
-        state.recording_meta.cached_make().set(Some(result.manufacturer));
+        state
+            .recording_meta
+            .cached_make()
+            .set(Some(result.manufacturer));
     }
     if !result.model.is_empty() {
         state.recording_meta.cached_model().set(Some(result.model));
@@ -46,7 +62,9 @@ async fn fetch_device_model(state: &AppState) {
 /// Returns None if the plugin is unavailable, permission denied, or location times out.
 async fn acquire_gps_location() -> Option<GpsLocation> {
     let result: oversample_ipc::plugins::GeolocationResult =
-        tauri_invoke_typed_no_args("plugin:geolocation|getCurrentLocation").await.ok()?;
+        tauri_invoke_typed_no_args("plugin:geolocation|getCurrentLocation")
+            .await
+            .ok()?;
     // Error response (permission_denied, timeout, …) carries no coordinates.
     if result.error.is_some() {
         return None;
@@ -58,7 +76,12 @@ async fn acquire_gps_location() -> Option<GpsLocation> {
     } else {
         None
     };
-    Some(GpsLocation { latitude, longitude, elevation, accuracy: result.accuracy })
+    Some(GpsLocation {
+        latitude,
+        longitude,
+        elevation,
+        accuracy: result.accuracy,
+    })
 }
 
 // ── Tauri IPC query helpers ─────────────────────────────────────────────
@@ -72,7 +95,9 @@ pub async fn request_audio_permission_tauri(state: &AppState) -> bool {
     state.log_debug("info", "Requesting RECORD_AUDIO permission via plugin...");
     match tauri_invoke_typed_no_args::<oversample_ipc::plugins::PermissionGranted>(
         "plugin:usb-audio|requestAudioPermission",
-    ).await {
+    )
+    .await
+    {
         Ok(result) => {
             if result.granted {
                 state.log_debug("info", "RECORD_AUDIO permission granted");
@@ -83,7 +108,10 @@ pub async fn request_audio_permission_tauri(state: &AppState) -> bool {
             result.granted
         }
         Err(e) => {
-            state.log_debug("warn", format!("requestAudioPermission failed (may not be Android): {}", e));
+            state.log_debug(
+                "warn",
+                format!("requestAudioPermission failed (may not be Android): {}", e),
+            );
             true // Non-fatal on desktop Tauri
         }
     }
@@ -99,11 +127,18 @@ pub async fn ensure_usb_permission(state: &AppState, device_name: &str) {
     }
     match tauri_invoke_typed_args::<_, oversample_ipc::plugins::UsbPermissionResult>(
         "plugin:usb-audio|requestUsbPermission",
-        &oversample_ipc::plugins::UsbDeviceNameArgs { device_name: device_name.to_string() },
-    ).await {
+        &oversample_ipc::plugins::UsbDeviceNameArgs {
+            device_name: device_name.to_string(),
+        },
+    )
+    .await
+    {
         Ok(r) => state.log_debug(
             "info",
-            format!("USB permission for {device_name}: {}", if r.granted { "granted" } else { "denied" }),
+            format!(
+                "USB permission for {device_name}: {}",
+                if r.granted { "granted" } else { "denied" }
+            ),
         ),
         Err(e) => state.log_debug("warn", format!("requestUsbPermission failed: {e}")),
     }
@@ -115,7 +150,11 @@ pub async fn query_cpal_supported_rates(state: &AppState) {
     if !state.is_tauri {
         return;
     }
-    let result = match tauri_invoke_typed_no_args::<oversample_ipc::mic::DeviceListResult>("mic_list_devices").await {
+    let result = match tauri_invoke_typed_no_args::<oversample_ipc::mic::DeviceListResult>(
+        "mic_list_devices",
+    )
+    .await
+    {
         Ok(v) => v,
         Err(_) => return,
     };
@@ -150,9 +189,11 @@ pub async fn query_mic_info(state: &AppState) {
 
     match backend {
         Some(MicBackend::RawUsb) => {
-            if let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::plugins::UsbDeviceListResult>(
-                "plugin:usb-audio|listUsbDevices",
-            ).await {
+            if let Ok(result) = tauri_invoke_typed_no_args::<
+                oversample_ipc::plugins::UsbDeviceListResult,
+            >("plugin:usb-audio|listUsbDevices")
+            .await
+            {
                 if let Some(dev) = result.devices.iter().find(|d| d.is_audio_device) {
                     state.mic.device_name().set(Some(dev.product_name.clone()));
                     state.mic.connection_type().set(Some("USB".to_string()));
@@ -163,7 +204,11 @@ pub async fn query_mic_info(state: &AppState) {
             state.mic.usb_connected().set(false);
         }
         Some(MicBackend::Cpal) | None => {
-            if let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::mic::DeviceListResult>("mic_list_devices").await {
+            if let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::mic::DeviceListResult>(
+                "mic_list_devices",
+            )
+            .await
+            {
                 for dev in &result.devices {
                     if dev.is_default {
                         let n = dev.name.to_lowercase();
@@ -190,7 +235,10 @@ pub async fn query_mic_info(state: &AppState) {
                         }
                         if let Some(fmt) = format_str {
                             let bits: u16 = match fmt.as_str() {
-                                "I16" => 16, "I24" => 24, "I32" => 32, "F32" => 32,
+                                "I16" => 16,
+                                "I24" => 24,
+                                "I32" => 32,
+                                "F32" => 32,
                                 _ => 0,
                             };
                             if bits > 0 {
@@ -208,8 +256,13 @@ pub async fn query_mic_info(state: &AppState) {
     // Also check for USB devices to update usb_connected status
     if let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::plugins::UsbDeviceListResult>(
         "plugin:usb-audio|listUsbDevices",
-    ).await {
-        state.mic.usb_connected().set(result.devices.iter().any(|d| d.is_audio_device));
+    )
+    .await
+    {
+        state
+            .mic
+            .usb_connected()
+            .set(result.devices.iter().any(|d| d.is_audio_device));
     }
 }
 
@@ -217,7 +270,9 @@ pub async fn query_mic_info(state: &AppState) {
 pub async fn check_usb_status(state: &AppState) {
     if let Ok(result) = tauri_invoke_typed_no_args::<oversample_ipc::plugins::UsbDeviceListResult>(
         "plugin:usb-audio|listUsbDevices",
-    ).await {
+    )
+    .await
+    {
         if let Some(dev) = result.devices.iter().find(|d| d.is_audio_device) {
             state.mic.usb_connected().set(true);
             state.show_info_toast(format!("USB mic: {}", dev.product_name));
@@ -233,7 +288,10 @@ pub async fn check_usb_status(state: &AppState) {
 /// "detached". Replaces the old 3-second `checkUsbStatus` poll, so events are no
 /// longer coalesced/dropped and arrive even while recording.
 pub async fn handle_usb_hotplug(state: &AppState, event: &str, product: &str, device_name: &str) {
-    state.log_debug("info", format!("USB hotplug: {event} — {product} ({device_name})"));
+    state.log_debug(
+        "info",
+        format!("USB hotplug: {event} — {product} ({device_name})"),
+    );
     // Let an already-open mic chooser re-enumerate its device lists.
     state.mic.hotplug_seq().update(|n| *n = n.wrapping_add(1));
     match event {
@@ -254,7 +312,10 @@ pub async fn handle_usb_hotplug(state: &AppState, event: &str, product: &str, de
             // Was the mic we're showing/using this USB device? (Direct-USB backend,
             // or a device_info marked USB.) If so, reset it below so the UI updates.
             let was_active_usb = state.mic.backend().get_untracked() == Some(MicBackend::RawUsb)
-                || state.mic.device_info().get_untracked()
+                || state
+                    .mic
+                    .device_info()
+                    .get_untracked()
                     .map(|i| i.connection_type == "USB")
                     .unwrap_or(false);
 
@@ -344,9 +405,11 @@ async fn maybe_prompt_notifications(state: &AppState) {
     if state.dialogs.notif_perm_asked().get_untracked() {
         return;
     }
-    let status = match tauri_invoke_typed_no_args::<oversample_ipc::plugins::NotificationPermissionStatus>(
-        "plugin:audio-service|isNotificationPermissionGranted",
-    ).await {
+    let status = match tauri_invoke_typed_no_args::<
+        oversample_ipc::plugins::NotificationPermissionStatus,
+    >("plugin:audio-service|isNotificationPermissionGranted")
+    .await
+    {
         Ok(v) => v,
         Err(_) => return, // plugin unavailable — leave the Listen-time path as-is
     };
@@ -397,36 +460,57 @@ pub async fn acquire_mic(state: &AppState, action: MicPendingAction) -> Option<M
             None
         }
         MicStrategy::Browser => {
-            state.mic.acquisition_state().set(MicAcquisitionState::Acquiring);
+            state
+                .mic
+                .acquisition_state()
+                .set(MicAcquisitionState::Acquiring);
             let t0 = js_sys::Date::now();
             if MicBackend::Browser.open(state).await {
                 let elapsed = js_sys::Date::now() - t0;
                 state.mic.permission_dialog_shown().set(elapsed > 1500.0);
                 state.mic.backend().set(Some(MicBackend::Browser));
-                state.mic.acquisition_state().set(MicAcquisitionState::Ready);
+                state
+                    .mic
+                    .acquisition_state()
+                    .set(MicAcquisitionState::Ready);
                 let st = *state;
-                wasm_bindgen_futures::spawn_local(async move { maybe_prompt_notifications(&st).await; });
+                wasm_bindgen_futures::spawn_local(async move {
+                    maybe_prompt_notifications(&st).await;
+                });
                 Some(MicBackend::Browser)
             } else {
-                state.mic.acquisition_state().set(MicAcquisitionState::Failed);
+                state
+                    .mic
+                    .acquisition_state()
+                    .set(MicAcquisitionState::Failed);
                 state.mic.strategy().set(MicStrategy::Ask);
                 state.mic.backend().set(None);
                 state.mic.device_info().set(None);
                 state.mic.selected_device().set(None);
-                state.status.message().set(Some("Browser mic failed. Please choose a microphone.".into()));
+                state.status.message().set(Some(
+                    "Browser mic failed. Please choose a microphone.".into(),
+                ));
                 None
             }
         }
         MicStrategy::Selected => {
             if let Some(backend) = state.mic.backend().get_untracked() {
-                state.mic.acquisition_state().set(MicAcquisitionState::Acquiring);
+                state
+                    .mic
+                    .acquisition_state()
+                    .set(MicAcquisitionState::Acquiring);
                 let t0 = js_sys::Date::now();
                 if open_backend(state, backend).await {
                     let elapsed = js_sys::Date::now() - t0;
                     state.mic.permission_dialog_shown().set(elapsed > 1500.0);
-                    state.mic.acquisition_state().set(MicAcquisitionState::Ready);
+                    state
+                        .mic
+                        .acquisition_state()
+                        .set(MicAcquisitionState::Ready);
                     let st = *state;
-                    wasm_bindgen_futures::spawn_local(async move { maybe_prompt_notifications(&st).await; });
+                    wasm_bindgen_futures::spawn_local(async move {
+                        maybe_prompt_notifications(&st).await;
+                    });
                     return Some(backend);
                 } else {
                     state.mic.strategy().set(MicStrategy::Ask);
@@ -434,20 +518,29 @@ pub async fn acquire_mic(state: &AppState, action: MicPendingAction) -> Option<M
                     state.mic.device_info().set(None);
                     state.mic.selected_device().set(None);
                     state.mic.acquisition_state().set(MicAcquisitionState::Idle);
-                    state.status.message().set(Some("Microphone failed. Please choose again.".into()));
+                    state
+                        .status
+                        .message()
+                        .set(Some("Microphone failed. Please choose again.".into()));
                     return None;
                 }
             }
             // No backend remembered despite Selected — fall back to Ask
             state.mic.strategy().set(MicStrategy::Ask);
             state.mic.pending_action().set(Some(action));
-            state.mic.acquisition_state().set(MicAcquisitionState::AwaitingChoice);
+            state
+                .mic
+                .acquisition_state()
+                .set(MicAcquisitionState::AwaitingChoice);
             state.mic.show_chooser().set(true);
             None
         }
         MicStrategy::Ask => {
             state.mic.pending_action().set(Some(action));
-            state.mic.acquisition_state().set(MicAcquisitionState::AwaitingChoice);
+            state
+                .mic
+                .acquisition_state()
+                .set(MicAcquisitionState::AwaitingChoice);
             state.mic.show_chooser().set(true);
             None
         }
@@ -463,16 +556,32 @@ async fn do_start_recording(state: &AppState, backend: MicBackend) {
     let has_listen_file = was_listening && state.mic.live_file_idx().get_untracked().is_some();
 
     // Fetch device model on first recording (cached for future use)
-    if state.is_tauri && state.status.is_mobile().get_untracked() && state.recording_meta.device_model_enabled().get_untracked() {
+    if state.is_tauri
+        && state.status.is_mobile().get_untracked()
+        && state.recording_meta.device_model_enabled().get_untracked()
+    {
         let _ = fetch_device_model(state).await;
     }
 
     // Acquire GPS location if enabled (one-shot, non-blocking).
     // Skip if connected to a home WiFi network (geofencing).
-    if state.recording_meta.gps_enabled().get_untracked() && state.is_tauri && state.status.is_mobile().get_untracked() {
-        let on_home_wifi = if state.recording_meta.home_wifi_ssids().with_untracked(|list| !list.is_empty()) {
-            get_wifi_ssid().await
-                .map(|ssid| state.recording_meta.home_wifi_ssids().with_untracked(|list| list.contains(&ssid)))
+    if state.recording_meta.gps_enabled().get_untracked()
+        && state.is_tauri
+        && state.status.is_mobile().get_untracked()
+    {
+        let on_home_wifi = if state
+            .recording_meta
+            .home_wifi_ssids()
+            .with_untracked(|list| !list.is_empty())
+        {
+            get_wifi_ssid()
+                .await
+                .map(|ssid| {
+                    state
+                        .recording_meta
+                        .home_wifi_ssids()
+                        .with_untracked(|list| list.contains(&ssid))
+                })
                 .unwrap_or(false)
         } else {
             false
@@ -481,7 +590,10 @@ async fn do_start_recording(state: &AppState, backend: MicBackend) {
             log::info!("On home WiFi — skipping location embedding");
             state.recording_meta.location().set(None);
         } else {
-            state.recording_meta.location().set(acquire_gps_location().await);
+            state
+                .recording_meta
+                .location()
+                .set(acquire_gps_location().await);
         }
     } else {
         state.recording_meta.location().set(None);
@@ -498,7 +610,10 @@ async fn do_start_recording(state: &AppState, backend: MicBackend) {
         // listen entry) instead of spawning a second recording file.
         let keep = state.mic.live_file_idx().get_untracked();
         prune_empty_live_placeholders(state, keep);
-        state.mic.live_file_idx().get_untracked()
+        state
+            .mic
+            .live_file_idx()
+            .get_untracked()
             .filter(|&idx| is_reusable_live_doc(state, idx))
     } else {
         None
@@ -540,7 +655,10 @@ async fn do_start_recording(state: &AppState, backend: MicBackend) {
             state.mic.recording().set(true);
             // Now safe to clear listening — recording is active, loop won't exit.
             state.mic.listening().set(false);
-            state.mic.recording_start_time().set(Some(js_sys::Date::now()));
+            state
+                .mic
+                .recording_start_time()
+                .set(Some(js_sys::Date::now()));
             // Keep capturing if the app is backgrounded (Android foreground service).
             start_foreground_service(state, "recording").await;
             let sr = state.mic.sample_rate().get_untracked();
@@ -567,11 +685,19 @@ async fn do_start_recording(state: &AppState, backend: MicBackend) {
                 spawn_smooth_scroll_animation(*state);
                 idx
             };
-            log::info!("Recording started ({:?}, pre-roll={}, file_idx={})", backend, has_listen_file, file_idx);
+            log::info!(
+                "Recording started ({:?}, pre-roll={}, file_idx={})",
+                backend,
+                has_listen_file,
+                file_idx
+            );
         }
         Err(e) => {
             log::error!("start_recording failed: {}", e);
-            state.status.message().set(Some(format!("Failed to start recording: {}", e)));
+            state
+                .status
+                .message()
+                .set(Some(format!("Failed to start recording: {}", e)));
             // A shared-storage (Android MediaStore) entry + fd may have been
             // reserved before start failed; delete the orphaned pending row so
             // it doesn't linger as a 0-byte file. (The detached fd itself can
@@ -622,11 +748,21 @@ fn tauri_result_to_params(rec: crate::audio::mic_backend::TauriRecordingResult) 
 fn handle_stop_result(result: StopResult, state: &AppState) {
     let bits_per_sample = state.mic.bits_per_sample().get_untracked();
     match result {
-        StopResult::Samples { samples, sample_rate } => {
-            finalize_recording(FinalizeParams {
-                samples, sample_rate, bits_per_sample, is_float: false,
-                saved_path: String::new(), file_size: None,
-            }, *state);
+        StopResult::Samples {
+            samples,
+            sample_rate,
+        } => {
+            finalize_recording(
+                FinalizeParams {
+                    samples,
+                    sample_rate,
+                    bits_per_sample,
+                    is_float: false,
+                    saved_path: String::new(),
+                    file_size: None,
+                },
+                *state,
+            );
         }
         StopResult::TauriResult(rec) => {
             finalize_recording(tauri_result_to_params(rec), *state);
@@ -637,7 +773,10 @@ fn handle_stop_result(result: StopResult, state: &AppState) {
         }
         StopResult::Error(e) => {
             log::error!("stop_recording failed: {}", e);
-            state.status.message().set(Some(format!("Recording failed: {}", e)));
+            state
+                .status
+                .message()
+                .set(Some(format!("Recording failed: {}", e)));
             cleanup_failed_recording(state);
         }
     }
@@ -698,7 +837,10 @@ async fn do_start_listening(state: &AppState, backend: MicBackend) {
     // create a new transient listening file. The reuse path lets the user
     // pre-configure HFR settings before pressing Listen, without spawning a
     // second file.
-    let reuse = state.mic.live_file_idx().get_untracked()
+    let reuse = state
+        .mic
+        .live_file_idx()
+        .get_untracked()
         .filter(|&idx| is_reusable_live_doc(state, idx));
     let file_idx = if let Some(idx) = reuse {
         // If it's a stale listen entry, reset its accumulated display state
@@ -749,10 +891,13 @@ pub async fn toggle_listen(state: &AppState) {
     if state.mic.recording().get_untracked() {
         if let Some(backend) = resolve_active_backend(state) {
             let enabling = !state.mic.listening().get_untracked();
-            state.log_debug("info", format!(
-                "toggle_listen: recording active, {} HET overlay only",
-                if enabling { "enabling" } else { "disabling" },
-            ));
+            state.log_debug(
+                "info",
+                format!(
+                    "toggle_listen: recording active, {} HET overlay only",
+                    if enabling { "enabling" } else { "disabling" },
+                ),
+            );
             if enabling {
                 // Reset HET state so we don't hear stale audio from a prior session
                 backend.clear_dsp_state();
@@ -784,13 +929,19 @@ pub async fn toggle_listen(state: &AppState) {
     let mic_backend = match acquire_mic(state, MicPendingAction::Listen).await {
         Some(b) => b,
         None => {
-            state.log_debug("info", "toggle_listen: acquire_mic returned None (chooser shown or failed)");
+            state.log_debug(
+                "info",
+                "toggle_listen: acquire_mic returned None (chooser shown or failed)",
+            );
             return;
         }
     };
 
     let backend = mic_backend;
-    state.log_debug("info", format!("toggle_listen: backend={:?}, starting listen", backend));
+    state.log_debug(
+        "info",
+        format!("toggle_listen: backend={:?}, starting listen", backend),
+    );
     do_start_listening(state, backend).await;
 }
 
@@ -853,7 +1004,10 @@ pub async fn arm_live_doc(state: &AppState) {
         }
     };
     let backend = mic_backend;
-    state.log_debug("info", format!("arm_live_doc: mic acquired ({:?})", backend));
+    state.log_debug(
+        "info",
+        format!("arm_live_doc: mic acquired ({:?})", backend),
+    );
 
     // Reset DSP state and tile caches so the empty doc starts clean.
     backend.clear_buffer();
@@ -883,13 +1037,19 @@ impl StartGate {
     /// Set the gate and arm a guard that clears it on drop.
     fn engage(state: &AppState) -> Self {
         state.mic.starting_recording().set(true);
-        Self { state: *state, armed: true }
+        Self {
+            state: *state,
+            armed: true,
+        }
     }
 
     /// Adopt a gate already set by an earlier call (the dialog hold), arming the
     /// guard so the current flow's early returns still release it.
     fn adopt(state: &AppState) -> Self {
-        Self { state: *state, armed: true }
+        Self {
+            state: *state,
+            armed: true,
+        }
     }
 
     /// Hand off responsibility for clearing the gate; drop becomes a no-op.
@@ -935,7 +1095,13 @@ pub async fn toggle_record(state: &AppState) {
     // If already listening, the mic is ready — go straight to recording
     if state.mic.listening().get_untracked() {
         if let Some(backend) = resolve_active_backend(state) {
-            state.log_debug("info", format!("toggle_record: already listening, starting immediate with {:?}", backend));
+            state.log_debug(
+                "info",
+                format!(
+                    "toggle_record: already listening, starting immediate with {:?}",
+                    backend
+                ),
+            );
             gate.disarm(); // do_start_recording clears the gate at its tail
             do_start_recording(state, backend).await;
             return;
@@ -946,7 +1112,10 @@ pub async fn toggle_record(state: &AppState) {
     let mic_backend = match acquire_mic(state, MicPendingAction::Record).await {
         Some(b) => b,
         None => {
-            state.log_debug("info", "toggle_record: acquire_mic returned None (chooser shown or failed)");
+            state.log_debug(
+                "info",
+                "toggle_record: acquire_mic returned None (chooser shown or failed)",
+            );
             return; // `gate` drops → releases the debounce gate
         }
     };
@@ -955,15 +1124,30 @@ pub async fn toggle_record(state: &AppState) {
 
     // If OS permission dialog was shown (detected by timing), skip our dialog
     if state.mic.permission_dialog_shown().get_untracked() {
-        state.log_debug("info", format!("toggle_record: backend={:?}, permission dialog detected, starting immediately", backend));
+        state.log_debug(
+            "info",
+            format!(
+                "toggle_record: backend={:?}, permission dialog detected, starting immediately",
+                backend
+            ),
+        );
         gate.disarm(); // do_start_recording clears the gate at its tail
         do_start_recording(state, backend).await;
     } else {
         // Show "Ready to record" dialog — user must confirm. The gate stays set
         // so a stray tap during the dialog can't kick off a second flow;
         // confirm_record_start / cancel_record_start own clearing it.
-        state.log_debug("info", format!("toggle_record: backend={:?}, showing Ready to Record dialog", backend));
-        state.mic.record_ready_state().set(crate::state::RecordReadyState::AwaitingConfirmation);
+        state.log_debug(
+            "info",
+            format!(
+                "toggle_record: backend={:?}, showing Ready to Record dialog",
+                backend
+            ),
+        );
+        state
+            .mic
+            .record_ready_state()
+            .set(crate::state::RecordReadyState::AwaitingConfirmation);
         gate.disarm(); // dialog confirm/cancel now owns the gate
     }
 }
@@ -982,7 +1166,10 @@ pub async fn toggle_record_with_preroll(state: &AppState) {
 
     // Debounce against rapid double-press (see `toggle_record` for why).
     if state.mic.starting_recording().get_untracked() {
-        state.log_debug("info", "toggle_record_with_preroll: ignored — start already in flight");
+        state.log_debug(
+            "info",
+            "toggle_record_with_preroll: ignored — start already in flight",
+        );
         return;
     }
     let gate = StartGate::engage(state);
@@ -1023,7 +1210,11 @@ pub async fn toggle_record_with_preroll(state: &AppState) {
     state.mic.preroll_samples().set(preroll);
 
     if let Some(backend) = resolve_active_backend(state) {
-        log::info!("Long-press record: capturing {} pre-roll samples (raw={}, gesture compensated)", preroll, raw_preroll);
+        log::info!(
+            "Long-press record: capturing {} pre-roll samples (raw={}, gesture compensated)",
+            preroll,
+            raw_preroll
+        );
         gate.disarm(); // do_start_recording clears the gate at its tail
         do_start_recording(state, backend).await;
     } else {
@@ -1033,7 +1224,10 @@ pub async fn toggle_record_with_preroll(state: &AppState) {
 
 /// Called by the "Ready to record" dialog's OK button.
 pub async fn confirm_record_start(state: &AppState) {
-    state.mic.record_ready_state().set(crate::state::RecordReadyState::None);
+    state
+        .mic
+        .record_ready_state()
+        .set(crate::state::RecordReadyState::None);
     // The gate is still held from toggle_record's dialog branch; adopt it so the
     // no-backend path below releases it.
     let gate = StartGate::adopt(state);
@@ -1047,7 +1241,10 @@ pub async fn confirm_record_start(state: &AppState) {
 
 /// Called by the "Ready to record" dialog's Cancel button.
 pub fn cancel_record_start(state: &AppState) {
-    state.mic.record_ready_state().set(crate::state::RecordReadyState::None);
+    state
+        .mic
+        .record_ready_state()
+        .set(crate::state::RecordReadyState::None);
     state.mic.starting_recording().set(false);
 }
 
@@ -1092,7 +1289,10 @@ pub fn stop_all(state: &AppState) {
                 crate::canvas::live_waterfall::clear();
                 b.close(&state_copy).await;
                 stop_foreground_service(&state_copy).await;
-                state_copy.mic.acquisition_state().set(MicAcquisitionState::Idle);
+                state_copy
+                    .mic
+                    .acquisition_state()
+                    .set(MicAcquisitionState::Idle);
             });
         }
         None => {
@@ -1104,22 +1304,22 @@ pub fn stop_all(state: &AppState) {
             wasm_bindgen_futures::spawn_local(async move {
                 MicBackend::Browser.close(&state_copy).await;
                 stop_foreground_service(&state_copy).await;
-                state_copy.mic.acquisition_state().set(MicAcquisitionState::Idle);
+                state_copy
+                    .mic
+                    .acquisition_state()
+                    .set(MicAcquisitionState::Idle);
             });
         }
     }
 }
 
 // Re-export from split modules
-pub use crate::audio::wav_encoder::encode_wav;
 pub(crate) use crate::audio::live_recording::{
-    start_live_recording, start_live_listening, start_live_armed,
-    is_reusable_live_doc, prune_empty_live_placeholders,
-    promote_armed_to_listening, promote_armed_to_recording,
-    revert_recording_to_armed, set_live_recording_zoom,
-    cleanup_listen_file, convert_listen_to_armed, convert_listen_to_recording,
-    rename_listen_to_recording,
-    spawn_live_processing_loop,
-    spawn_smooth_scroll_animation, finalize_recording,
-    cleanup_failed_recording,
+    cleanup_failed_recording, cleanup_listen_file, convert_listen_to_armed,
+    convert_listen_to_recording, finalize_recording, is_reusable_live_doc,
+    promote_armed_to_listening, promote_armed_to_recording, prune_empty_live_placeholders,
+    rename_listen_to_recording, revert_recording_to_armed, set_live_recording_zoom,
+    spawn_live_processing_loop, spawn_smooth_scroll_animation, start_live_armed,
+    start_live_listening, start_live_recording,
 };
+pub use crate::audio::wav_encoder::encode_wav;

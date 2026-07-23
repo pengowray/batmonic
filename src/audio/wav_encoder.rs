@@ -23,11 +23,11 @@ pub fn encode_wav_cue_chunks(markers: &[WavMarker]) -> Vec<u8> {
     buf.extend_from_slice(&cue_body_size.to_le_bytes());
     buf.extend_from_slice(&num_points.to_le_bytes());
     for m in markers {
-        buf.extend_from_slice(&m.id.to_le_bytes());          // id
+        buf.extend_from_slice(&m.id.to_le_bytes()); // id
         buf.extend_from_slice(&(m.position as u32).to_le_bytes()); // position
-        buf.extend_from_slice(b"data");                       // fcc_chunk
-        buf.extend_from_slice(&0u32.to_le_bytes());           // chunk_start
-        buf.extend_from_slice(&0u32.to_le_bytes());           // block_start
+        buf.extend_from_slice(b"data"); // fcc_chunk
+        buf.extend_from_slice(&0u32.to_le_bytes()); // chunk_start
+        buf.extend_from_slice(&0u32.to_le_bytes()); // block_start
         buf.extend_from_slice(&(m.position as u32).to_le_bytes()); // sample_offset
     }
 
@@ -44,7 +44,7 @@ pub fn encode_wav_cue_chunks(markers: &[WavMarker]) -> Vec<u8> {
             adtl_body.extend_from_slice(&m.id.to_le_bytes());
             adtl_body.extend_from_slice(text_bytes);
             adtl_body.push(0); // null terminator
-            // RIFF word-alignment padding
+                               // RIFF word-alignment padding
             if sub_size % 2 != 0 {
                 adtl_body.push(0);
             }
@@ -120,11 +120,11 @@ pub fn encode_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
 
     buf.extend_from_slice(b"fmt ");
     buf.extend_from_slice(&16u32.to_le_bytes());
-    buf.extend_from_slice(&1u16.to_le_bytes());  // PCM
-    buf.extend_from_slice(&1u16.to_le_bytes());  // mono
+    buf.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    buf.extend_from_slice(&1u16.to_le_bytes()); // mono
     buf.extend_from_slice(&sample_rate.to_le_bytes());
     buf.extend_from_slice(&(sample_rate * 2).to_le_bytes());
-    buf.extend_from_slice(&2u16.to_le_bytes());  // block align
+    buf.extend_from_slice(&2u16.to_le_bytes()); // block align
     buf.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
 
     buf.extend_from_slice(b"data");
@@ -192,9 +192,7 @@ pub(crate) fn trigger_browser_wav_download(wav_data: &[u8], filename: &str) {
 
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
-    let a: web_sys::HtmlAnchorElement = document
-        .create_element("a").unwrap()
-        .dyn_into().unwrap();
+    let a: web_sys::HtmlAnchorElement = document.create_element("a").unwrap().dyn_into().unwrap();
     a.set_href(&url);
     a.set_download(filename);
     a.set_attribute("style", "display:none").ok();
@@ -223,7 +221,12 @@ pub(crate) async fn save_wav_to_shared(wav_data: &[u8], filename: &str) {
     use crate::tauri_bridge::tauri_invoke_typed;
 
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("filename"),
+        &JsValue::from_str(filename),
+    )
+    .ok();
 
     let array = js_sys::Uint8Array::new_with_length(wav_data.len() as u32);
     array.copy_from(wav_data);
@@ -232,7 +235,9 @@ pub(crate) async fn save_wav_to_shared(wav_data: &[u8], filename: &str) {
     match tauri_invoke_typed::<oversample_ipc::plugins::SavePathResult>(
         "plugin:media-store|saveWavBytes",
         &args.into(),
-    ).await {
+    )
+    .await
+    {
         Ok(result) => {
             log::info!("Saved to shared storage: {}", result.path);
         }
@@ -241,7 +246,6 @@ pub(crate) async fn save_wav_to_shared(wav_data: &[u8], filename: &str) {
         }
     }
 }
-
 
 /// Try to save recording via Tauri IPC (web mode).
 /// Returns the saved path on success, or None on failure.
@@ -256,7 +260,12 @@ pub(crate) async fn try_tauri_save(wav_data: &[u8], filename: &str) -> Option<St
     };
 
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("filename"),
+        &JsValue::from_str(filename),
+    )
+    .ok();
 
     let array = js_sys::Uint8Array::new_with_length(wav_data.len() as u32);
     array.copy_from(wav_data);

@@ -48,7 +48,12 @@ pub struct RecoveryMeta {
 
 impl RecoveryMeta {
     /// Build the equivalent TauriGuanoParams for reconstruction.
-    pub fn to_guano_params(&self) -> (crate::recording::TauriGuanoParams, Option<chrono::DateTime<chrono::Local>>) {
+    pub fn to_guano_params(
+        &self,
+    ) -> (
+        crate::recording::TauriGuanoParams,
+        Option<chrono::DateTime<chrono::Local>>,
+    ) {
         use crate::recording::{RecordingLocation, TauriGuanoParams};
         let location = match (self.latitude, self.longitude) {
             (Some(lat), Some(lon)) => Some(RecordingLocation {
@@ -363,7 +368,9 @@ pub fn finalize_in_place_and_take(
     let pad = if text_bytes.len() % 2 == 1 { 1 } else { 0 };
     let chunk_total_bytes = 8 + text_bytes.len() as u64 + pad as u64;
     writer.wav_file.write_all(b"guan")?;
-    writer.wav_file.write_all(&(text_bytes.len() as u32).to_le_bytes())?;
+    writer
+        .wav_file
+        .write_all(&(text_bytes.len() as u32).to_le_bytes())?;
     writer.wav_file.write_all(text_bytes)?;
     if pad == 1 {
         writer.wav_file.write_all(&[0u8])?;
@@ -380,7 +387,12 @@ pub fn finalize_in_place_and_take(
     // after this returns (e.g. shutdown) doesn't lose the recording.
     writer.wav_file.sync_data()?;
 
-    let RecoveryWriter { wav_path, meta_path, wav_file, .. } = writer;
+    let RecoveryWriter {
+        wav_path,
+        meta_path,
+        wav_file,
+        ..
+    } = writer;
     drop(wav_file);
     let _ = std::fs::remove_file(&meta_path);
     Ok(wav_path)

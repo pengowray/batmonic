@@ -5,8 +5,8 @@
 // smoothly at 60fps without invalidating the expensive underlying image.
 
 use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::state::AppState;
+use leptos::prelude::*;
 
 /// Shared playhead line. Mount inside a position-relative stage whose
 /// width matches the main canvas. `x_offset` inserts a left-side inset
@@ -28,8 +28,11 @@ pub fn Playhead(#[prop(default = 0.0)] x_offset: f64) -> impl IntoView {
         // (unknown → 1.0) so the line renders at x=0 when a view mounts
         // before its data is ready.
         let time_res = if let Some(ref tl) = state.timeline.active().get_untracked() {
-            tl.segments.first().and_then(|s| files.get(s.file_index))
-                .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+            tl.segments
+                .first()
+                .and_then(|s| files.get(s.file_index))
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(1.0)
         } else {
             let idx = state.library.current_index().get_untracked();
             idx.and_then(|i| files.get(i))
@@ -38,7 +41,11 @@ pub fn Playhead(#[prop(default = 0.0)] x_offset: f64) -> impl IntoView {
         };
         let data_w = (cw - x_offset).max(0.0);
         let visible_time = (data_w / zoom) * time_res;
-        let px_per_sec = if visible_time > 0.0 { data_w / visible_time } else { 0.0 };
+        let px_per_sec = if visible_time > 0.0 {
+            data_w / visible_time
+        } else {
+            0.0
+        };
         let x = x_offset + (playhead - scroll) * px_per_sec;
         format!("translateX({:.1}px)", x)
     };

@@ -3,9 +3,9 @@
 //! during playback. Complements the notch filter (which targets discrete tonal
 //! noise) by handling broadband hiss, wind, and ambient noise.
 
-use serde::{Serialize, Deserialize};
-use realfft::num_complex::Complex;
 use crate::dsp::fft::{hann_window, plan_fft_forward, plan_fft_inverse};
+use realfft::num_complex::Complex;
+use serde::{Deserialize, Serialize};
 
 /// A learned noise floor spectrum for spectral subtraction.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -26,7 +26,11 @@ pub struct NoiseFloor {
 
 /// Pick FFT size based on sample rate (same logic as notch detection).
 fn fft_size_for_rate(sample_rate: u32) -> usize {
-    if sample_rate >= 192_000 { 8192 } else { 4096 }
+    if sample_rate >= 192_000 {
+        8192
+    } else {
+        4096
+    }
 }
 
 /// Async version that yields periodically via a caller-supplied future.
@@ -183,7 +187,9 @@ pub fn apply_spectral_subtraction(
         }
 
         // Forward FFT
-        fft_fwd.process(&mut frame, &mut spectrum).expect("FFT forward failed");
+        fft_fwd
+            .process(&mut frame, &mut spectrum)
+            .expect("FFT forward failed");
 
         // Spectral subtraction per bin
         for (bin, c) in spectrum.iter_mut().enumerate() {
@@ -204,7 +210,9 @@ pub fn apply_spectral_subtraction(
         }
 
         // Inverse FFT
-        fft_inv.process(&mut spectrum, &mut time_out).expect("FFT inverse failed");
+        fft_inv
+            .process(&mut spectrum, &mut time_out)
+            .expect("FFT inverse failed");
 
         // Normalize + overlap-add
         let norm = 1.0 / fft_size as f32;
@@ -289,10 +297,18 @@ mod tests {
         // Steady-state region (skip windowing transients at the head/tail).
         let head = fft_size;
         let tail = out.len() - fft_size;
-        let in_rms: f64 = (samples[head..tail].iter().map(|&s| (s as f64).powi(2)).sum::<f64>()
-            / (tail - head) as f64).sqrt();
-        let out_rms: f64 = (out[head..tail].iter().map(|&s| (s as f64).powi(2)).sum::<f64>()
-            / (tail - head) as f64).sqrt();
+        let in_rms: f64 = (samples[head..tail]
+            .iter()
+            .map(|&s| (s as f64).powi(2))
+            .sum::<f64>()
+            / (tail - head) as f64)
+            .sqrt();
+        let out_rms: f64 = (out[head..tail]
+            .iter()
+            .map(|&s| (s as f64).powi(2))
+            .sum::<f64>()
+            / (tail - head) as f64)
+            .sqrt();
         // floor_factor=0.1 means output magnitude is capped at 10% per bin, so total
         // RMS should drop by roughly the same factor (within a few percent slack).
         assert!(
@@ -315,9 +331,16 @@ mod tests {
         let out = apply_spectral_subtraction(&samples, sr, &floor, 1.0, 0.1, 0.0);
         let head = fft_size;
         let tail = out.len() - fft_size;
-        let diff_rms: f64 = (samples[head..tail].iter().zip(out[head..tail].iter())
-            .map(|(a, b)| ((a - b) as f64).powi(2)).sum::<f64>()
-            / (tail - head) as f64).sqrt();
-        assert!(diff_rms < 0.05, "expected near-passthrough, diff_rms={diff_rms}");
+        let diff_rms: f64 = (samples[head..tail]
+            .iter()
+            .zip(out[head..tail].iter())
+            .map(|(a, b)| ((a - b) as f64).powi(2))
+            .sum::<f64>()
+            / (tail - head) as f64)
+            .sqrt();
+        assert!(
+            diff_rms < 0.05,
+            "expected near-passthrough, diff_rms={diff_rms}"
+        );
     }
 }

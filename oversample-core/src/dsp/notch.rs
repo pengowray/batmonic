@@ -1,7 +1,7 @@
 //! Notch noise filtering: automatic detection of persistent electronic noise
 //! bands and IIR biquad band-reject filters to suppress them during playback.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// A single detected or manually defined noise band.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -92,7 +92,8 @@ impl BiquadState {
     fn process(&mut self, x: f32) -> f32 {
         let x = x as f64;
         let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
-            - self.a1 * self.y1 - self.a2 * self.y2;
+            - self.a1 * self.y1
+            - self.a2 * self.y2;
         self.x2 = self.x1;
         self.x1 = x;
         self.y2 = self.y1;
@@ -113,20 +114,27 @@ pub fn apply_notch_filters(
 
     let mut filters: Vec<BiquadState> = bands
         .iter()
-        .filter(|b| b.enabled && b.center_hz > 0.0 && b.q > 0.0
-            && b.center_hz < nyquist)
+        .filter(|b| b.enabled && b.center_hz > 0.0 && b.q > 0.0 && b.center_hz < nyquist)
         .map(|b| BiquadState::notch(b.center_hz, b.q, sample_rate))
         .collect();
 
     // Add harmonic suppression filters (2x and 3x center frequency)
     if harmonic_suppression > 0.0 {
         let gain_db = -48.0 * harmonic_suppression;
-        for band in bands.iter().filter(|b| b.enabled && b.center_hz > 0.0 && b.q > 0.0) {
+        for band in bands
+            .iter()
+            .filter(|b| b.enabled && b.center_hz > 0.0 && b.q > 0.0)
+        {
             let q = (band.q * 0.7).max(3.0);
             for multiplier in [2.0, 3.0] {
                 let harmonic_hz = band.center_hz * multiplier;
                 if harmonic_hz > 0.0 && harmonic_hz < nyquist {
-                    filters.push(BiquadState::peaking_eq(harmonic_hz, q, gain_db, sample_rate));
+                    filters.push(BiquadState::peaking_eq(
+                        harmonic_hz,
+                        q,
+                        gain_db,
+                        sample_rate,
+                    ));
                 }
             }
         }
@@ -525,7 +533,7 @@ mod tests {
         // Strong narrow 5 kHz tone embedded in white-ish noise — should be detected.
         let sr = 44_100u32;
         let n = sr as usize * 2; // 2 s
-        // Pseudo-random low-amplitude noise (deterministic — no `rand` dependency).
+                                 // Pseudo-random low-amplitude noise (deterministic — no `rand` dependency).
         let mut samples: Vec<f32> = (0..n)
             .map(|i| {
                 let pseudo = ((i.wrapping_mul(2654435761) >> 10) & 0xFFFF) as f32 / 65535.0 - 0.5;

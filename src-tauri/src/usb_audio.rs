@@ -85,8 +85,12 @@ impl UsbRecordingBuffer {
         } else {
             // Listening: keep a rolling pre-roll ring, capped to bound memory.
             self.preroll_i16.extend(data.iter().copied());
-            let cap = (self.sample_rate as usize).saturating_mul(PREROLL_RING_SECS).max(1);
-            while self.preroll_i16.len() > cap { self.preroll_i16.pop_front(); }
+            let cap = (self.sample_rate as usize)
+                .saturating_mul(PREROLL_RING_SECS)
+                .max(1);
+            while self.preroll_i16.len() > cap {
+                self.preroll_i16.pop_front();
+            }
         }
         // Always push to pending for streaming/live display
         let f32_data: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
@@ -300,7 +304,8 @@ pub fn start_usb_stream(
             }
             Err(e) => {
                 eprintln!("USB stream error: {}", e);
-                let _ = app_for_thread.emit("usb-stream-error", &format!("USB stream error: {}", e));
+                let _ =
+                    app_for_thread.emit("usb-stream-error", &format!("USB stream error: {}", e));
             }
         }
     });
@@ -309,7 +314,9 @@ pub fn start_usb_stream(
     match startup_rx.recv_timeout(std::time::Duration::from_secs(5)) {
         Ok(Ok(())) => { /* streaming started successfully */ }
         Ok(Err(e)) => return Err(format!("USB stream failed to start: {}", e)),
-        Err(_) => return Err("USB stream startup timeout (5s) — device may not be sending data".into()),
+        Err(_) => {
+            return Err("USB stream startup timeout (5s) — device may not be sending data".into())
+        }
     }
 
     // Start emitter for streaming audio chunks to the frontend (also does
@@ -350,9 +357,9 @@ pub fn start_usb_stream(
 
 #[cfg(target_os = "android")]
 mod isochronous {
+    use super::UsbRecordingBuffer;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
-    use super::UsbRecordingBuffer;
 
     // ioctl direction bits
     const _IOC_WRITE: u32 = 1;
@@ -382,17 +389,29 @@ mod isochronous {
 
     const USBDEVFS_MAGIC: u32 = b'U' as u32;
 
-    const USBDEVFS_SUBMITURB: u32 =
-        _ior(USBDEVFS_MAGIC, 10, std::mem::size_of::<UsbdevfsUrb>() as u32);
+    const USBDEVFS_SUBMITURB: u32 = _ior(
+        USBDEVFS_MAGIC,
+        10,
+        std::mem::size_of::<UsbdevfsUrb>() as u32,
+    );
     const USBDEVFS_DISCARDURB: u32 = _ioc(0, USBDEVFS_MAGIC, 11, 0);
-    const USBDEVFS_REAPURB: u32 =
-        _iow(USBDEVFS_MAGIC, 12, std::mem::size_of::<*mut std::ffi::c_void>() as u32);
-    const USBDEVFS_REAPURBNDELAY: u32 =
-        _iow(USBDEVFS_MAGIC, 13, std::mem::size_of::<*mut std::ffi::c_void>() as u32);
+    const USBDEVFS_REAPURB: u32 = _iow(
+        USBDEVFS_MAGIC,
+        12,
+        std::mem::size_of::<*mut std::ffi::c_void>() as u32,
+    );
+    const USBDEVFS_REAPURBNDELAY: u32 = _iow(
+        USBDEVFS_MAGIC,
+        13,
+        std::mem::size_of::<*mut std::ffi::c_void>() as u32,
+    );
     const USBDEVFS_CLAIMINTERFACE: u32 =
         _ior(USBDEVFS_MAGIC, 15, std::mem::size_of::<u32>() as u32);
-    const USBDEVFS_SETINTERFACE: u32 =
-        _ior(USBDEVFS_MAGIC, 4, std::mem::size_of::<UsbdevfsSetinterface>() as u32);
+    const USBDEVFS_SETINTERFACE: u32 = _ior(
+        USBDEVFS_MAGIC,
+        4,
+        std::mem::size_of::<UsbdevfsSetinterface>() as u32,
+    );
 
     const USBDEVFS_URB_TYPE_ISO: u8 = 0;
     const USBDEVFS_URB_ISO_ASAP: u32 = 0x02;
@@ -458,14 +477,20 @@ mod isochronous {
         // CLAIMINTERFACE: claim the audio streaming interface (may already be claimed)
         let mut iface_num = interface_number;
         let ret = unsafe {
-            libc::ioctl(fd, USBDEVFS_CLAIMINTERFACE as libc::c_int,
-                &mut iface_num as *mut u32)
+            libc::ioctl(
+                fd,
+                USBDEVFS_CLAIMINTERFACE as libc::c_int,
+                &mut iface_num as *mut u32,
+            )
         };
         if ret != 0 {
             let err = std::io::Error::last_os_error();
             // EBUSY means already claimed — that's fine
             if err.raw_os_error() != Some(libc::EBUSY) {
-                eprintln!("USBDEVFS_CLAIMINTERFACE({}) warning: {}", interface_number, err);
+                eprintln!(
+                    "USBDEVFS_CLAIMINTERFACE({}) warning: {}",
+                    interface_number, err
+                );
             }
         }
 
@@ -477,8 +502,11 @@ mod isochronous {
                 altsetting: alternate_setting,
             };
             let ret = unsafe {
-                libc::ioctl(fd, USBDEVFS_SETINTERFACE as libc::c_int,
-                    &mut setif as *mut UsbdevfsSetinterface)
+                libc::ioctl(
+                    fd,
+                    USBDEVFS_SETINTERFACE as libc::c_int,
+                    &mut setif as *mut UsbdevfsSetinterface,
+                )
             };
             if ret != 0 {
                 let err = std::io::Error::last_os_error();
@@ -489,7 +517,10 @@ mod isochronous {
                 let _ = startup_tx.send(Err(msg.clone()));
                 return Err(msg);
             }
-            eprintln!("USBDEVFS_SETINTERFACE iface={} alt={} OK", interface_number, alternate_setting);
+            eprintln!(
+                "USBDEVFS_SETINTERFACE iface={} alt={} OK",
+                interface_number, alternate_setting
+            );
         }
 
         let requested_bytes_per_frame = max_packet_size as usize;
@@ -633,7 +664,10 @@ mod isochronous {
             }
             // Reset timeout counter on successful poll
             if timeout_retries > 0 {
-                eprintln!("USB stream recovered after {} timeout retries", timeout_retries);
+                eprintln!(
+                    "USB stream recovered after {} timeout retries",
+                    timeout_retries
+                );
                 timeout_retries = 0;
             }
 
@@ -667,8 +701,7 @@ mod isochronous {
             // Process the reaped URB's audio data
             if !cancel.load(Ordering::Relaxed) {
                 let reaped = unsafe { &*urb_reaped };
-                let urb_with_packets =
-                    unsafe { &*(reaped.usercontext as *const UrbWithPackets) };
+                let urb_with_packets = unsafe { &*(reaped.usercontext as *const UrbWithPackets) };
 
                 mono_buf.clear();
 
@@ -680,8 +713,7 @@ mod isochronous {
                     if actual_samples > 0 {
                         let src = unsafe {
                             std::slice::from_raw_parts(
-                                (reaped.buffer as *const u8).add(src_byte_offset)
-                                    as *const i16,
+                                (reaped.buffer as *const u8).add(src_byte_offset) as *const i16,
                                 actual_samples,
                             )
                         };
@@ -689,8 +721,7 @@ mod isochronous {
                         if num_channels == 2 {
                             for chunk in src.chunks(2) {
                                 if chunk.len() == 2 {
-                                    let avg =
-                                        ((chunk[0] as i32 + chunk[1] as i32) >> 1) as i16;
+                                    let avg = ((chunk[0] as i32 + chunk[1] as i32) >> 1) as i16;
                                     mono_buf.push(avg);
                                 }
                             }
@@ -719,9 +750,7 @@ mod isochronous {
 
             // Resubmit unless cancelling
             if !cancel.load(Ordering::Relaxed) {
-                let ret = unsafe {
-                    libc::ioctl(fd, USBDEVFS_SUBMITURB as libc::c_int, urb_reaped)
-                };
+                let ret = unsafe { libc::ioctl(fd, USBDEVFS_SUBMITURB as libc::c_int, urb_reaped) };
                 if ret == 0 {
                     balls_in_air += 1;
                 } else {

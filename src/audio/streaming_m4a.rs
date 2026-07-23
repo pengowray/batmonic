@@ -14,14 +14,16 @@ use symphonia::core::codecs::audio::AudioDecoder;
 use symphonia::core::formats::{FormatReader, SeekMode, SeekTo};
 use symphonia::core::units::Time;
 
+use super::streaming_source::{mix_to_mono, CachedChunk, ChunkCache, FileHandle, CHUNK_FRAMES};
 use crate::audio::source::{AudioSource, ChannelView};
-use super::streaming_source::{FileHandle, ChunkCache, CachedChunk, CHUNK_FRAMES, mix_to_mono};
 
 /// Clears `decoding_in_progress` on scope exit, so an early return or error
 /// path can't leave the source locked forever.
 struct DecodeGuard<'a>(&'a Cell<bool>);
 impl Drop for DecodeGuard<'_> {
-    fn drop(&mut self) { self.0.set(false); }
+    fn drop(&mut self) {
+        self.0.set(false);
+    }
 }
 
 /// Reader state held across prefetch calls. Not thread-safe — WASM is
@@ -112,9 +114,15 @@ impl StreamingM4aSource {
         }
     }
 
-    pub fn file_size(&self) -> u64 { self.file_size }
-    pub fn is_fully_decoded(&self) -> bool { self.fully_decoded.get() }
-    pub fn decode_frame_cursor_value(&self) -> u64 { self.decode_frame_cursor.get() }
+    pub fn file_size(&self) -> u64 {
+        self.file_size
+    }
+    pub fn is_fully_decoded(&self) -> bool {
+        self.fully_decoded.get()
+    }
+    pub fn decode_frame_cursor_value(&self) -> u64 {
+        self.decode_frame_cursor.get()
+    }
 
     /// Ensure all chunks covering `[start_frame, start_frame + len)` are cached.
     /// For M4A we can seek directly to the target region via the sample table —
@@ -142,10 +150,14 @@ impl StreamingM4aSource {
             }
             ok
         };
-        if all_cached { return; }
+        if all_cached {
+            return;
+        }
 
         for chunk_idx in first_chunk..=last_chunk {
-            if self.cache.borrow().contains(chunk_idx) { continue; }
+            if self.cache.borrow().contains(chunk_idx) {
+                continue;
+            }
             if self.decode_chunk(chunk_idx).await.is_err() {
                 break;
             }
@@ -159,7 +171,9 @@ impl StreamingM4aSource {
 
         let chunk_start = chunk_idx * CHUNK_FRAMES as u64;
         let chunk_end = (chunk_start + CHUNK_FRAMES as u64).min(self.total_frames);
-        if chunk_start >= self.total_frames { return Err("Past EOF".into()); }
+        if chunk_start >= self.total_frames {
+            return Err("Past EOF".into());
+        }
 
         // Cooperative mutex: the FormatReader + Decoder are shared mutable
         // state, so two decode_chunk calls cannot interleave across .await
@@ -174,10 +188,14 @@ impl StreamingM4aSource {
                 return Err("decode_chunk waited >6s for lock".into());
             }
             let p = js_sys::Promise::new(&mut |resolve, _| {
-                web_sys::window().unwrap()
+                web_sys::window()
+                    .unwrap()
                     .set_timeout_with_callback_and_timeout_and_arguments_1(
-                        &resolve, 50, &wasm_bindgen::JsValue::NULL,
-                    ).unwrap();
+                        &resolve,
+                        50,
+                        &wasm_bindgen::JsValue::NULL,
+                    )
+                    .unwrap();
             });
             wasm_bindgen_futures::JsFuture::from(p).await.ok();
         }
@@ -197,12 +215,14 @@ impl StreamingM4aSource {
             let need_seek = state.next_frame != chunk_start;
             if need_seek {
                 let secs = chunk_start as f64 / self.sample_rate as f64;
-                let time = Time::try_from_secs_f64(secs)
-                    .unwrap_or(Time::from_nanos(0));
+                let time = Time::try_from_secs_f64(secs).unwrap_or(Time::from_nanos(0));
                 let track_id = state.track_id;
                 match state.format.seek(
                     SeekMode::Accurate,
-                    SeekTo::Time { time, track_id: Some(track_id) },
+                    SeekTo::Time {
+                        time,
+                        track_id: Some(track_id),
+                    },
                 ) {
                     Ok(_seeked) => {
                         // seeked.actual_ts is in the track's TimeBase (container
@@ -291,7 +311,9 @@ impl StreamingM4aSource {
                     // Flush complete CHUNK_FRAMES-sized chunks to cache.
                     loop {
                         let pending_frames = pending_interleaved.len() / channels;
-                        if pending_frames < CHUNK_FRAMES { break; }
+                        if pending_frames < CHUNK_FRAMES {
+                            break;
+                        }
                         let take_samples = CHUNK_FRAMES * channels;
                         let chunk_interleaved: Vec<f32> =
                             pending_interleaved.drain(..take_samples).collect();
@@ -302,7 +324,9 @@ impl StreamingM4aSource {
                             (mono, Some(chunk_interleaved))
                         };
                         let ci = pending_start_frame / CHUNK_FRAMES as u64;
-                        self.cache.borrow_mut().insert(ci, CachedChunk { mono, raw });
+                        self.cache
+                            .borrow_mut()
+                            .insert(ci, CachedChunk { mono, raw });
                         pending_start_frame += CHUNK_FRAMES as u64;
                         if pending_start_frame > self.decode_frame_cursor.get() {
                             self.decode_frame_cursor.set(pending_start_frame);
@@ -314,7 +338,8 @@ impl StreamingM4aSource {
                         crate::canvas::tile_cache::yield_to_browser().await;
                     }
 
-                    let now_frame = pending_start_frame + (pending_interleaved.len() / channels) as u64;
+                    let now_frame =
+                        pending_start_frame + (pending_interleaved.len() / channels) as u64;
                     if now_frame >= chunk_end {
                         break;
                     }
@@ -341,7 +366,9 @@ impl StreamingM4aSource {
             };
             let mono_len = mono.len() as u64;
             let ci = pending_start_frame / CHUNK_FRAMES as u64;
-            self.cache.borrow_mut().insert(ci, CachedChunk { mono, raw });
+            self.cache
+                .borrow_mut()
+                .insert(ci, CachedChunk { mono, raw });
             let end_frame = pending_start_frame + mono_len;
             if end_frame > self.decode_frame_cursor.get() {
                 self.decode_frame_cursor.set(end_frame);
@@ -379,7 +406,9 @@ impl StreamingM4aSource {
 
     fn read_cached_mono(&self, start: u64, buf: &mut [f32]) -> usize {
         let end = (start + buf.len() as u64).min(self.total_frames);
-        if end <= start { return 0; }
+        if end <= start {
+            return 0;
+        }
         let total_to_read = (end - start) as usize;
         let mut written = 0usize;
         let mut cache = self.cache.borrow_mut();
@@ -397,9 +426,13 @@ impl StreamingM4aSource {
                 let start_idx = offset_in_chunk.min(end_idx);
                 let n = end_idx - start_idx;
                 buf[written..written + n].copy_from_slice(&chunk.mono[start_idx..end_idx]);
-                for s in &mut buf[written + n..written + to_read] { *s = 0.0; }
+                for s in &mut buf[written + n..written + to_read] {
+                    *s = 0.0;
+                }
             } else {
-                for s in &mut buf[written..written + to_read] { *s = 0.0; }
+                for s in &mut buf[written..written + to_read] {
+                    *s = 0.0;
+                }
             }
             written += to_read;
         }
@@ -408,7 +441,9 @@ impl StreamingM4aSource {
 
     fn read_cached_channel(&self, ch: u32, start: u64, buf: &mut [f32]) -> usize {
         let end = (start + buf.len() as u64).min(self.total_frames);
-        if end <= start { return 0; }
+        if end <= start {
+            return 0;
+        }
         let total_to_read = (end - start) as usize;
         let channels = self.channels as usize;
         let mut written = 0usize;
@@ -433,10 +468,14 @@ impl StreamingM4aSource {
                     let start_idx = offset_in_chunk.min(end_idx);
                     let n = end_idx - start_idx;
                     buf[written..written + n].copy_from_slice(&chunk.mono[start_idx..end_idx]);
-                    for s in &mut buf[written + n..written + to_read] { *s = 0.0; }
+                    for s in &mut buf[written + n..written + to_read] {
+                        *s = 0.0;
+                    }
                 }
             } else {
-                for s in &mut buf[written..written + to_read] { *s = 0.0; }
+                for s in &mut buf[written..written + to_read] {
+                    *s = 0.0;
+                }
             }
             written += to_read;
         }
@@ -445,14 +484,24 @@ impl StreamingM4aSource {
 }
 
 impl AudioSource for StreamingM4aSource {
-    fn total_samples(&self) -> u64 { self.total_frames }
-    fn sample_rate(&self) -> u32 { self.sample_rate }
-    fn channel_count(&self) -> u32 { self.channels }
-    fn is_fully_loaded(&self) -> bool { false }
+    fn total_samples(&self) -> u64 {
+        self.total_frames
+    }
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+    fn channel_count(&self) -> u32 {
+        self.channels
+    }
+    fn is_fully_loaded(&self) -> bool {
+        false
+    }
 
     fn read_samples(&self, channel: ChannelView, start: u64, buf: &mut [f32]) -> usize {
         let end = (start + buf.len() as u64).min(self.total_frames);
-        if end <= start { return 0; }
+        if end <= start {
+            return 0;
+        }
         let total_len = (end - start) as usize;
         let buf = &mut buf[..total_len];
         let head_end = self.head_frames as u64;
@@ -472,7 +521,9 @@ impl AudioSource for StreamingM4aSource {
             }
             ChannelView::Channel(ch) => {
                 if ch >= self.channels {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 if end <= head_end {
@@ -488,7 +539,9 @@ impl AudioSource for StreamingM4aSource {
             }
             ChannelView::Difference => {
                 if self.channels < 2 {
-                    for s in buf.iter_mut() { *s = 0.0; }
+                    for s in buf.iter_mut() {
+                        *s = 0.0;
+                    }
                     return total_len;
                 }
                 let mut left = vec![0.0f32; total_len];
@@ -503,6 +556,10 @@ impl AudioSource for StreamingM4aSource {
         }
     }
 
-    fn as_contiguous(&self) -> Option<&[f32]> { None }
-    fn as_any(&self) -> &dyn std::any::Any { self }
+    fn as_contiguous(&self) -> Option<&[f32]> {
+        None
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

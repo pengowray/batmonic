@@ -1,7 +1,9 @@
 use crate::state::store_fields::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemWritableFileStream, WritableStream};
+use web_sys::{
+    FileSystemDirectoryHandle, FileSystemFileHandle, FileSystemWritableFileStream, WritableStream,
+};
 
 const OPFS_DIR: &str = "oversample-annotations";
 
@@ -38,8 +40,15 @@ pub fn opfs_key(identity: &crate::annotations::FileIdentity) -> String {
 
 /// Build the filename+size fallback key.
 fn opfs_fallback_key(filename: &str, file_size: u64) -> String {
-    let safe_name: String = filename.chars()
-        .map(|c| if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+    let safe_name: String = filename
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!("{}_{}.batm", safe_name, file_size)
 }
@@ -56,14 +65,15 @@ pub async fn opfs_save(key: &str, yaml: &str) -> Result<(), String> {
             .map_err(|e| format!("OPFS get file: {e:?}"))?
             .unchecked_into();
 
-    let writable: FileSystemWritableFileStream =
-        JsFuture::from(file_handle.create_writable())
-            .await
-            .map_err(|e| format!("OPFS create writable: {e:?}"))?
-            .unchecked_into();
+    let writable: FileSystemWritableFileStream = JsFuture::from(file_handle.create_writable())
+        .await
+        .map_err(|e| format!("OPFS create writable: {e:?}"))?
+        .unchecked_into();
 
     JsFuture::from(
-        writable.write_with_str(yaml).map_err(|e| format!("OPFS write: {e:?}"))?,
+        writable
+            .write_with_str(yaml)
+            .map_err(|e| format!("OPFS write: {e:?}"))?,
     )
     .await
     .map_err(|e| format!("OPFS write await: {e:?}"))?;
@@ -109,11 +119,13 @@ pub async fn opfs_delete(key: &str) -> Result<(), String> {
 }
 
 /// Load and parse a .batm sidecar by its OPFS key.
-pub async fn load_batm_by_key(key: &str) -> Result<Option<crate::annotations::AnnotationSet>, String> {
+pub async fn load_batm_by_key(
+    key: &str,
+) -> Result<Option<crate::annotations::AnnotationSet>, String> {
     match opfs_load(key).await? {
         Some(yaml) => {
-            let set: crate::annotations::AnnotationSet = yaml_serde::from_str(&yaml)
-                .map_err(|e| format!("YAML parse: {e}"))?;
+            let set: crate::annotations::AnnotationSet =
+                yaml_serde::from_str(&yaml).map_err(|e| format!("YAML parse: {e}"))?;
             set.warn_if_future_version();
             Ok(Some(set))
         }
@@ -122,7 +134,9 @@ pub async fn load_batm_by_key(key: &str) -> Result<Option<crate::annotations::An
 }
 
 /// Build a NoiseProfile from current app state, or None if there's nothing to save.
-fn sync_noise_profile_from_state(state: crate::state::AppState) -> Option<crate::dsp::notch::NoiseProfile> {
+fn sync_noise_profile_from_state(
+    state: crate::state::AppState,
+) -> Option<crate::dsp::notch::NoiseProfile> {
     use leptos::prelude::GetUntracked;
 
     let bands = state.notch.bands().get_untracked();
@@ -144,7 +158,10 @@ fn sync_noise_profile_from_state(state: crate::state::AppState) -> Option<crate:
             .map(|f| {
                 let base = f.name.rsplit('/').next().unwrap_or(&f.name);
                 let base = base.rsplit('\\').next().unwrap_or(base);
-                base.rsplit_once('.').map(|(n, _)| n).unwrap_or(base).to_string()
+                base.rsplit_once('.')
+                    .map(|(n, _)| n)
+                    .unwrap_or(base)
+                    .to_string()
             })
             .unwrap_or_else(|| "Noise Profile".to_string())
     } else {
@@ -176,11 +193,16 @@ pub fn save_annotations(state: crate::state::AppState, file_idx: usize) {
     use leptos::prelude::{GetUntracked, Update, WithUntracked};
 
     // Check read_only flag — skip all saves
-    let (read_only, had_sidecar) = state.library.files().with_untracked(|files: &Vec<crate::state::LoadedFile>| {
-        files.get(file_idx)
-            .map(|f| (f.read_only, f.had_sidecar))
-            .unwrap_or((false, false))
-    });
+    let (read_only, had_sidecar) =
+        state
+            .library
+            .files()
+            .with_untracked(|files: &Vec<crate::state::LoadedFile>| {
+                files
+                    .get(file_idx)
+                    .map(|f| (f.read_only, f.had_sidecar))
+                    .unwrap_or((false, false))
+            });
     if read_only {
         return;
     }
@@ -195,9 +217,11 @@ pub fn save_annotations(state: crate::state::AppState, file_idx: usize) {
     state.annotations.store().update(|store| {
         if let Some(set) = store.get_mut(file_id) {
             // Sync file identity from the LoadedFile (may have been updated after AnnotationSet creation)
-            if let Some(id) = state.library.files().with_untracked(|files| {
-                files.get(file_idx).and_then(|f| f.identity.clone())
-            }) {
+            if let Some(id) = state
+                .library
+                .files()
+                .with_untracked(|files| files.get(file_idx).and_then(|f| f.identity.clone()))
+            {
                 set.file_identity = id;
             }
             // Capture current NR state into the sidecar
@@ -260,17 +284,25 @@ pub fn save_sidecar_explicit(state: crate::state::AppState, file_idx: usize) {
 
     // Get the file path from LoadedFile.identity (authoritative source)
     let file_path = state.library.files().with_untracked(|files| {
-        files.get(file_idx).and_then(|f| f.identity.as_ref().and_then(|id| id.file_path.clone()))
+        files
+            .get(file_idx)
+            .and_then(|f| f.identity.as_ref().and_then(|id| id.file_path.clone()))
     });
     let path = match file_path {
         Some(p) => p,
-        None => { state.show_error_toast("No file path — file was not opened from disk"); return; }
+        None => {
+            state.show_error_toast("No file path — file was not opened from disk");
+            return;
+        }
     };
 
     // Resolve the in-memory list index to the file's stable id (untracked).
     let file_id = match state.file_id_at(file_idx) {
         Some(id) => id,
-        None => { state.show_error_toast("Failed to create annotation set"); return; }
+        None => {
+            state.show_error_toast("Failed to create annotation set");
+            return;
+        }
     };
 
     // Ensure an AnnotationSet exists, creating one if needed
@@ -282,9 +314,17 @@ pub fn save_sidecar_explicit(state: crate::state::AppState, file_idx: usize) {
             state.library.files().with_untracked(|files| {
                 files.get(file_idx).map(|f| {
                     let id = f.identity.clone().unwrap_or_else(|| {
-                        crate::file_identity::identity_layer1(&f.name, f.audio.metadata.file_size as u64)
+                        crate::file_identity::identity_layer1(
+                            &f.name,
+                            f.audio.metadata.file_size as u64,
+                        )
                     });
-                    crate::annotations::AnnotationSet::new_with_metadata(id, &f.audio, f.cached_peak_db, f.cached_full_peak_db)
+                    crate::annotations::AnnotationSet::new_with_metadata(
+                        id,
+                        &f.audio,
+                        f.cached_peak_db,
+                        f.cached_full_peak_db,
+                    )
                 })
             })
         };
@@ -293,9 +333,11 @@ pub fn save_sidecar_explicit(state: crate::state::AppState, file_idx: usize) {
         }
         // Sync file identity and noise profile, touch modified_at
         if let Some(set) = store.get_mut(file_id) {
-            if let Some(id) = state.library.files().with_untracked(|files| {
-                files.get(file_idx).and_then(|f| f.identity.clone())
-            }) {
+            if let Some(id) = state
+                .library
+                .files()
+                .with_untracked(|files| files.get(file_idx).and_then(|f| f.identity.clone()))
+            {
                 set.file_identity = id;
             }
             set.noise_profile = sync_noise_profile_from_state(state);
@@ -306,7 +348,10 @@ pub fn save_sidecar_explicit(state: crate::state::AppState, file_idx: usize) {
     let store = state.annotations.store().get_untracked();
     let set = match store.get(file_id) {
         Some(s) => s.clone(),
-        None => { state.show_error_toast("Failed to create annotation set"); return; }
+        None => {
+            state.show_error_toast("Failed to create annotation set");
+            return;
+        }
     };
 
     let sidecar_yaml = sidecar_yaml_without_full_path(&set);
@@ -334,13 +379,19 @@ pub fn save_annotations_to_opfs(state: crate::state::AppState, file_idx: usize) 
 /// Apply a loaded sidecar to the annotation store and restore NR profile to file settings.
 /// Keyed by the file's STABLE id; the list position is re-resolved here because
 /// an async load may have completed after the list changed.
-fn apply_loaded_sidecar(state: crate::state::AppState, file_id: u64, loaded: crate::annotations::AnnotationSet) {
+fn apply_loaded_sidecar(
+    state: crate::state::AppState,
+    file_id: u64,
+    loaded: crate::annotations::AnnotationSet,
+) {
     use leptos::prelude::Update;
 
     // Re-resolve the file's CURRENT position from its stable id. If it's gone
     // (closed during the load), drop the loaded set rather than applying it to
     // whatever file now sits at the old index.
-    let Some(file_idx) = state.file_idx_for_id(file_id) else { return; };
+    let Some(file_idx) = state.file_idx_for_id(file_id) else {
+        return;
+    };
 
     // If the sidecar has a noise profile, store it in the file's per-file settings.
     // Also restore cached peak values from sidecar metadata if not yet computed.
@@ -382,11 +433,17 @@ fn apply_loaded_sidecar(state: crate::state::AppState, file_id: u64, loaded: cra
 
 /// Try to load annotations for a file (OPFS on browser, central store + sidecar on Tauri).
 /// If found, merges into the annotation store for that file.
-pub fn load_annotations(state: crate::state::AppState, file_idx: usize, identity: crate::annotations::FileIdentity) {
+pub fn load_annotations(
+    state: crate::state::AppState,
+    file_idx: usize,
+    identity: crate::annotations::FileIdentity,
+) {
     // Bind to the file's STABLE id at call time. The async load below can
     // outlive list changes; resolving the id only at completion would risk
     // applying these annotations to whatever file later occupies `file_idx`.
-    let Some(file_id) = state.file_id_at(file_idx) else { return; };
+    let Some(file_id) = state.file_id_at(file_idx) else {
+        return;
+    };
     if state.is_tauri {
         load_annotations_tauri(state, file_id, identity);
     } else {
@@ -395,12 +452,20 @@ pub fn load_annotations(state: crate::state::AppState, file_idx: usize, identity
 }
 
 /// Legacy alias — use `load_annotations` instead.
-pub fn load_annotations_from_opfs(state: crate::state::AppState, file_idx: usize, identity: crate::annotations::FileIdentity) {
+pub fn load_annotations_from_opfs(
+    state: crate::state::AppState,
+    file_idx: usize,
+    identity: crate::annotations::FileIdentity,
+) {
     load_annotations(state, file_idx, identity);
 }
 
 /// Browser: try OPFS with fallback key chain.
-fn load_annotations_opfs(state: crate::state::AppState, file_id: u64, identity: crate::annotations::FileIdentity) {
+fn load_annotations_opfs(
+    state: crate::state::AppState,
+    file_id: u64,
+    identity: crate::annotations::FileIdentity,
+) {
     use leptos::prelude::GetUntracked;
 
     let key = opfs_key(&identity);
@@ -429,10 +494,13 @@ fn load_annotations_opfs(state: crate::state::AppState, file_id: u64, identity: 
                     match yaml_serde::from_str::<crate::annotations::AnnotationSet>(&yaml) {
                         Ok(loaded) => {
                             loaded.warn_if_future_version();
-                            let already_has = state.annotations.store().get_untracked().contains(file_id);
+                            let already_has =
+                                state.annotations.store().get_untracked().contains(file_id);
                             if !already_has {
                                 apply_loaded_sidecar(state, file_id, loaded);
-                                log::debug!("OPFS loaded annotations for file id {file_id}: {try_key}");
+                                log::debug!(
+                                    "OPFS loaded annotations for file id {file_id}: {try_key}"
+                                );
                                 // If found via fallback key, re-save under primary key
                                 if i > 0 {
                                     if let Some(idx) = state.file_idx_for_id(file_id) {
@@ -454,7 +522,11 @@ fn load_annotations_opfs(state: crate::state::AppState, file_id: u64, identity: 
 
 /// Tauri: try central annotations store, then file-adjacent sidecar.
 /// Also probes for file-adjacent sidecar existence and sets `had_sidecar` flag.
-fn load_annotations_tauri(state: crate::state::AppState, file_id: u64, identity: crate::annotations::FileIdentity) {
+fn load_annotations_tauri(
+    state: crate::state::AppState,
+    file_id: u64,
+    identity: crate::annotations::FileIdentity,
+) {
     use leptos::prelude::{GetUntracked, Update};
 
     let key = opfs_key(&identity);
@@ -465,7 +537,10 @@ fn load_annotations_tauri(state: crate::state::AppState, file_id: u64, identity:
         let sidecar_yaml = if let Some(ref path) = file_path {
             match tauri_load_sidecar(path).await {
                 Ok(yaml) => yaml,
-                Err(e) => { log::debug!("Tauri sidecar probe for {path}: {e}"); None }
+                Err(e) => {
+                    log::debug!("Tauri sidecar probe for {path}: {e}");
+                    None
+                }
             }
         } else {
             None
@@ -580,10 +655,18 @@ fn annotation_is_newer(
 /// Save annotations to the Tauri central annotations directory.
 async fn tauri_save_central(file_key: &str, yaml: &str) -> Result<(), String> {
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("fileKey"), &wasm_bindgen::JsValue::from_str(file_key))
-        .map_err(|e| format!("set fileKey: {e:?}"))?;
-    js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("yaml"), &wasm_bindgen::JsValue::from_str(yaml))
-        .map_err(|e| format!("set yaml: {e:?}"))?;
+    js_sys::Reflect::set(
+        &args,
+        &wasm_bindgen::JsValue::from_str("fileKey"),
+        &wasm_bindgen::JsValue::from_str(file_key),
+    )
+    .map_err(|e| format!("set fileKey: {e:?}"))?;
+    js_sys::Reflect::set(
+        &args,
+        &wasm_bindgen::JsValue::from_str("yaml"),
+        &wasm_bindgen::JsValue::from_str(yaml),
+    )
+    .map_err(|e| format!("set yaml: {e:?}"))?;
     crate::tauri_bridge::tauri_invoke("write_central_annotations", &args.into()).await?;
     Ok(())
 }
@@ -591,9 +674,14 @@ async fn tauri_save_central(file_key: &str, yaml: &str) -> Result<(), String> {
 /// Load annotations from the Tauri central annotations directory.
 async fn tauri_load_central(file_key: &str) -> Result<Option<String>, String> {
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("fileKey"), &wasm_bindgen::JsValue::from_str(file_key))
-        .map_err(|e| format!("set fileKey: {e:?}"))?;
-    let result = crate::tauri_bridge::tauri_invoke("read_central_annotations", &args.into()).await?;
+    js_sys::Reflect::set(
+        &args,
+        &wasm_bindgen::JsValue::from_str("fileKey"),
+        &wasm_bindgen::JsValue::from_str(file_key),
+    )
+    .map_err(|e| format!("set fileKey: {e:?}"))?;
+    let result =
+        crate::tauri_bridge::tauri_invoke("read_central_annotations", &args.into()).await?;
     if result.is_null() || result.is_undefined() {
         Ok(None)
     } else {
@@ -604,10 +692,18 @@ async fn tauri_load_central(file_key: &str) -> Result<Option<String>, String> {
 /// Save a file-adjacent sidecar via Tauri IPC.
 async fn tauri_save_sidecar(path: &str, yaml: &str) -> Result<(), String> {
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("path"), &wasm_bindgen::JsValue::from_str(path))
-        .map_err(|e| format!("set path: {e:?}"))?;
-    js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("yaml"), &wasm_bindgen::JsValue::from_str(yaml))
-        .map_err(|e| format!("set yaml: {e:?}"))?;
+    js_sys::Reflect::set(
+        &args,
+        &wasm_bindgen::JsValue::from_str("path"),
+        &wasm_bindgen::JsValue::from_str(path),
+    )
+    .map_err(|e| format!("set path: {e:?}"))?;
+    js_sys::Reflect::set(
+        &args,
+        &wasm_bindgen::JsValue::from_str("yaml"),
+        &wasm_bindgen::JsValue::from_str(yaml),
+    )
+    .map_err(|e| format!("set yaml: {e:?}"))?;
     crate::tauri_bridge::tauri_invoke("write_sidecar", &args.into()).await?;
     Ok(())
 }
@@ -615,8 +711,12 @@ async fn tauri_save_sidecar(path: &str, yaml: &str) -> Result<(), String> {
 /// Load a file-adjacent sidecar via Tauri IPC.
 async fn tauri_load_sidecar(path: &str) -> Result<Option<String>, String> {
     let args = js_sys::Object::new();
-    js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("path"), &wasm_bindgen::JsValue::from_str(path))
-        .map_err(|e| format!("set path: {e:?}"))?;
+    js_sys::Reflect::set(
+        &args,
+        &wasm_bindgen::JsValue::from_str("path"),
+        &wasm_bindgen::JsValue::from_str(path),
+    )
+    .map_err(|e| format!("set path: {e:?}"))?;
     let result = crate::tauri_bridge::tauri_invoke("read_sidecar", &args.into()).await?;
     if result.is_null() || result.is_undefined() {
         Ok(None)

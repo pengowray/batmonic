@@ -64,7 +64,11 @@ impl CertaintyLevel {
 
     /// Order strongest first.
     fn rank(&self) -> u8 {
-        match self { Self::Certain => 0, Self::HighConfidence => 1, Self::Suggestive => 2 }
+        match self {
+            Self::Certain => 0,
+            Self::HighConfidence => 1,
+            Self::Suggestive => 2,
+        }
     }
 }
 
@@ -152,7 +156,11 @@ pub fn compose(
     let mut best_estimate = container_bits;
 
     // ── 1. Mathematically certain: stride GCD / LSB zero-pad ───────────
-    if let LsbVerdict::ZeroPaddedNBit { padding_bits, effective_bits } = lsb.verdict {
+    if let LsbVerdict::ZeroPaddedNBit {
+        padding_bits,
+        effective_bits,
+    } = lsb.verdict
+    {
         upper_bound = upper_bound.min(effective_bits);
         best_estimate = effective_bits;
         let multiple = 1u64 << padding_bits;
@@ -161,7 +169,8 @@ pub fn compose(
             statement: format!(
                 "Every sample is a multiple of {} — the low {} bit{} of every \
                  sample {} literally zero. Effective bit depth = exactly {} bits.",
-                multiple, padding_bits,
+                multiple,
+                padding_bits,
                 if padding_bits == 1 { "" } else { "s" },
                 if padding_bits == 1 { "is" } else { "are" },
                 effective_bits,
@@ -188,11 +197,17 @@ pub fn compose(
                      information (this could be a {}-bit recorder, or a quiet \
                      signal on a higher-bit recorder; see other facts for \
                      disambiguation).",
-                    vc.unique_count, vc.value_space, vc.unique_count,
-                    vc.resolution_bits, ceil_bits, ceil_bits,
+                    vc.unique_count,
+                    vc.value_space,
+                    vc.unique_count,
+                    vc.resolution_bits,
+                    ceil_bits,
+                    ceil_bits,
                 ),
             });
-        } else if (vc.coverage_pct - 100.0).abs() < 0.01 || vc.unique_count as u64 == vc.value_space as u64 {
+        } else if (vc.coverage_pct - 100.0).abs() < 0.01
+            || vc.unique_count as u64 == vc.value_space as u64
+        {
             // Full value-space coverage. Note this affirmatively.
             facts.push(Fact {
                 certainty: CertaintyLevel::Certain,
@@ -209,8 +224,11 @@ pub fn compose(
                 statement: format!(
                     "{} of {} possible values used ({:.1}% coverage, log₂ = {:.2} bits) — \
                      consistent with a genuine {}-bit recorder.",
-                    vc.unique_count, vc.value_space, vc.coverage_pct,
-                    vc.resolution_bits, container_bits,
+                    vc.unique_count,
+                    vc.value_space,
+                    vc.coverage_pct,
+                    vc.resolution_bits,
+                    container_bits,
                 ),
             });
         }
@@ -218,7 +236,10 @@ pub fn compose(
 
     // ── 3. High-confidence: LSB autocorrelation + DSP residue ──────────
     match lsb.verdict {
-        LsbVerdict::QuietSectionZeroPadded { effective_bits_in_quiet, padding_bits } => {
+        LsbVerdict::QuietSectionZeroPadded {
+            effective_bits_in_quiet,
+            padding_bits,
+        } => {
             facts.push(Fact {
                 certainty: CertaintyLevel::HighConfidence,
                 statement: format!(
@@ -227,13 +248,14 @@ pub fn compose(
                      has a noise-gate / AGC that drops effective bit depth to \
                      {} in quiet sections, while loud sections may use the full \
                      {} bits.",
-                    padding_bits, lsb.quiet_lsb_chi2,
-                    effective_bits_in_quiet, container_bits,
+                    padding_bits, lsb.quiet_lsb_chi2, effective_bits_in_quiet, container_bits,
                 ),
             });
             // Don't refine upper_bound from this (loud sections may use full bits).
         }
-        LsbVerdict::DspPaddedLowBitDepth { effective_bits_guess } => {
+        LsbVerdict::DspPaddedLowBitDepth {
+            effective_bits_guess,
+        } => {
             facts.push(Fact {
                 certainty: CertaintyLevel::HighConfidence,
                 statement: format!(
@@ -241,8 +263,7 @@ pub fn compose(
                      uniform-baseline threshold ~38; lag-1 autocorrelation = \
                      {:+.3}) — consistent with on-device DSP filtering of a \
                      ~{}-bit ADC stream rather than analog noise.",
-                    lsb.n_low, lsb.quiet_lsb_chi2, lsb.quiet_lsb_lag1_acf,
-                    effective_bits_guess,
+                    lsb.n_low, lsb.quiet_lsb_chi2, lsb.quiet_lsb_lag1_acf, effective_bits_guess,
                 ),
             });
             // Soft refinement of best_estimate, but not upper_bound.
@@ -257,8 +278,7 @@ pub fn compose(
                     "Low {} bits look like analog noise (chi² = {:.0}, lag-1 = \
                      {:+.3}) — consistent with a genuine {}-bit recorder, no \
                      bit-depth padding detected.",
-                    lsb.n_low, lsb.quiet_lsb_chi2, lsb.quiet_lsb_lag1_acf,
-                    container_bits,
+                    lsb.n_low, lsb.quiet_lsb_chi2, lsb.quiet_lsb_lag1_acf, container_bits,
                 ),
             });
         }
@@ -327,18 +347,20 @@ pub fn compose(
     //   evidence that the recorder is at least the container depth.
     let has_recorder_confirming = matches!(
         lsb.verdict,
-        LsbVerdict::ZeroPaddedNBit { .. } | LsbVerdict::QuietSectionZeroPadded { .. }
+        LsbVerdict::ZeroPaddedNBit { .. }
+            | LsbVerdict::QuietSectionZeroPadded { .. }
             | LsbVerdict::DspPaddedLowBitDepth { .. }
-    ) || pip.is_some_and(|p| matches!(p.verdict, PipistrelleVerdict::Match))
-       || am.is_some_and(|a| matches!(a.verdict, AudioMothVerdict::Match));
-    let any_certain_below_container = facts.iter().any(|f|
+    ) || pip
+        .is_some_and(|p| matches!(p.verdict, PipistrelleVerdict::Match))
+        || am.is_some_and(|a| matches!(a.verdict, AudioMothVerdict::Match));
+    let any_certain_below_container = facts.iter().any(|f| {
         f.certainty == CertaintyLevel::Certain
             && (f.statement.contains("≤") || f.statement.contains("= exactly"))
-    );
-    let high_conf_full_coverage = facts.iter().any(|f|
+    });
+    let high_conf_full_coverage = facts.iter().any(|f| {
         f.certainty == CertaintyLevel::HighConfidence
             && f.statement.contains("consistent with a genuine")
-    );
+    });
 
     let (certainty, headline) = if upper_bound < container_bits && has_recorder_confirming {
         // Recorder-confirming evidence + bounded upper. Strong claim.
@@ -383,7 +405,10 @@ pub fn compose(
     } else if high_conf_full_coverage {
         (
             CertaintyLevel::HighConfidence,
-            format!("Recorder bit depth: {} (genuine \u{2014} no reduction detected)", container_bits),
+            format!(
+                "Recorder bit depth: {} (genuine \u{2014} no reduction detected)",
+                container_bits
+            ),
         )
     } else {
         (
@@ -469,17 +494,23 @@ mod tests {
         assert_eq!(r.certainty, CertaintyLevel::Certain);
         assert!(r.headline.contains("≤ 12"));
         assert!(r.headline.contains("mathematically certain"));
-        assert!(r.facts.iter().any(|f| f.statement.contains("multiple of 16")));
+        assert!(r
+            .facts
+            .iter()
+            .any(|f| f.statement.contains("multiple of 16")));
     }
 
     #[test]
     fn value_coverage_caps_upper_bound() {
-        let bit = default_bit_analysis(16, Some(ValueCoverage {
-            unique_count: 4096,
-            value_space: 65536,
-            coverage_pct: 6.25,
-            resolution_bits: 12.0,
-        }));
+        let bit = default_bit_analysis(
+            16,
+            Some(ValueCoverage {
+                unique_count: 4096,
+                value_space: 65536,
+                coverage_pct: 6.25,
+                resolution_bits: 12.0,
+            }),
+        );
         let lsb = default_lsb(LsbVerdict::Inconclusive);
         let r = compose(16, false, "WAV", &bit, &lsb, None, None);
         assert_eq!(r.upper_bound, 12);
@@ -488,19 +519,25 @@ mod tests {
 
     #[test]
     fn genuine_16bit_when_full_coverage() {
-        let bit = default_bit_analysis(16, Some(ValueCoverage {
-            unique_count: 60000,
-            value_space: 65536,
-            coverage_pct: 91.5,
-            resolution_bits: 15.87,
-        }));
+        let bit = default_bit_analysis(
+            16,
+            Some(ValueCoverage {
+                unique_count: 60000,
+                value_space: 65536,
+                coverage_pct: 91.5,
+                resolution_bits: 15.87,
+            }),
+        );
         let lsb = default_lsb(LsbVerdict::ConsistentWithClaimedBitDepth);
         let r = compose(16, false, "WAV", &bit, &lsb, None, None);
         assert_eq!(r.upper_bound, 16);
         assert_eq!(r.certainty, CertaintyLevel::HighConfidence);
         assert!(r.headline.contains("16"));
-        assert!(r.headline.contains("genuine") || r.headline.contains("no reduction"),
-                "headline: {}", r.headline);
+        assert!(
+            r.headline.contains("genuine") || r.headline.contains("no reduction"),
+            "headline: {}",
+            r.headline
+        );
     }
 
     #[test]
@@ -518,32 +555,53 @@ mod tests {
 
     #[test]
     fn lossy_formats_short_circuit_with_caveat() {
-        let bit = default_bit_analysis(16, Some(ValueCoverage {
-            unique_count: 4096,
-            value_space: 65536,
-            coverage_pct: 6.25,
-            resolution_bits: 12.0,
-        }));
+        let bit = default_bit_analysis(
+            16,
+            Some(ValueCoverage {
+                unique_count: 4096,
+                value_space: 65536,
+                coverage_pct: 6.25,
+                resolution_bits: 12.0,
+            }),
+        );
         let lsb = default_lsb(LsbVerdict::ZeroPaddedNBit {
             effective_bits: 12,
             padding_bits: 4,
         });
         for fmt in ["MP3", "OGG", "M4A", "W4V"] {
             let r = compose(16, false, fmt, &bit, &lsb, None, None);
-            assert!(r.headline.starts_with(&format!("Lossy {}", fmt)),
-                    "format={} headline={}", fmt, r.headline);
+            assert!(
+                r.headline.starts_with(&format!("Lossy {}", fmt)),
+                "format={} headline={}",
+                fmt,
+                r.headline
+            );
             assert_eq!(r.upper_bound, 16, "lossy must NOT claim reduction");
-            assert!(r.facts.iter().any(|f| f.statement.contains("not meaningful")),
-                    "lossy explanation missing for {}", fmt);
+            assert!(
+                r.facts
+                    .iter()
+                    .any(|f| f.statement.contains("not meaningful")),
+                "lossy explanation missing for {}",
+                fmt
+            );
         }
     }
 
     #[test]
     fn lossless_formats_run_full_analysis() {
-        let bit = default_bit_analysis(16, Some(ValueCoverage {
-            unique_count: 4096, value_space: 65536, coverage_pct: 6.25, resolution_bits: 12.0,
-        }));
-        let lsb = default_lsb(LsbVerdict::ZeroPaddedNBit { effective_bits: 12, padding_bits: 4 });
+        let bit = default_bit_analysis(
+            16,
+            Some(ValueCoverage {
+                unique_count: 4096,
+                value_space: 65536,
+                coverage_pct: 6.25,
+                resolution_bits: 12.0,
+            }),
+        );
+        let lsb = default_lsb(LsbVerdict::ZeroPaddedNBit {
+            effective_bits: 12,
+            padding_bits: 4,
+        });
         for fmt in ["WAV", "FLAC"] {
             let r = compose(16, false, fmt, &bit, &lsb, None, None);
             assert_eq!(r.upper_bound, 12, "format={} should claim reduction", fmt);
@@ -562,12 +620,15 @@ mod tests {
 
     #[test]
     fn facts_sorted_strongest_first() {
-        let bit = default_bit_analysis(16, Some(ValueCoverage {
-            unique_count: 4083,
-            value_space: 65536,
-            coverage_pct: 6.23,
-            resolution_bits: 11.99,
-        }));
+        let bit = default_bit_analysis(
+            16,
+            Some(ValueCoverage {
+                unique_count: 4083,
+                value_space: 65536,
+                coverage_pct: 6.23,
+                resolution_bits: 11.99,
+            }),
+        );
         let mut lsb = default_lsb(LsbVerdict::ZeroPaddedNBit {
             effective_bits: 12,
             padding_bits: 4,

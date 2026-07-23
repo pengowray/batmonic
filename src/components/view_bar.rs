@@ -14,7 +14,11 @@ use crate::components::xform_button::XformButton;
 use crate::state::{ActiveFocus, AppState, Bar, CanvasTool, LayerPanel};
 
 fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
+    if active {
+        "layer-panel-opt sel"
+    } else {
+        "layer-panel-opt"
+    }
 }
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {
@@ -96,7 +100,9 @@ fn OverlayToggles() -> impl IntoView {
 fn ToolCombo() -> impl IntoView {
     let state = expect_context::<AppState>();
     let is_open = move || state.panels.layer_panel_open().get() == Some(LayerPanel::Tool);
-    let no_file = move || state.library.current_index().get().is_none() && state.timeline.active().get().is_none();
+    let no_file = move || {
+        state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
+    };
 
     view! {
         <div style="position: relative;">
@@ -144,7 +150,9 @@ fn ToolCombo() -> impl IntoView {
 #[component]
 pub fn ViewBar() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let has_file = move || state.library.current_index().get().is_some() || state.timeline.active().get().is_some();
+    let has_file = move || {
+        state.library.current_index().get().is_some() || state.timeline.active().get().is_some()
+    };
     let controls_ref = NodeRef::<leptos::html::Div>::new();
     let pan = crate::components::bar_pan::BarPan::new(controls_ref);
 

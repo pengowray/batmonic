@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::state::LoadedFile;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TrackInfo {
@@ -37,7 +37,10 @@ pub struct FileGroupInfo {
 /// - `260305_0057_MIX.wav` → group_key="260305_0057", label="MIX"
 pub fn parse_track_suffix(filename: &str) -> Option<TrackInfo> {
     // Strip extension
-    let stem = filename.rsplit_once('.').map(|(s, _)| s).unwrap_or(filename);
+    let stem = filename
+        .rsplit_once('.')
+        .map(|(s, _)| s)
+        .unwrap_or(filename);
 
     // Find last underscore — everything after it is the candidate segment
     let (prefix, segment) = stem.rsplit_once('_')?;
@@ -57,8 +60,10 @@ pub fn parse_track_suffix(filename: &str) -> Option<TrackInfo> {
 
     // Pattern 1: channel range like "1-2", "3-4"
     if let Some((a, b)) = track_part.split_once('-') {
-        if !a.is_empty() && a.chars().all(|c| c.is_ascii_digit())
-            && !b.is_empty() && b.chars().all(|c| c.is_ascii_digit())
+        if !a.is_empty()
+            && a.chars().all(|c| c.is_ascii_digit())
+            && !b.is_empty()
+            && b.chars().all(|c| c.is_ascii_digit())
         {
             return Some(TrackInfo {
                 group_key: prefix.to_string(),
@@ -69,7 +74,8 @@ pub fn parse_track_suffix(filename: &str) -> Option<TrackInfo> {
 
     // Pattern 2: "Ch1", "ch2", "CH3" (case-insensitive)
     let lower = track_part.to_ascii_lowercase();
-    if lower.starts_with("ch") && lower.len() > 2 && lower[2..].chars().all(|c| c.is_ascii_digit()) {
+    if lower.starts_with("ch") && lower.len() > 2 && lower[2..].chars().all(|c| c.is_ascii_digit())
+    {
         return Some(TrackInfo {
             group_key: prefix.to_string(),
             label: track_part.to_string(),
@@ -111,9 +117,7 @@ pub fn compute_file_groups(names: &[String]) -> Vec<Option<TrackInfo>> {
     // Only keep entries where group has 2+ members
     parsed
         .into_iter()
-        .map(|opt| {
-            opt.filter(|ti| counts.get(&ti.group_key).copied().unwrap_or(0) >= 2)
-        })
+        .map(|opt| opt.filter(|ti| counts.get(&ti.group_key).copied().unwrap_or(0) >= 2))
         .collect()
 }
 
@@ -144,9 +148,15 @@ fn sequence_stem(filename: &str) -> String {
         ti.group_key
     } else {
         // Use full stem (without extension)
-        let stem = filename.rsplit_once('.').map(|(s, _)| s).unwrap_or(filename);
+        let stem = filename
+            .rsplit_once('.')
+            .map(|(s, _)| s)
+            .unwrap_or(filename);
         // Also strip any trailing space+text (like "3 Metal lamp pole")
-        stem.split_once(' ').map(|(s, _)| s).unwrap_or(stem).to_string()
+        stem.split_once(' ')
+            .map(|(s, _)| s)
+            .unwrap_or(stem)
+            .to_string()
     }
 }
 
@@ -158,26 +168,28 @@ fn sequence_stem(filename: &str) -> String {
 /// 3. Group files sharing the same prefix (and same track label, if multitrack)
 /// 4. Require 2+ files to form a sequence
 /// 5. Compute gaps between consecutive files using recording timestamps
-pub fn compute_all_groups(
-    names: &[String],
-    files: &[LoadedFile],
-) -> Vec<FileGroupInfo> {
+pub fn compute_all_groups(names: &[String], files: &[LoadedFile]) -> Vec<FileGroupInfo> {
     let tracks = compute_file_groups(names);
 
     // Parse sequence stems for each file
-    let seq_parses: Vec<Option<(String, u32)>> = names.iter().map(|name| {
-        let stem = sequence_stem(name);
-        parse_sequence_stem(&stem)
-    }).collect();
+    let seq_parses: Vec<Option<(String, u32)>> = names
+        .iter()
+        .map(|name| {
+            let stem = sequence_stem(name);
+            parse_sequence_stem(&stem)
+        })
+        .collect();
 
     // Build sequence key: (prefix, track_label_or_empty) → list of (file_index, seq_number)
     let mut seq_groups: HashMap<(String, String), Vec<(usize, u32)>> = HashMap::new();
     for (i, sp) in seq_parses.iter().enumerate() {
         if let Some((prefix, num)) = sp {
-            let track_label = tracks[i].as_ref()
+            let track_label = tracks[i]
+                .as_ref()
                 .map(|ti| ti.label.clone())
                 .unwrap_or_default();
-            seq_groups.entry((prefix.clone(), track_label))
+            seq_groups
+                .entry((prefix.clone(), track_label))
                 .or_default()
                 .push((i, *num));
         }
@@ -209,9 +221,11 @@ pub fn compute_all_groups(
     }
 
     // Combine into FileGroupInfo
-    tracks.into_iter().zip(sequence_infos).map(|(track, sequence)| {
-        FileGroupInfo { track, sequence }
-    }).collect()
+    tracks
+        .into_iter()
+        .zip(sequence_infos)
+        .map(|(track, sequence)| FileGroupInfo { track, sequence })
+        .collect()
 }
 
 /// Indices of every file in `idx`'s MULTITRACK group — simultaneous channels of
@@ -277,7 +291,10 @@ mod scope_tests {
     use super::*;
 
     fn ti(key: &str, label: &str) -> Option<TrackInfo> {
-        Some(TrackInfo { group_key: key.into(), label: label.into() })
+        Some(TrackInfo {
+            group_key: key.into(),
+            label: label.into(),
+        })
     }
     fn si(key: &str, label: &str, n: u32) -> Option<SequenceInfo> {
         Some(SequenceInfo {
@@ -292,9 +309,18 @@ mod scope_tests {
     fn multitrack_members_group_by_track_key() {
         // 0,1 are channels of recA; 2 is a lone file.
         let groups = vec![
-            FileGroupInfo { track: ti("recA", "1"), sequence: None },
-            FileGroupInfo { track: ti("recA", "2"), sequence: None },
-            FileGroupInfo { track: None, sequence: None },
+            FileGroupInfo {
+                track: ti("recA", "1"),
+                sequence: None,
+            },
+            FileGroupInfo {
+                track: ti("recA", "2"),
+                sequence: None,
+            },
+            FileGroupInfo {
+                track: None,
+                sequence: None,
+            },
         ];
         assert_eq!(multitrack_members(&groups, 0), vec![0, 1]);
         assert_eq!(multitrack_members(&groups, 1), vec![0, 1]);
@@ -305,9 +331,18 @@ mod scope_tests {
     fn sequential_members_group_by_seq_key_and_track_label() {
         // (site,"1") has takes 0 and 2; file 1 is track "2", alone in its sequence.
         let groups = vec![
-            FileGroupInfo { track: ti("site", "1"), sequence: si("site", "1", 1) },
-            FileGroupInfo { track: ti("site", "2"), sequence: si("site", "2", 1) },
-            FileGroupInfo { track: ti("site", "1"), sequence: si("site", "1", 2) },
+            FileGroupInfo {
+                track: ti("site", "1"),
+                sequence: si("site", "1", 1),
+            },
+            FileGroupInfo {
+                track: ti("site", "2"),
+                sequence: si("site", "2", 1),
+            },
+            FileGroupInfo {
+                track: ti("site", "1"),
+                sequence: si("site", "1", 2),
+            },
         ];
         assert_eq!(sequential_members(&groups, 0), vec![0, 2]);
         assert_eq!(sequential_members(&groups, 2), vec![0, 2]);
@@ -318,8 +353,14 @@ mod scope_tests {
     fn multitrack_and_sequential_are_orthogonal() {
         // One multitrack recording (recA, channels 1 & 2), no sequence.
         let groups = vec![
-            FileGroupInfo { track: ti("recA", "1"), sequence: None },
-            FileGroupInfo { track: ti("recA", "2"), sequence: None },
+            FileGroupInfo {
+                track: ti("recA", "1"),
+                sequence: None,
+            },
+            FileGroupInfo {
+                track: ti("recA", "2"),
+                sequence: None,
+            },
         ];
         // Multitrack groups them; sequential does not (each is its own sequence).
         assert_eq!(multitrack_members(&groups, 0), vec![0, 1]);

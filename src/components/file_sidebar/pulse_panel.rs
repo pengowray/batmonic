@@ -1,9 +1,9 @@
+use crate::dsp::pulse_detect::{self, DetectedPulse, PulseDetectionParams};
 use crate::state::store_fields::*;
+use crate::state::{AppState, RightSidebarTab};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use crate::state::{AppState, RightSidebarTab};
-use crate::dsp::pulse_detect::{self, DetectedPulse, PulseDetectionParams};
 
 #[component]
 pub(crate) fn PulsePanel() -> impl IntoView {
@@ -70,7 +70,9 @@ pub(crate) fn PulsePanel() -> impl IntoView {
 
         spawn_local(async move {
             yield_to_browser().await;
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
 
             let params = PulseDetectionParams {
                 min_pulse_duration_ms: min_dur,
@@ -78,12 +80,18 @@ pub(crate) fn PulsePanel() -> impl IntoView {
                 min_gap_ms: gap,
                 threshold_db: thresh,
                 bandpass_low_hz: band_ff_lo,
-                bandpass_high_hz: if band_ff_hi > band_ff_lo { band_ff_hi } else { 0.0 },
+                bandpass_high_hz: if band_ff_hi > band_ff_lo {
+                    band_ff_hi
+                } else {
+                    0.0
+                },
             };
 
             let pulses = pulse_detect::detect_pulses(&audio, &spectrogram, &params);
 
-            if compute_gen.try_get_untracked() != Some(generation) { return; }
+            if compute_gen.try_get_untracked() != Some(generation) {
+                return;
+            }
             state.pulse.detected().set(pulses);
             state.pulse.detecting().set(false);
         });
@@ -261,7 +269,6 @@ pub(crate) fn PulsePanel() -> impl IntoView {
     }
 }
 
-
 fn event_target_value(ev: &web_sys::Event) -> String {
     use wasm_bindgen::JsCast;
     ev.target()
@@ -285,9 +292,7 @@ async fn yield_to_browser() {
         let cb = wasm_bindgen::closure::Closure::once_into_js(move || {
             let _ = resolve.call0(&wasm_bindgen::JsValue::NULL);
         });
-        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
-            cb.unchecked_ref(), 0,
-        );
+        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), 0);
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }

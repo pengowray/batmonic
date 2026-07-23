@@ -56,7 +56,11 @@ fn find_species_across_books(
 fn get_scientific_name(file: &LoadedFile) -> Option<String> {
     // XC metadata
     if let Some(meta) = &file.xc_metadata {
-        if let Some(val) = meta.iter().find(|(k, _)| k == "Scientific name").map(|(_, v)| v.clone()) {
+        if let Some(val) = meta
+            .iter()
+            .find(|(k, _)| k == "Scientific name")
+            .map(|(_, v)| v.clone())
+        {
             if !val.is_empty() {
                 return Some(val);
             }
@@ -66,7 +70,12 @@ fn get_scientific_name(file: &LoadedFile) -> Option<String> {
     if let Some(guano) = &file.audio.metadata.guano {
         // Prefer manual over auto
         for key in &["Species|Manual", "Species|Auto"] {
-            if let Some(val) = guano.fields.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()) {
+            if let Some(val) = guano
+                .fields
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.clone())
+            {
                 if !val.is_empty() {
                     return Some(val);
                 }
@@ -78,7 +87,8 @@ fn get_scientific_name(file: &LoadedFile) -> Option<String> {
 
 /// Extract country from XC metadata.
 fn get_country(file: &LoadedFile) -> Option<String> {
-    file.xc_metadata.as_ref()?
+    file.xc_metadata
+        .as_ref()?
         .iter()
         .find(|(k, _)| k == "Country")
         .map(|(_, v)| v.clone())
@@ -111,7 +121,11 @@ pub fn resolve_auto(file: Option<&LoadedFile>, favourites: &[BatBookRegion]) -> 
     let country_region = country_match.map(|m| m.region);
     // Marker appended to the country in the source label when the country was
     // routed to a region only APPROXIMATELY (no dedicated/continental book).
-    let approx_suffix = if country_match.is_some_and(|m| m.approximate) { ", approx." } else { "" };
+    let approx_suffix = if country_match.is_some_and(|m| m.approximate) {
+        ", approx."
+    } else {
+        ""
+    };
 
     // Try species lookup
     if let Some(ref sci) = scientific_name {

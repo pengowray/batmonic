@@ -1,13 +1,16 @@
+use crate::annotations::AnnotationId;
+use crate::canvas::coord::pointer_to_xtf;
+use crate::canvas::hit_test::{
+    hit_test_annotation_body, hit_test_annotation_handles, hit_test_band_ff_body,
+    hit_test_spec_handles, is_in_band_ff_drag_zone,
+};
+use crate::canvas::spectrogram_renderer;
 use crate::state::store_fields::*;
+use crate::state::{ActiveFocus, AppState, CanvasTool, Selection, SpectrogramHandle, UndoEntry};
+use crate::viewport;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlCanvasElement, MouseEvent, PointerEvent};
-use crate::canvas::coord::pointer_to_xtf;
-use crate::canvas::hit_test::{hit_test_spec_handles, is_in_band_ff_drag_zone, hit_test_annotation_handles, hit_test_annotation_body, hit_test_band_ff_body};
-use crate::canvas::spectrogram_renderer;
-use crate::annotations::AnnotationId;
-use crate::state::{ActiveFocus, AppState, CanvasTool, SpectrogramHandle, Selection, UndoEntry};
-use crate::viewport;
 
 pub const LABEL_AREA_WIDTH: f64 = 60.0;
 
@@ -38,7 +41,9 @@ pub fn follow_playhead(state: &AppState, canvas_ref: NodeRef<leptos::html::Canva
         return;
     }
 
-    let Some(canvas_el) = canvas_ref.get() else { return };
+    let Some(canvas_el) = canvas_ref.get() else {
+        return;
+    };
     let canvas: &HtmlCanvasElement = canvas_el.as_ref();
     let display_w = canvas.width() as f64;
     if display_w == 0.0 {
@@ -79,22 +84,30 @@ pub fn follow_playhead(state: &AppState, canvas_ref: NodeRef<leptos::html::Canva
     // too frequently and look jarring.
     if visible_time < viewport::FOLLOW_EXACT_THRESHOLD_SECS {
         let target_scroll = playhead - visible_time * viewport::FOLLOW_CURSOR_FRACTION;
-        state.view.scroll_offset().set(viewport::clamp_scroll_for_mode(
-            target_scroll,
-            duration,
-            visible_time,
-            from_here_mode,
-        ));
+        state
+            .view
+            .scroll_offset()
+            .set(viewport::clamp_scroll_for_mode(
+                target_scroll,
+                duration,
+                visible_time,
+                from_here_mode,
+            ));
     }
     // Normal follow: scroll when the playhead nears the edge.
-    else if playhead_rel > visible_time * viewport::FOLLOW_CURSOR_EDGE_FRACTION || playhead_rel < 0.0 {
+    else if playhead_rel > visible_time * viewport::FOLLOW_CURSOR_EDGE_FRACTION
+        || playhead_rel < 0.0
+    {
         let target_scroll = playhead - visible_time * viewport::FOLLOW_CURSOR_FRACTION;
-        state.view.scroll_offset().set(viewport::clamp_scroll_for_mode(
-            target_scroll,
-            duration,
-            visible_time,
-            from_here_mode,
-        ));
+        state
+            .view
+            .scroll_offset()
+            .set(viewport::clamp_scroll_for_mode(
+                target_scroll,
+                duration,
+                visible_time,
+                from_here_mode,
+            ));
     }
 }
 
@@ -169,7 +182,8 @@ impl SpectInteraction {
 /// Read the file's Nyquist / max frequency — the ceiling for the freq
 /// display range.
 fn file_nyquist(state: AppState) -> f64 {
-    let is_mic_active = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+    let is_mic_active =
+        state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
     if is_mic_active && crate::canvas::live_waterfall::is_active() {
         crate::canvas::live_waterfall::max_freq()
     } else {
@@ -247,7 +261,8 @@ pub fn resolve_freq_at_pointer(
     let canvas_el = canvas_ref.get()?;
     let canvas: &HtmlCanvasElement = canvas_el.as_ref();
     let ch = canvas.height() as f64;
-    let is_mic_active = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+    let is_mic_active =
+        state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
     let wf_active = is_mic_active && crate::canvas::live_waterfall::is_active();
     let file_max_freq = if wf_active {
         crate::canvas::live_waterfall::max_freq()
@@ -259,7 +274,11 @@ pub fn resolve_freq_at_pointer(
             .unwrap_or(96_000.0)
     };
     let min_freq_val = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-    let max_freq_val = state.view.max_display_freq().get_untracked().unwrap_or(file_max_freq);
+    let max_freq_val = state
+        .view
+        .max_display_freq()
+        .get_untracked()
+        .unwrap_or(file_max_freq);
     let freq = spectrogram_renderer::y_to_freq(px_y, min_freq_val, max_freq_val, ch);
     Some((freq, file_max_freq))
 }
@@ -273,10 +292,14 @@ pub fn apply_hand_pan(
 ) {
     let (start_client_x, start_scroll) = hand_drag_start;
     let dx = client_x - start_client_x;
-    let Some(canvas_el) = canvas_ref.get() else { return };
+    let Some(canvas_el) = canvas_ref.get() else {
+        return;
+    };
     let canvas: &HtmlCanvasElement = canvas_el.as_ref();
     let cw = canvas.width() as f64;
-    if cw == 0.0 { return; }
+    if cw == 0.0 {
+        return;
+    }
     let files = state.library.files().get_untracked();
     let idx = state.library.current_index().get_untracked();
     let file = idx.and_then(|i| files.get(i));
@@ -287,10 +310,15 @@ pub fn apply_hand_pan(
     let time_res = if waterfall_active {
         crate::canvas::live_waterfall::time_resolution()
     } else if let Some(ref tl) = timeline {
-        tl.segments.first().and_then(|s| files.get(s.file_index))
-            .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+        tl.segments
+            .first()
+            .and_then(|s| files.get(s.file_index))
+            .map(|f| f.spectrogram.time_resolution)
+            .unwrap_or(1.0)
     } else {
-        file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+        file.as_ref()
+            .map(|f| f.spectrogram.time_resolution)
+            .unwrap_or(1.0)
     };
     let zoom = state.view.zoom_level().get_untracked();
     let visible_time = viewport::visible_time(cw, zoom, time_res);
@@ -318,7 +346,9 @@ pub fn apply_hand_pan(
         let duration = if let Some(ref tl) = timeline {
             tl.total_duration_secs
         } else {
-            file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX)
+            file.as_ref()
+                .map(|f| f.audio.duration_secs)
+                .unwrap_or(f64::MAX)
         };
         let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
         viewport::clamp_scroll_for_mode(start_scroll + dt, duration, visible_time, from_here_mode)
@@ -336,7 +366,9 @@ pub fn apply_annotation_resize(
 ) {
     use crate::state::ResizeHandlePosition::*;
 
-    let Some(file_id) = state.current_file_id() else { return };
+    let Some(file_id) = state.current_file_id() else {
+        return;
+    };
     state.annotations.store().update(|store| {
         if let Some(set) = store.get_mut(file_id) {
             if let Some(ann) = set.annotations.iter_mut().find(|a| a.id == ann_id) {
@@ -344,42 +376,46 @@ pub fn apply_annotation_resize(
                     match handle {
                         Left => r.time_start = time.min(r.time_end - 0.0001),
                         Right => r.time_end = time.max(r.time_start + 0.0001),
-                        Top => if r.freq_high.is_some() {
-                            let lo = r.freq_low.unwrap_or(0.0);
-                            r.freq_high = Some(freq.max(lo + 100.0));
-                        },
-                        Bottom => if r.freq_low.is_some() {
-                            let hi = r.freq_high.unwrap_or(f64::MAX);
-                            r.freq_low = Some(freq.min(hi - 100.0));
-                        },
+                        Top => {
+                            if r.freq_high.is_some() {
+                                let lo = r.freq_low.unwrap_or(0.0);
+                                r.freq_high = Some(freq.max(lo + 100.0));
+                            }
+                        }
+                        Bottom => {
+                            if r.freq_low.is_some() {
+                                let hi = r.freq_high.unwrap_or(f64::MAX);
+                                r.freq_low = Some(freq.min(hi - 100.0));
+                            }
+                        }
                         TopLeft => {
                             r.time_start = time.min(r.time_end - 0.0001);
                             if r.freq_high.is_some() {
                                 let lo = r.freq_low.unwrap_or(0.0);
                                 r.freq_high = Some(freq.max(lo + 100.0));
                             }
-                        },
+                        }
                         TopRight => {
                             r.time_end = time.max(r.time_start + 0.0001);
                             if r.freq_high.is_some() {
                                 let lo = r.freq_low.unwrap_or(0.0);
                                 r.freq_high = Some(freq.max(lo + 100.0));
                             }
-                        },
+                        }
                         BottomLeft => {
                             r.time_start = time.min(r.time_end - 0.0001);
                             if r.freq_low.is_some() {
                                 let hi = r.freq_high.unwrap_or(f64::MAX);
                                 r.freq_low = Some(freq.min(hi - 100.0));
                             }
-                        },
+                        }
                         BottomRight => {
                             r.time_end = time.max(r.time_start + 0.0001);
                             if r.freq_low.is_some() {
                                 let hi = r.freq_high.unwrap_or(f64::MAX);
                                 r.freq_low = Some(freq.min(hi - 100.0));
                             }
-                        },
+                        }
                     }
                 }
             }
@@ -408,62 +444,91 @@ pub fn on_pointerdown(
     canvas_ref: &NodeRef<leptos::html::Canvas>,
     state: AppState,
 ) {
-    if ev.button() != 0 { return; }
+    if ev.button() != 0 {
+        return;
+    }
     // When viewport is pinch-zoomed, let the browser handle all gestures so
     // the user can zoom back out via native pinch.
-    if state.status.viewport_zoomed().get_untracked() { return; }
+    if state.status.viewport_zoomed().get_untracked() {
+        return;
+    }
 
     state.interaction.pointer_is_down().set(true);
 
     // Check for annotation resize handle drag first (selected annotations take
     // priority over BandFF/HET handles when they overlap). Skipped when annotations are hidden.
     if state.annotations.visible().get_untracked() {
-    if let Some((ref ann_id, handle_pos)) = state.annotations.hover_handle().get_untracked() {
-        // Check if the annotation is locked
-        let Some(file_id) = state.current_file_id() else { return };
-        let store = state.annotations.store().get_untracked();
-        let locked = store.get(file_id)
-            .and_then(|set| set.annotations.iter().find(|a| a.id == *ann_id))
-            .and_then(|a| match &a.kind {
-                crate::annotations::AnnotationKind::Region(r) => Some(r.is_locked()),
-                _ => None,
-            })
-            .unwrap_or(false);
+        if let Some((ref ann_id, handle_pos)) = state.annotations.hover_handle().get_untracked() {
+            // Check if the annotation is locked
+            let Some(file_id) = state.current_file_id() else {
+                return;
+            };
+            let store = state.annotations.store().get_untracked();
+            let locked = store
+                .get(file_id)
+                .and_then(|set| set.annotations.iter().find(|a| a.id == *ann_id))
+                .and_then(|a| match &a.kind {
+                    crate::annotations::AnnotationKind::Region(r) => Some(r.is_locked()),
+                    _ => None,
+                })
+                .unwrap_or(false);
 
-        if !locked {
-            // Snapshot for undo
-            let snapshot = store.get(file_id).cloned();
-            state.annotations.undo_stack().update(|stack| {
-                stack.push_undo(UndoEntry { file_id, snapshot });
-            });
-            // Store original bounds
-            if let Some(set) = store.get(file_id) {
-                if let Some(a) = set.annotations.iter().find(|a| a.id == *ann_id) {
-                    if let crate::annotations::AnnotationKind::Region(ref r) = a.kind {
-                        state.annotations.drag_original().set(Some((r.time_start, r.time_end, r.freq_low, r.freq_high)));
+            if !locked {
+                // Snapshot for undo
+                let snapshot = store.get(file_id).cloned();
+                state.annotations.undo_stack().update(|stack| {
+                    stack.push_undo(UndoEntry { file_id, snapshot });
+                });
+                // Store original bounds
+                if let Some(set) = store.get(file_id) {
+                    if let Some(a) = set.annotations.iter().find(|a| a.id == *ann_id) {
+                        if let crate::annotations::AnnotationKind::Region(ref r) = a.kind {
+                            state.annotations.drag_original().set(Some((
+                                r.time_start,
+                                r.time_end,
+                                r.freq_low,
+                                r.freq_high,
+                            )));
+                        }
                     }
                 }
+                state
+                    .annotations
+                    .drag_handle()
+                    .set(Some((ann_id.clone(), handle_pos)));
+                state.interaction.is_dragging().set(true);
+                capture_pointer(&ev);
+                ev.prevent_default();
+                return;
             }
-            state.annotations.drag_handle().set(Some((ann_id.clone(), handle_pos)));
-            state.interaction.is_dragging().set(true);
-            capture_pointer(&ev);
-            ev.prevent_default();
-            return;
         }
-    }
     }
 
     // Check for spec handle drag (BandFF or HET — takes priority over axis/tool drags)
     // BandFF handles only start drag when clicking within the center handle zone.
     if let Some(handle) = state.interaction.spec_hover_handle().get_untracked() {
-        let is_ff = matches!(handle, SpectrogramHandle::BandFfUpper | SpectrogramHandle::BandFfLower | SpectrogramHandle::BandFfMiddle);
+        let is_ff = matches!(
+            handle,
+            SpectrogramHandle::BandFfUpper
+                | SpectrogramHandle::BandFfLower
+                | SpectrogramHandle::BandFfMiddle
+        );
         let allow_drag = if is_ff {
-            if let Some((px_x, _, _, _)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+            if let Some((px_x, _, _, _)) = pointer_to_xtf(
+                ev.client_x() as f64,
+                ev.client_y() as f64,
+                canvas_ref,
+                &state,
+            ) {
                 if let Some(canvas_el) = canvas_ref.get() {
                     let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                     is_in_band_ff_drag_zone(px_x, canvas.width() as f64)
-                } else { false }
-            } else { false }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         } else {
             true // HET handles drag from anywhere
         };
@@ -490,89 +555,114 @@ pub fn on_pointerdown(
     ix.pending_band_ff_hit.set(false);
     ix.pending_selection_hit.set(false);
     if state.interaction.canvas_tool().get_untracked() == CanvasTool::Hand {
-        if let Some((px_x, px_y, t, freq)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
-        let file_idx = state.library.current_index().get_untracked().unwrap_or(0);
-        let files = state.library.files().get_untracked();
-        let file = files.get(file_idx);
-        let file_max_freq = file.map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
-        let min_freq = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-        let max_freq = state.view.max_display_freq().get_untracked().unwrap_or(file_max_freq);
+        if let Some((px_x, px_y, t, freq)) = pointer_to_xtf(
+            ev.client_x() as f64,
+            ev.client_y() as f64,
+            canvas_ref,
+            &state,
+        ) {
+            let file_idx = state.library.current_index().get_untracked().unwrap_or(0);
+            let files = state.library.files().get_untracked();
+            let file = files.get(file_idx);
+            let file_max_freq = file.map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
+            let min_freq = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
+            let max_freq = state
+                .view
+                .max_display_freq()
+                .get_untracked()
+                .unwrap_or(file_max_freq);
 
-        // Check annotation body first (highest priority; skipped when annotations are hidden)
-        let mut hit_annotation = false;
-        if state.annotations.visible().get_untracked() {
-            let store = state.annotations.store().get_untracked();
-            if let Some(set) = state.file_id_at(file_idx).and_then(|id| store.get(id)) {
-                if let Some(canvas_el) = canvas_ref.get() {
-                    let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-                    let cw = canvas.width() as f64;
-                    let ch = canvas.height() as f64;
-                    let scroll = state.view.scroll_offset().get_untracked();
-                    let time_res = file.map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
-                    let zoom = state.view.zoom_level().get_untracked();
+            // Check annotation body first (highest priority; skipped when annotations are hidden)
+            let mut hit_annotation = false;
+            if state.annotations.visible().get_untracked() {
+                let store = state.annotations.store().get_untracked();
+                if let Some(set) = state.file_id_at(file_idx).and_then(|id| store.get(id)) {
+                    if let Some(canvas_el) = canvas_ref.get() {
+                        let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+                        let cw = canvas.width() as f64;
+                        let ch = canvas.height() as f64;
+                        let scroll = state.view.scroll_offset().get_untracked();
+                        let time_res = file.map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+                        let zoom = state.view.zoom_level().get_untracked();
 
-                    if let Some(hit_id) = hit_test_annotation_body(
-                        set, px_x, px_y, min_freq, max_freq, scroll, time_res, zoom, cw, ch,
-                    ) {
-                        let ctrl = ev.ctrl_key() || ev.meta_key();
-                        ix.pending_annotation_hit.set(Some(PendingAnnotationHit { id: hit_id, ctrl }));
-                        hit_annotation = true;
+                        if let Some(hit_id) = hit_test_annotation_body(
+                            set, px_x, px_y, min_freq, max_freq, scroll, time_res, zoom, cw, ch,
+                        ) {
+                            let ctrl = ev.ctrl_key() || ev.meta_key();
+                            ix.pending_annotation_hit
+                                .set(Some(PendingAnnotationHit { id: hit_id, ctrl }));
+                            hit_annotation = true;
+                        }
                     }
                 }
             }
-        }
 
-        if !hit_annotation {
-            // Check transient selection body (priority over BandFF)
-            if let Some(sel) = state.interaction.selection().get_untracked() {
-                if point_in_selection(&sel, t, freq) {
-                    ix.pending_selection_hit.set(true);
+            if !hit_annotation {
+                // Check transient selection body (priority over BandFF)
+                if let Some(sel) = state.interaction.selection().get_untracked() {
+                    if point_in_selection(&sel, t, freq) {
+                        ix.pending_selection_hit.set(true);
+                    } else {
+                        // Check BandFF body click
+                        if let Some(canvas_el) = canvas_ref.get() {
+                            let canvas: &HtmlCanvasElement = canvas_el.as_ref();
+                            let ch = canvas.height() as f64;
+                            let band_ff_lo = state.filter.band_ff_freq_lo().get_untracked();
+                            let band_ff_hi = state.filter.band_ff_freq_hi().get_untracked();
+                            if hit_test_band_ff_body(
+                                px_y, band_ff_lo, band_ff_hi, min_freq, max_freq, ch,
+                            ) {
+                                ix.pending_band_ff_hit.set(true);
+                            }
+                        }
+                    }
                 } else {
-                    // Check BandFF body click
+                    // No selection — check BandFF body click
                     if let Some(canvas_el) = canvas_ref.get() {
                         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                         let ch = canvas.height() as f64;
                         let band_ff_lo = state.filter.band_ff_freq_lo().get_untracked();
                         let band_ff_hi = state.filter.band_ff_freq_hi().get_untracked();
-                        if hit_test_band_ff_body(px_y, band_ff_lo, band_ff_hi, min_freq, max_freq, ch) {
+                        if hit_test_band_ff_body(
+                            px_y, band_ff_lo, band_ff_hi, min_freq, max_freq, ch,
+                        ) {
                             ix.pending_band_ff_hit.set(true);
                         }
                     }
                 }
-            } else {
-                // No selection — check BandFF body click
-                if let Some(canvas_el) = canvas_ref.get() {
-                    let canvas: &HtmlCanvasElement = canvas_el.as_ref();
-                    let ch = canvas.height() as f64;
-                    let band_ff_lo = state.filter.band_ff_freq_lo().get_untracked();
-                    let band_ff_hi = state.filter.band_ff_freq_hi().get_untracked();
-                    if hit_test_band_ff_body(px_y, band_ff_lo, band_ff_hi, min_freq, max_freq, ch) {
-                        ix.pending_band_ff_hit.set(true);
-                    }
-                }
             }
         }
-    }
     }
 
     // Click on empty area deselects annotations and clears focus (unless modifier held)
     // For Hand tool: defer to mouseup so panning isn't blocked
     if state.interaction.canvas_tool().get_untracked() != CanvasTool::Hand
-        && !ev.ctrl_key() && !ev.meta_key() && !ev.shift_key() {
-            let ids = state.annotations.selected_ids().get_untracked();
-            if !ids.is_empty() {
-                state.annotations.selected_ids().set(Vec::new());
-            }
-            state.interaction.active_focus().set(None);
+        && !ev.ctrl_key()
+        && !ev.meta_key()
+        && !ev.shift_key()
+    {
+        let ids = state.annotations.selected_ids().get_untracked();
+        if !ids.is_empty() {
+            state.annotations.selected_ids().set(Vec::new());
         }
+        state.interaction.active_focus().set(None);
+    }
 
     match state.interaction.canvas_tool().get_untracked() {
         CanvasTool::Hand => {
             state.interaction.is_dragging().set(true);
-            ix.hand_drag_start.set((ev.client_x() as f64, state.view.scroll_offset().get_untracked()));
+            ix.hand_drag_start.set((
+                ev.client_x() as f64,
+                state.view.scroll_offset().get_untracked(),
+            ));
         }
         CanvasTool::Selection => {
-            if let Some((_, _, t, f)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+            if let Some((_, _, t, f)) = pointer_to_xtf(
+                ev.client_x() as f64,
+                ev.client_y() as f64,
+                canvas_ref,
+                &state,
+            ) {
                 state.interaction.is_dragging().set(true);
                 ix.drag_start.set((t, f));
                 state.interaction.selection().set(None);
@@ -592,7 +682,12 @@ pub fn on_pointermove(
     canvas_ref: &NodeRef<leptos::html::Canvas>,
     state: AppState,
 ) {
-    if let Some((px_x, px_y, t, f)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+    if let Some((px_x, px_y, t, f)) = pointer_to_xtf(
+        ev.client_x() as f64,
+        ev.client_y() as f64,
+        canvas_ref,
+        &state,
+    ) {
         // Always track hover position
         state.interaction.mouse_freq().set(Some(f));
         state.interaction.mouse_canvas_x().set(px_x);
@@ -611,21 +706,29 @@ pub fn on_pointermove(
         if state.interaction.is_dragging().get_untracked() {
             // Spec handle drag takes priority
             if let Some(handle) = state.interaction.spec_drag_handle().get_untracked() {
-                if let Some((freq_at_mouse, file_max_freq)) = resolve_freq_at_pointer(px_y, canvas_ref, state) {
+                if let Some((freq_at_mouse, file_max_freq)) =
+                    resolve_freq_at_pointer(px_y, canvas_ref, state)
+                {
                     apply_handle_drag(state, handle, freq_at_mouse, file_max_freq);
                 }
                 return;
             }
 
             // Annotation resize handle drag takes second priority
-            if let Some((ref ann_id, handle_pos)) = state.annotations.drag_handle().get_untracked() {
+            if let Some((ref ann_id, handle_pos)) = state.annotations.drag_handle().get_untracked()
+            {
                 apply_annotation_resize(state, ann_id.clone(), handle_pos, t, f);
                 return;
             }
 
             match state.interaction.canvas_tool().get_untracked() {
                 CanvasTool::Hand => {
-                    apply_hand_pan(state, ev.client_x() as f64, canvas_ref, ix.hand_drag_start.get_untracked());
+                    apply_hand_pan(
+                        state,
+                        ev.client_x() as f64,
+                        canvas_ref,
+                        ix.hand_drag_start.get_untracked(),
+                    );
                 }
                 CanvasTool::Selection => {
                     let (t0, f0) = ix.drag_start.get_untracked();
@@ -643,36 +746,60 @@ pub fn on_pointermove(
             if !in_label_area {
                 if let Some((_, file_max_freq)) = resolve_freq_at_pointer(px_y, canvas_ref, state) {
                     let min_freq_val = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-                    let max_freq_val = state.view.max_display_freq().get_untracked().unwrap_or(file_max_freq);
+                    let max_freq_val = state
+                        .view
+                        .max_display_freq()
+                        .get_untracked()
+                        .unwrap_or(file_max_freq);
                     let canvas_el = canvas_ref.get();
                     if let Some(canvas_el) = canvas_el {
                         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                         let cw = canvas.width() as f64;
                         let ch = canvas.height() as f64;
-                        let band_ff_focused = state.interaction.active_focus().get_untracked() == Some(ActiveFocus::FrequencyFocus);
+                        let band_ff_focused = state.interaction.active_focus().get_untracked()
+                            == Some(ActiveFocus::FrequencyFocus);
                         let handle = hit_test_spec_handles(
-                            &state, px_y, min_freq_val, max_freq_val, ch, 8.0, band_ff_focused,
+                            &state,
+                            px_y,
+                            min_freq_val,
+                            max_freq_val,
+                            ch,
+                            8.0,
+                            band_ff_focused,
                         );
                         state.interaction.spec_hover_handle().set(handle);
 
                         // Annotation resize handle hover detection (only when annotations have focus and are visible)
-                        let annotations_focused = state.interaction.active_focus().get_untracked() == Some(ActiveFocus::Annotations)
+                        let annotations_focused = state.interaction.active_focus().get_untracked()
+                            == Some(ActiveFocus::Annotations)
                             && state.annotations.visible().get_untracked();
                         let selected_ids = state.annotations.selected_ids().get_untracked();
                         if annotations_focused && !selected_ids.is_empty() {
-                            let file_idx = state.library.current_index().get_untracked().unwrap_or(0);
+                            let file_idx =
+                                state.library.current_index().get_untracked().unwrap_or(0);
                             let store = state.annotations.store().get_untracked();
-                            if let Some(set) = state.file_id_at(file_idx).and_then(|id| store.get(id)) {
+                            if let Some(set) =
+                                state.file_id_at(file_idx).and_then(|id| store.get(id))
+                            {
                                 let scroll = state.view.scroll_offset().get_untracked();
                                 let files = state.library.files().get_untracked();
-                                let time_res = files.get(file_idx)
-                                    .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+                                let time_res = files
+                                    .get(file_idx)
+                                    .map(|f| f.spectrogram.time_resolution)
+                                    .unwrap_or(1.0);
                                 let zoom = state.view.zoom_level().get_untracked();
                                 let ann_handle = hit_test_annotation_handles(
-                                    set, &selected_ids,
-                                    px_x, px_y,
-                                    min_freq_val, max_freq_val,
-                                    scroll, time_res, zoom, cw, ch,
+                                    set,
+                                    &selected_ids,
+                                    px_x,
+                                    px_y,
+                                    min_freq_val,
+                                    max_freq_val,
+                                    scroll,
+                                    time_res,
+                                    zoom,
+                                    cw,
+                                    ch,
                                     crate::canvas::hit_test::ANNOTATION_HANDLE_HIT_RADIUS,
                                 );
                                 state.annotations.hover_handle().set(ann_handle);
@@ -692,11 +819,7 @@ pub fn on_pointermove(
     }
 }
 
-pub fn on_pointerleave(
-    _ev: PointerEvent,
-    ix: SpectInteraction,
-    state: AppState,
-) {
+pub fn on_pointerleave(_ev: PointerEvent, ix: SpectInteraction, state: AppState) {
     // When pointer is captured (during a drag), pointerleave won't normally fire.
     // But if it does somehow, preserve drag state so the gesture isn't interrupted.
     if state.interaction.is_dragging().get_untracked() {
@@ -720,10 +843,17 @@ pub fn on_pointerup(
     state: AppState,
 ) {
     state.interaction.pointer_is_down().set(false);
-    if !state.interaction.is_dragging().get_untracked() { return; }
+    if !state.interaction.is_dragging().get_untracked() {
+        return;
+    }
 
     // End HET/BandFF handle drag
-    if state.interaction.spec_drag_handle().get_untracked().is_some() {
+    if state
+        .interaction
+        .spec_drag_handle()
+        .get_untracked()
+        .is_some()
+    {
         state.interaction.spec_drag_handle().set(None);
         state.interaction.is_dragging().set(false);
         return;
@@ -732,7 +862,10 @@ pub fn on_pointerup(
     // End annotation resize handle drag
     if let Some((ref ann_id, _)) = state.annotations.drag_handle().get_untracked() {
         if let Some(file_id) = state.current_file_id() {
-            let now = js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_default();
+            let now = js_sys::Date::new_0()
+                .to_iso_string()
+                .as_string()
+                .unwrap_or_default();
             state.annotations.store().update(|store| {
                 if let Some(set) = store.get_mut(file_id) {
                     if let Some(a) = set.annotations.iter_mut().find(|a| a.id == *ann_id) {
@@ -757,7 +890,9 @@ pub fn on_pointerup(
 
         if was_click {
             // Handle deferred annotation selection on click
-            if let Some(PendingAnnotationHit { id: hit_id, ctrl }) = ix.pending_annotation_hit.get_untracked() {
+            if let Some(PendingAnnotationHit { id: hit_id, ctrl }) =
+                ix.pending_annotation_hit.get_untracked()
+            {
                 if ctrl {
                     state.annotations.selected_ids().update(|ids| {
                         if let Some(pos) = ids.iter().position(|id| *id == hit_id) {
@@ -770,13 +905,22 @@ pub fn on_pointerup(
                     state.annotations.selected_ids().set(vec![hit_id.clone()]);
                 }
                 state.annotations.last_clicked_id().set(Some(hit_id));
-                state.interaction.active_focus().set(Some(ActiveFocus::Annotations));
+                state
+                    .interaction
+                    .active_focus()
+                    .set(Some(ActiveFocus::Annotations));
             } else if ix.pending_selection_hit.get_untracked() {
                 // Deferred transient selection body click-to-refocus
-                state.interaction.active_focus().set(Some(ActiveFocus::TransientSelection));
+                state
+                    .interaction
+                    .active_focus()
+                    .set(Some(ActiveFocus::TransientSelection));
             } else if ix.pending_band_ff_hit.get_untracked() {
                 // Deferred BandFF body click-to-select
-                state.interaction.active_focus().set(Some(ActiveFocus::FrequencyFocus));
+                state
+                    .interaction
+                    .active_focus()
+                    .set(Some(ActiveFocus::FrequencyFocus));
             } else {
                 // Click on empty area deselects annotations and clears focus
                 if !ev.ctrl_key() && !ev.meta_key() && !ev.shift_key() {
@@ -790,7 +934,10 @@ pub fn on_pointerup(
             // Bookmark while playing
             if state.playback.is_playing().get_untracked() {
                 let t = state.playback.playhead_time().get_untracked();
-                state.viewmode.bookmarks().update(|bm| bm.push(crate::state::Bookmark { time: t }));
+                state
+                    .viewmode
+                    .bookmarks()
+                    .update(|bm| bm.push(crate::state::Bookmark { time: t }));
             }
         }
 
@@ -799,8 +946,15 @@ pub fn on_pointerup(
         ix.pending_selection_hit.set(false);
         return;
     }
-    if state.interaction.canvas_tool().get_untracked() != CanvasTool::Selection { return; }
-    if let Some((_, _, t, f)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+    if state.interaction.canvas_tool().get_untracked() != CanvasTool::Selection {
+        return;
+    }
+    if let Some((_, _, t, f)) = pointer_to_xtf(
+        ev.client_x() as f64,
+        ev.client_y() as f64,
+        canvas_ref,
+        &state,
+    ) {
         let (t0, f0) = ix.drag_start.get_untracked();
         let sel = Selection {
             time_start: t0.min(t),
@@ -810,7 +964,10 @@ pub fn on_pointerup(
         };
         if sel.time_end - sel.time_start > 0.0001 {
             state.interaction.selection().set(Some(sel));
-            state.interaction.active_focus().set(Some(ActiveFocus::TransientSelection));
+            state
+                .interaction
+                .active_focus()
+                .set(Some(ActiveFocus::TransientSelection));
             if state.annotations.selection_auto_focus().get_untracked() {
                 if let (Some(lo), Some(hi)) = (sel.freq_low, sel.freq_high) {
                     if hi - lo > 100.0 {
@@ -824,15 +981,16 @@ pub fn on_pointerup(
     }
 }
 
-pub fn on_dblclick(
-    ev: MouseEvent,
-    canvas_ref: &NodeRef<leptos::html::Canvas>,
-    state: AppState,
-) {
+pub fn on_dblclick(ev: MouseEvent, canvas_ref: &NodeRef<leptos::html::Canvas>, state: AppState) {
     // Double-click on y-axis: reset the frequency display range to
     // 0..Nyquist (same as a tap). The band gutter owns "select all
     // frequencies" (HFR) now; this axis is a viewport control.
-    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(
+        ev.client_x() as f64,
+        ev.client_y() as f64,
+        canvas_ref,
+        &state,
+    ) {
         if px_x < LABEL_AREA_WIDTH && !state.display.transform().get_untracked() {
             reset_freq_axis_view(state);
             ev.prevent_default();
@@ -844,7 +1002,12 @@ pub fn on_dblclick(
 
     // Double-click inside a transient selection: promote it to an annotation and open label edit.
     if let Some(sel) = state.interaction.selection().get_untracked() {
-        if let Some((_, _, t, freq)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+        if let Some((_, _, t, freq)) = pointer_to_xtf(
+            ev.client_x() as f64,
+            ev.client_y() as f64,
+            canvas_ref,
+            &state,
+        ) {
             if point_in_selection(&sel, t, freq) {
                 crate::components::overflow_menu::annotate_selection(&state);
                 ev.prevent_default();
@@ -853,7 +1016,9 @@ pub fn on_dblclick(
             // Outside selection: clear it (existing behavior)
             state.interaction.last_selection().set(Some(sel));
             state.interaction.selection().set(None);
-            if state.interaction.active_focus().get_untracked() == Some(ActiveFocus::TransientSelection) {
+            if state.interaction.active_focus().get_untracked()
+                == Some(ActiveFocus::TransientSelection)
+            {
                 state.interaction.active_focus().set(None);
             }
             ev.prevent_default();
@@ -863,7 +1028,12 @@ pub fn on_dblclick(
 
     // Double-click inside an annotation body: enter label edit for that annotation.
     if state.annotations.visible().get_untracked() {
-        if let Some((px_x, px_y, _, _)) = pointer_to_xtf(ev.client_x() as f64, ev.client_y() as f64, canvas_ref, &state) {
+        if let Some((px_x, px_y, _, _)) = pointer_to_xtf(
+            ev.client_x() as f64,
+            ev.client_y() as f64,
+            canvas_ref,
+            &state,
+        ) {
             if let Some(canvas_el) = canvas_ref.get() {
                 let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                 let cw = canvas.width() as f64;
@@ -873,7 +1043,11 @@ pub fn on_dblclick(
                 let file = files.get(file_idx);
                 let file_max_freq = file.map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
                 let min_freq = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-                let max_freq = state.view.max_display_freq().get_untracked().unwrap_or(file_max_freq);
+                let max_freq = state
+                    .view
+                    .max_display_freq()
+                    .get_untracked()
+                    .unwrap_or(file_max_freq);
                 let scroll = state.view.scroll_offset().get_untracked();
                 let time_res = file.map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
                 let zoom = state.view.zoom_level().get_untracked();
@@ -882,15 +1056,22 @@ pub fn on_dblclick(
                     if let Some(hit_id) = hit_test_annotation_body(
                         set, px_x, px_y, min_freq, max_freq, scroll, time_res, zoom, cw, ch,
                     ) {
-                        let is_locked = set.annotations.iter()
+                        let is_locked = set
+                            .annotations
+                            .iter()
                             .find(|a| a.id == hit_id)
                             .and_then(|a| match &a.kind {
-                                crate::annotations::AnnotationKind::Region(r) => Some(r.is_locked()),
+                                crate::annotations::AnnotationKind::Region(r) => {
+                                    Some(r.is_locked())
+                                }
                                 _ => None,
                             })
                             .unwrap_or(false);
                         state.annotations.selected_ids().set(vec![hit_id]);
-                        state.interaction.active_focus().set(Some(ActiveFocus::Annotations));
+                        state
+                            .interaction
+                            .active_focus()
+                            .set(Some(ActiveFocus::Annotations));
                         if is_locked {
                             state.show_info_toast("Annotation is locked \u{2014} unlock to edit label by double-click");
                         } else {
@@ -906,11 +1087,17 @@ pub fn on_dblclick(
     }
 
     // Double-click on BandFF handle toggles HFR (label area tap handled by finalize_axis_drag)
-    if state.band_ff_range_untracked().is_none() { return; }
+    if state.band_ff_range_untracked().is_none() {
+        return;
+    }
 
     let on_handle = matches!(
         state.interaction.spec_hover_handle().get_untracked(),
-        Some(SpectrogramHandle::BandFfUpper | SpectrogramHandle::BandFfLower | SpectrogramHandle::BandFfMiddle)
+        Some(
+            SpectrogramHandle::BandFfUpper
+                | SpectrogramHandle::BandFfLower
+                | SpectrogramHandle::BandFfMiddle
+        )
     );
     if on_handle {
         state.toggle_hfr();
@@ -939,7 +1126,9 @@ pub fn on_touchstart(
 ) {
     // When viewport is pinch-zoomed, let the browser handle all touch gestures
     // so the user can zoom back out via native pinch.
-    if state.status.viewport_zoomed().get_untracked() { return; }
+    if state.status.viewport_zoomed().get_untracked() {
+        return;
+    }
 
     // Cancel any ongoing inertia animation immediately
     crate::components::inertia::cancel_inertia(ix.inertia_generation);
@@ -961,16 +1150,27 @@ pub fn on_touchstart(
                 && crate::canvas::live_waterfall::is_active();
             let (time_res, duration) = if wf_active {
                 let tr = crate::canvas::live_waterfall::time_resolution();
-                (tr, crate::canvas::live_waterfall::total_columns() as f64 * tr)
+                (
+                    tr,
+                    crate::canvas::live_waterfall::total_columns() as f64 * tr,
+                )
             } else {
                 (
-                    file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0),
-                    file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX),
+                    file.as_ref()
+                        .map(|f| f.spectrogram.time_resolution)
+                        .unwrap_or(1.0),
+                    file.as_ref()
+                        .map(|f| f.audio.duration_secs)
+                        .unwrap_or(f64::MAX),
                 )
             };
             let nyquist = file_nyquist(state);
             let initial_min_freq = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-            let initial_max_freq = state.view.max_display_freq().get_untracked().unwrap_or(nyquist);
+            let initial_max_freq = state
+                .view
+                .max_display_freq()
+                .get_untracked()
+                .unwrap_or(nyquist);
             // Was the view following the live edge when the pinch began? (No pan
             // grace window active.) Drives whether we keep butted to the edge or
             // anchor-zoom in place.
@@ -1002,13 +1202,18 @@ pub fn on_touchstart(
         return;
     }
 
-    if n != 1 { return; }
+    if n != 1 {
+        return;
+    }
     // Transitioning from 2 to 1 finger — re-anchor pan position
     if ix.pinch_state.get_untracked().is_some() {
         ix.pinch_state.set(None);
         ix.pinch_axis.set(None);
         if let Some(touch) = touches.get(0) {
-            ix.hand_drag_start.set((touch.client_x() as f64, state.view.scroll_offset().get_untracked()));
+            ix.hand_drag_start.set((
+                touch.client_x() as f64,
+                state.view.scroll_offset().get_untracked(),
+            ));
             if state.interaction.canvas_tool().get_untracked() == CanvasTool::Hand {
                 state.interaction.is_dragging().set(true);
             }
@@ -1020,7 +1225,12 @@ pub fn on_touchstart(
 
     // Check for annotation resize handle drag first (touch) — selected annotations
     // take priority over BandFF/HET handles when they overlap
-    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(
+        touch.client_x() as f64,
+        touch.client_y() as f64,
+        canvas_ref,
+        &state,
+    ) {
         if let Some(canvas_el) = canvas_ref.get() {
             let canvas: &HtmlCanvasElement = canvas_el.as_ref();
             let cw = canvas.width() as f64;
@@ -1030,26 +1240,48 @@ pub fn on_touchstart(
                 let file_idx = state.library.current_index().get_untracked().unwrap_or(0);
                 let store = state.annotations.store().get_untracked();
                 let files = state.library.files().get_untracked();
-                let file_max_freq = files.get(file_idx).map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
+                let file_max_freq = files
+                    .get(file_idx)
+                    .map(|f| f.spectrogram.max_freq)
+                    .unwrap_or(96_000.0);
                 let min_freq_val = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-                let max_freq_val = state.view.max_display_freq().get_untracked().unwrap_or(file_max_freq);
+                let max_freq_val = state
+                    .view
+                    .max_display_freq()
+                    .get_untracked()
+                    .unwrap_or(file_max_freq);
                 let scroll = state.view.scroll_offset().get_untracked();
-                let time_res = files.get(file_idx).map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+                let time_res = files
+                    .get(file_idx)
+                    .map(|f| f.spectrogram.time_resolution)
+                    .unwrap_or(1.0);
                 let zoom = state.view.zoom_level().get_untracked();
                 let file_id = state.file_id_at(file_idx);
                 if let Some(set) = file_id.and_then(|id| store.get(id)) {
                     let ann_handle = hit_test_annotation_handles(
-                        set, &selected_ids,
-                        px_x, px_y,
-                        min_freq_val, max_freq_val,
-                        scroll, time_res, zoom, cw, ch,
+                        set,
+                        &selected_ids,
+                        px_x,
+                        px_y,
+                        min_freq_val,
+                        max_freq_val,
+                        scroll,
+                        time_res,
+                        zoom,
+                        cw,
+                        ch,
                         crate::canvas::hit_test::ANNOTATION_HANDLE_HIT_RADIUS_TOUCH,
                     );
                     if let Some((ref ann_id, handle_pos)) = ann_handle {
                         // Check if locked
-                        let locked = set.annotations.iter().find(|a| a.id == *ann_id)
+                        let locked = set
+                            .annotations
+                            .iter()
+                            .find(|a| a.id == *ann_id)
                             .and_then(|a| match &a.kind {
-                                crate::annotations::AnnotationKind::Region(r) => Some(r.is_locked()),
+                                crate::annotations::AnnotationKind::Region(r) => {
+                                    Some(r.is_locked())
+                                }
                                 _ => None,
                             })
                             .unwrap_or(false);
@@ -1064,10 +1296,18 @@ pub fn on_touchstart(
                             // Store original bounds
                             if let Some(a) = set.annotations.iter().find(|a| a.id == *ann_id) {
                                 if let crate::annotations::AnnotationKind::Region(ref r) = a.kind {
-                                    state.annotations.drag_original().set(Some((r.time_start, r.time_end, r.freq_low, r.freq_high)));
+                                    state.annotations.drag_original().set(Some((
+                                        r.time_start,
+                                        r.time_end,
+                                        r.freq_low,
+                                        r.freq_high,
+                                    )));
                                 }
                             }
-                            state.annotations.drag_handle().set(Some((ann_id.clone(), handle_pos)));
+                            state
+                                .annotations
+                                .drag_handle()
+                                .set(Some((ann_id.clone(), handle_pos)));
                             state.interaction.is_dragging().set(true);
                             ev.prevent_default();
                             return;
@@ -1079,7 +1319,12 @@ pub fn on_touchstart(
     }
 
     // Check for spec handle drag — hit-test at touch position
-    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+    if let Some((px_x, px_y, _, _)) = pointer_to_xtf(
+        touch.client_x() as f64,
+        touch.client_y() as f64,
+        canvas_ref,
+        &state,
+    ) {
         if let Some(canvas_el) = canvas_ref.get() {
             let canvas: &HtmlCanvasElement = canvas_el.as_ref();
             let cw = canvas.width() as f64;
@@ -1089,13 +1334,29 @@ pub fn on_touchstart(
             let file = idx.and_then(|i| files.get(i));
             let file_max_freq = file.map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
             let min_freq_val = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-            let max_freq_val = state.view.max_display_freq().get_untracked().unwrap_or(file_max_freq);
-            let band_ff_focused = state.interaction.active_focus().get_untracked() == Some(ActiveFocus::FrequencyFocus);
+            let max_freq_val = state
+                .view
+                .max_display_freq()
+                .get_untracked()
+                .unwrap_or(file_max_freq);
+            let band_ff_focused = state.interaction.active_focus().get_untracked()
+                == Some(ActiveFocus::FrequencyFocus);
             let handle = hit_test_spec_handles(
-                &state, px_y, min_freq_val, max_freq_val, ch, 16.0, band_ff_focused, // wider touch target
+                &state,
+                px_y,
+                min_freq_val,
+                max_freq_val,
+                ch,
+                16.0,
+                band_ff_focused, // wider touch target
             );
             if let Some(handle) = handle {
-                let is_ff = matches!(handle, SpectrogramHandle::BandFfUpper | SpectrogramHandle::BandFfLower | SpectrogramHandle::BandFfMiddle);
+                let is_ff = matches!(
+                    handle,
+                    SpectrogramHandle::BandFfUpper
+                        | SpectrogramHandle::BandFfLower
+                        | SpectrogramHandle::BandFfMiddle
+                );
                 if !is_ff || is_in_band_ff_drag_zone(px_x, cw) {
                     state.interaction.spec_drag_handle().set(Some(handle));
                     state.interaction.is_dragging().set(true);
@@ -1118,13 +1379,21 @@ pub fn on_touchstart(
         CanvasTool::Hand => {
             ev.prevent_default();
             state.interaction.is_dragging().set(true);
-            ix.hand_drag_start.set((touch.client_x() as f64, state.view.scroll_offset().get_untracked()));
+            ix.hand_drag_start.set((
+                touch.client_x() as f64,
+                state.view.scroll_offset().get_untracked(),
+            ));
         }
         CanvasTool::Selection => {
             ev.prevent_default();
             // Begin a marquee selection with a single finger (mirrors the
             // pointer path so touch devices can select regions too).
-            if let Some((_, _, t, f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+            if let Some((_, _, t, f)) = pointer_to_xtf(
+                touch.client_x() as f64,
+                touch.client_y() as f64,
+                canvas_ref,
+                &state,
+            ) {
                 state.interaction.is_dragging().set(true);
                 ix.drag_start.set((t, f));
                 state.interaction.selection().set(None);
@@ -1140,7 +1409,9 @@ pub fn on_touchmove(
     state: AppState,
 ) {
     // When viewport is pinch-zoomed, let the browser handle all touch gestures.
-    if state.status.viewport_zoomed().get_untracked() { return; }
+    if state.status.viewport_zoomed().get_untracked() {
+        return;
+    }
 
     let touches = ev.touches();
     let n = touches.length();
@@ -1149,9 +1420,13 @@ pub fn on_touchmove(
     if n == 2 {
         if let Some(ps) = ix.pinch_state.get_untracked() {
             ev.prevent_default();
-            use crate::components::pinch::{two_finger_axes, apply_pinch, apply_freq_pinch, FreqPinchState, PinchAxis};
+            use crate::components::pinch::{
+                apply_freq_pinch, apply_pinch, two_finger_axes, FreqPinchState, PinchAxis,
+            };
             if let Some((mid_x, mid_y, dist_x, dist_y)) = two_finger_axes(&touches) {
-                let Some(canvas_el) = canvas_ref.get() else { return };
+                let Some(canvas_el) = canvas_ref.get() else {
+                    return;
+                };
                 let canvas: &HtmlCanvasElement = canvas_el.as_ref();
                 let rect = canvas.get_bounding_client_rect();
                 let cw = canvas.width() as f64;
@@ -1165,7 +1440,11 @@ pub fn on_touchmove(
                     None => {
                         const LOCK_PX: f64 = 10.0;
                         let decided = crate::components::pinch::decide_pinch_axis(
-                            ps.initial_dist_x, ps.initial_dist_y, dist_x, dist_y, LOCK_PX,
+                            ps.initial_dist_x,
+                            ps.initial_dist_y,
+                            dist_x,
+                            dist_y,
+                            LOCK_PX,
                         );
                         if let Some(a) = decided {
                             ix.pinch_axis.set(Some(a));
@@ -1180,7 +1459,8 @@ pub fn on_touchmove(
 
                 match axis {
                     Some(PinchAxis::Horizontal) => {
-                        let (new_zoom, new_scroll) = apply_pinch(&ps, dist_x, mid_x, rect.left(), cw);
+                        let (new_zoom, new_scroll) =
+                            apply_pinch(&ps, dist_x, mid_x, rect.left(), cw);
                         if waterfall_active {
                             // Live: zoom, but never jump to the start or slip into
                             // empty space. If we were following the live edge,
@@ -1221,7 +1501,8 @@ pub fn on_touchmove(
                             nyquist: ps.nyquist,
                         };
                         let current_mid_canvas_y = mid_y - rect.top();
-                        let (new_min, new_max) = apply_freq_pinch(&fps, dist_y, current_mid_canvas_y, ch);
+                        let (new_min, new_max) =
+                            apply_freq_pinch(&fps, dist_y, current_mid_canvas_y, ch);
                         state.view.min_display_freq().set(Some(new_min));
                         state.view.max_display_freq().set(Some(new_max));
                         if waterfall_active && !ps.was_following {
@@ -1235,17 +1516,27 @@ pub fn on_touchmove(
         return;
     }
 
-    if n != 1 { return; }
+    if n != 1 {
+        return;
+    }
     let touch = touches.get(0).unwrap();
 
-    if !state.interaction.is_dragging().get_untracked() { return; }
+    if !state.interaction.is_dragging().get_untracked() {
+        return;
+    }
     ev.prevent_default();
-
 
     // Spec handle drag takes priority
     if let Some(handle) = state.interaction.spec_drag_handle().get_untracked() {
-        if let Some((_, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
-            if let Some((freq_at_touch, file_max_freq)) = resolve_freq_at_pointer(px_y, canvas_ref, state) {
+        if let Some((_, px_y, _, _)) = pointer_to_xtf(
+            touch.client_x() as f64,
+            touch.client_y() as f64,
+            canvas_ref,
+            &state,
+        ) {
+            if let Some((freq_at_touch, file_max_freq)) =
+                resolve_freq_at_pointer(px_y, canvas_ref, state)
+            {
                 apply_handle_drag(state, handle, freq_at_touch, file_max_freq);
             }
         }
@@ -1254,7 +1545,12 @@ pub fn on_touchmove(
 
     // Annotation resize handle drag
     if let Some((ref ann_id, handle_pos)) = state.annotations.drag_handle().get_untracked() {
-        if let Some((_, _, t, f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+        if let Some((_, _, t, f)) = pointer_to_xtf(
+            touch.client_x() as f64,
+            touch.client_y() as f64,
+            canvas_ref,
+            &state,
+        ) {
             apply_annotation_resize(state, ann_id.clone(), handle_pos, t, f);
         }
         return;
@@ -1262,14 +1558,25 @@ pub fn on_touchmove(
 
     match state.interaction.canvas_tool().get_untracked() {
         CanvasTool::Hand => {
-            apply_hand_pan(state, touch.client_x() as f64, canvas_ref, ix.hand_drag_start.get_untracked());
+            apply_hand_pan(
+                state,
+                touch.client_x() as f64,
+                canvas_ref,
+                ix.hand_drag_start.get_untracked(),
+            );
             // Record velocity sample for inertia
             let now = web_sys::window().unwrap().performance().unwrap().now();
-            ix.velocity_tracker.update_value(|t| t.push(now, touch.client_x() as f64));
+            ix.velocity_tracker
+                .update_value(|t| t.push(now, touch.client_x() as f64));
         }
         CanvasTool::Selection => {
             // Grow the marquee from the touch-start anchor (mirrors pointer).
-            if let Some((_, _, t, f)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+            if let Some((_, _, t, f)) = pointer_to_xtf(
+                touch.client_x() as f64,
+                touch.client_y() as f64,
+                canvas_ref,
+                &state,
+            ) {
                 let (t0, f0) = ix.drag_start.get_untracked();
                 state.interaction.selection().set(Some(Selection {
                     time_start: t0.min(t),
@@ -1298,7 +1605,10 @@ pub fn on_touchend(
     // One finger remains after pinch — re-anchor pan to avoid jump
     if remaining == 1 {
         if let Some(touch) = ev.touches().get(0) {
-            ix.hand_drag_start.set((touch.client_x() as f64, state.view.scroll_offset().get_untracked()));
+            ix.hand_drag_start.set((
+                touch.client_x() as f64,
+                state.view.scroll_offset().get_untracked(),
+            ));
             if state.interaction.canvas_tool().get_untracked() == CanvasTool::Hand {
                 state.interaction.is_dragging().set(true);
             }
@@ -1307,7 +1617,12 @@ pub fn on_touchend(
     }
 
     if remaining == 0 {
-        if state.interaction.spec_drag_handle().get_untracked().is_some() {
+        if state
+            .interaction
+            .spec_drag_handle()
+            .get_untracked()
+            .is_some()
+        {
             state.interaction.spec_drag_handle().set(None);
             state.interaction.is_dragging().set(false);
             return;
@@ -1315,7 +1630,10 @@ pub fn on_touchend(
         // End annotation resize handle drag
         if let Some((ref ann_id, _)) = state.annotations.drag_handle().get_untracked() {
             if let Some(file_id) = state.current_file_id() {
-                let now = js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_default();
+                let now = js_sys::Date::new_0()
+                    .to_iso_string()
+                    .as_string()
+                    .unwrap_or_default();
                 state.annotations.store().update(|store| {
                     if let Some(set) = store.get_mut(file_id) {
                         if let Some(a) = set.annotations.iter_mut().find(|a| a.id == *ann_id) {
@@ -1339,7 +1657,10 @@ pub fn on_touchend(
                 let dx = (touch.client_x() as f64 - start_x).abs();
                 if dx < 5.0 && state.playback.is_playing().get_untracked() {
                     let t = state.playback.playhead_time().get_untracked();
-                    state.viewmode.bookmarks().update(|bm| bm.push(crate::state::Bookmark { time: t }));
+                    state
+                        .viewmode
+                        .bookmarks()
+                        .update(|bm| bm.push(crate::state::Bookmark { time: t }));
                 } else if dx >= 5.0 {
                     // Flick → launch inertia
                     let velocity = ix.velocity_tracker.with_value(|t| t.velocity_px_per_sec());
@@ -1351,19 +1672,33 @@ pub fn on_touchend(
                         let file = idx.and_then(|i| files.get(i));
                         let timeline = state.timeline.active().get_untracked();
                         let time_res = if let Some(ref tl) = timeline {
-                            tl.segments.first().and_then(|s| files.get(s.file_index))
-                                .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+                            tl.segments
+                                .first()
+                                .and_then(|s| files.get(s.file_index))
+                                .map(|f| f.spectrogram.time_resolution)
+                                .unwrap_or(1.0)
                         } else {
-                            file.as_ref().map(|f| f.spectrogram.time_resolution).unwrap_or(1.0)
+                            file.as_ref()
+                                .map(|f| f.spectrogram.time_resolution)
+                                .unwrap_or(1.0)
                         };
                         let duration = if let Some(ref tl) = timeline {
                             tl.total_duration_secs
                         } else {
-                            file.as_ref().map(|f| f.audio.duration_secs).unwrap_or(f64::MAX)
+                            file.as_ref()
+                                .map(|f| f.audio.duration_secs)
+                                .unwrap_or(f64::MAX)
                         };
-                        let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
+                        let from_here_mode =
+                            state.playback.start_mode().get_untracked().uses_from_here();
                         crate::components::inertia::start_inertia(
-                            state, velocity, cw, time_res, duration, from_here_mode, ix.inertia_generation,
+                            state,
+                            velocity,
+                            cw,
+                            time_res,
+                            duration,
+                            from_here_mode,
+                            ix.inertia_generation,
                         );
                     }
                 }
@@ -1376,7 +1711,10 @@ pub fn on_touchend(
         if state.interaction.canvas_tool().get_untracked() == CanvasTool::Selection {
             if let Some(sel) = state.interaction.selection().get_untracked() {
                 if sel.time_end - sel.time_start > 0.0001 {
-                    state.interaction.active_focus().set(Some(ActiveFocus::TransientSelection));
+                    state
+                        .interaction
+                        .active_focus()
+                        .set(Some(ActiveFocus::TransientSelection));
                     if state.annotations.selection_auto_focus().get_untracked() {
                         if let (Some(lo), Some(hi)) = (sel.freq_low, sel.freq_high) {
                             if hi - lo > 100.0 {
@@ -1392,7 +1730,12 @@ pub fn on_touchend(
 
         // Track last tap time/position (used for double-tap detection on axes)
         if let Some(touch) = ev.changed_touches().get(0) {
-            if let Some((px_x, px_y, _, _)) = pointer_to_xtf(touch.client_x() as f64, touch.client_y() as f64, canvas_ref, &state) {
+            if let Some((px_x, px_y, _, _)) = pointer_to_xtf(
+                touch.client_x() as f64,
+                touch.client_y() as f64,
+                canvas_ref,
+                &state,
+            ) {
                 ix.last_tap_time.set(js_sys::Date::now());
                 ix.last_tap_x.set(px_x);
                 ix.last_tap_y.set(px_y);
@@ -1401,15 +1744,13 @@ pub fn on_touchend(
     }
 }
 
-pub fn on_wheel(
-    ev: web_sys::WheelEvent,
-    state: AppState,
-) {
+pub fn on_wheel(ev: web_sys::WheelEvent, state: AppState) {
     ev.prevent_default();
 
     // Resolve file_max_freq / time_res: prefer waterfall params when active,
     // so scroll/zoom work during listening/recording without a file.
-    let is_mic_active = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+    let is_mic_active =
+        state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
     let wf_active = is_mic_active && crate::canvas::live_waterfall::is_active();
 
     if ev.shift_key() {
@@ -1423,10 +1764,16 @@ pub fn on_wheel(
                 .map(|f| f.spectrogram.max_freq)
                 .unwrap_or(96_000.0)
         };
-        let cur_max = state.view.max_display_freq().get_untracked().unwrap_or(file_max_freq);
+        let cur_max = state
+            .view
+            .max_display_freq()
+            .get_untracked()
+            .unwrap_or(file_max_freq);
         let cur_min = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
         let range = cur_max - cur_min;
-        if range < 1.0 { return; }
+        if range < 1.0 {
+            return;
+        }
 
         let anchor_frac = if let Some(mf) = state.interaction.mouse_freq().get_untracked() {
             ((mf - cur_min) / range).clamp(0.0, 1.0)
@@ -1471,8 +1818,12 @@ pub fn on_wheel(
             let dur = crate::canvas::live_waterfall::total_columns() as f64 * tr;
             (tr, dur)
         } else if let Some(ref tl) = timeline {
-            let tr = tl.segments.first().and_then(|s| files.get(s.file_index))
-                .map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+            let tr = tl
+                .segments
+                .first()
+                .and_then(|s| files.get(s.file_index))
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(1.0);
             (tr, tl.total_duration_secs)
         } else {
             let idx = state.library.current_index().get_untracked().unwrap_or(0);
@@ -1485,13 +1836,19 @@ pub fn on_wheel(
             let zoom = state.view.zoom_level().get_untracked();
             let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
             let visible_time = viewport::visible_time(canvas_w, zoom, time_res);
-            let from_here_mode = state.playback.start_mode().get_untracked() .uses_from_here();
+            let from_here_mode = state.playback.start_mode().get_untracked().uses_from_here();
             // Scroll proportional to visible time (like arrow keys),
             // normalized so a typical wheel tick (~100px) scrolls ~10% of the view
-            let delta = raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
+            let delta =
+                raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
             state.suspend_follow();
             state.view.scroll_offset().update(|s| {
-                *s = viewport::clamp_scroll_for_mode(*s + delta, duration, visible_time, from_here_mode);
+                *s = viewport::clamp_scroll_for_mode(
+                    *s + delta,
+                    duration,
+                    visible_time,
+                    from_here_mode,
+                );
             });
         }
     }

@@ -37,7 +37,11 @@ pub fn phase_vocoder_pitch_shift(samples: &[f32], factor: PitchFactor) -> Vec<f3
     // pitch_factor: multiply frequencies by this amount
     // shift_down factor=10 → pitch_factor = 0.1 (divide freq by 10)
     // shift_up factor=-10 → pitch_factor = 10 (multiply freq by 10)
-    let pitch_factor = if factor.is_up() { abs_factor } else { 1.0 / abs_factor };
+    let pitch_factor = if factor.is_up() {
+        abs_factor
+    } else {
+        1.0 / abs_factor
+    };
 
     if samples.len() < FFT_SIZE {
         return samples.to_vec();
@@ -153,8 +157,7 @@ pub fn phase_vocoder_pitch_shift(samples: &[f32], factor: PitchFactor) -> Vec<f3
             let mut pi = 0usize;
             for (k, p) in peak_of.iter_mut().enumerate() {
                 while pi + 1 < peaks.len()
-                    && (peaks[pi + 1] as i32 - k as i32).abs()
-                        < (peaks[pi] as i32 - k as i32).abs()
+                    && (peaks[pi + 1] as i32 - k as i32).abs() < (peaks[pi] as i32 - k as i32).abs()
                 {
                     pi += 1;
                 }
@@ -172,7 +175,11 @@ pub fn phase_vocoder_pitch_shift(samples: &[f32], factor: PitchFactor) -> Vec<f3
                 // Interpolate magnitude; take nearest bin phase (avoids wrapping issues)
                 (
                     mag[s_idx] * (1.0 - s_frac) + mag[s_idx + 1] * s_frac,
-                    if s_frac < 0.5 { phase[s_idx] } else { phase[s_idx + 1] },
+                    if s_frac < 0.5 {
+                        phase[s_idx]
+                    } else {
+                        phase[s_idx + 1]
+                    },
                 )
             } else if s_idx < n_bins {
                 (mag[s_idx] * (1.0 - s_frac), phase[s_idx])
@@ -241,9 +248,18 @@ mod tests {
     #[test]
     fn test_bypass_small_factor() {
         let input: Vec<f32> = (0..1000).map(|i| (i as f32 * 0.1).sin()).collect();
-        assert_eq!(phase_vocoder_pitch_shift(&input, PitchFactor::from_signed(1.0)), input);
-        assert_eq!(phase_vocoder_pitch_shift(&input, PitchFactor::from_signed(-1.0)), input);
-        assert_eq!(phase_vocoder_pitch_shift(&input, PitchFactor::from_signed(0.5)), input);
+        assert_eq!(
+            phase_vocoder_pitch_shift(&input, PitchFactor::from_signed(1.0)),
+            input
+        );
+        assert_eq!(
+            phase_vocoder_pitch_shift(&input, PitchFactor::from_signed(-1.0)),
+            input
+        );
+        assert_eq!(
+            phase_vocoder_pitch_shift(&input, PitchFactor::from_signed(0.5)),
+            input
+        );
     }
 
     #[test]

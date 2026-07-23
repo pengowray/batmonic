@@ -116,8 +116,8 @@ impl AgcProcessor {
             };
 
             // Smooth the gain changes to reduce pumping
-            self.smooth_gain_db = gain_smooth * self.smooth_gain_db
-                + (1.0 - gain_smooth) * desired_gain_db;
+            self.smooth_gain_db =
+                gain_smooth * self.smooth_gain_db + (1.0 - gain_smooth) * desired_gain_db;
 
             // Apply gain
             let gain_linear = 10.0_f64.powf(self.smooth_gain_db / 20.0);
@@ -171,8 +171,8 @@ impl AgcProcessor {
             };
 
             // Smooth gain changes
-            self.smooth_gain_db = gain_smooth * self.smooth_gain_db
-                + (1.0 - gain_smooth) * desired_gain_db;
+            self.smooth_gain_db =
+                gain_smooth * self.smooth_gain_db + (1.0 - gain_smooth) * desired_gain_db;
 
             // Apply same gain to both channels
             let gain_linear = 10.0_f64.powf(self.smooth_gain_db / 20.0);

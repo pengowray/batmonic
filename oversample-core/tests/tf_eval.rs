@@ -66,7 +66,9 @@ fn n_for(dur_s: f64, sr: u32) -> usize {
 fn tone(sr: u32, freq: f64, dur_s: f64, amp: f32) -> Signal {
     let n = n_for(dur_s, sr);
     let w = TAU * freq / sr as f64;
-    let samples = (0..n).map(|i| (amp as f64 * (w * i as f64).sin()) as f32).collect();
+    let samples = (0..n)
+        .map(|i| (amp as f64 * (w * i as f64).sin()) as f32)
+        .collect();
     Signal { samples, sr, dur_s }
 }
 
@@ -116,7 +118,11 @@ fn with_noise(sig: &Signal, amp: f32, seed: u64) -> Signal {
             s + amp * (2.0 * u - 1.0) as f32
         })
         .collect();
-    Signal { samples, sr: sig.sr, dur_s: sig.dur_s }
+    Signal {
+        samples,
+        sr: sig.sr,
+        dur_s: sig.dur_s,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +146,12 @@ impl Spectro {
     }
 }
 
-fn from_columns(cols_in: Vec<SpectrogramColumn>, fft_size: usize, sr: u32, time_shift_s: f64) -> Spectro {
+fn from_columns(
+    cols_in: Vec<SpectrogramColumn>,
+    fft_size: usize,
+    sr: u32,
+    time_shift_s: f64,
+) -> Spectro {
     let n_bins = fft_size / 2 + 1;
     let mut cols = Vec::with_capacity(cols_in.len());
     let mut col_time = Vec::with_capacity(cols_in.len());
@@ -148,7 +159,13 @@ fn from_columns(cols_in: Vec<SpectrogramColumn>, fft_size: usize, sr: u32, time_
         col_time.push(c.time_offset + time_shift_s);
         cols.push(c.magnitudes);
     }
-    Spectro { cols, col_time, n_bins, fft_size, sr }
+    Spectro {
+        cols,
+        col_time,
+        n_bins,
+        fft_size,
+        sr,
+    }
 }
 
 /// STFT render. `time_offset` from the compute path is the window *start*, so we
@@ -160,18 +177,38 @@ fn render_stft(sig: &Signal, fft_size: usize, hop: usize) -> Spectro {
         0
     };
     let cols = compute_stft_columns(&sig.samples, sig.sr, fft_size, hop, 0, total);
-    from_columns(cols, fft_size, sig.sr, fft_size as f64 / 2.0 / sig.sr as f64)
+    from_columns(
+        cols,
+        fft_size,
+        sig.sr,
+        fft_size as f64 / 2.0 / sig.sr as f64,
+    )
 }
 
 /// Resonator render. `fft_size` here only sets the output bin grid (rows) and
 /// brightness scale; frequency resolution comes from `bw`. The column's
 /// `time_offset` is end-of-hop ("now"); we leave it uncompensated, so the EMA's
 /// group delay (~τ = 1/(2π·bw)) shows up honestly as a small time lag.
-fn render_reso(sig: &Signal, fft_size: usize, hop: usize, bw: f32, layout: ResonatorLayout) -> Spectro {
+fn render_reso(
+    sig: &Signal,
+    fft_size: usize,
+    hop: usize,
+    bw: f32,
+    layout: ResonatorLayout,
+) -> Spectro {
     let total = sig.samples.len() / hop;
     let cols = compute_resonator_columns(
-        &sig.samples, sig.sr, fft_size, hop, 0, total, bw,
-        ResonatorAlphaMode::ConstBandwidth, 50.0, layout, None,
+        &sig.samples,
+        sig.sr,
+        fft_size,
+        hop,
+        0,
+        total,
+        bw,
+        ResonatorAlphaMode::ConstBandwidth,
+        50.0,
+        layout,
+        None,
     );
     from_columns(cols, fft_size, sig.sr, 0.0)
 }
@@ -203,7 +240,11 @@ fn ridge_hz(col: &[f32], sr: u32, fft_size: usize, search: std::ops::Range<usize
     let m1 = col[k] as f64;
     let m2 = col[k + 1] as f64;
     let denom = m0 - 2.0 * m1 + m2;
-    let delta = if denom.abs() > 1e-12 { (0.5 * (m0 - m2) / denom).clamp(-0.5, 0.5) } else { 0.0 };
+    let delta = if denom.abs() > 1e-12 {
+        (0.5 * (m0 - m2) / denom).clamp(-0.5, 0.5)
+    } else {
+        0.0
+    };
     Some((k as f64 + delta) * sr as f64 / fft_size as f64)
 }
 
@@ -222,7 +263,11 @@ fn ridge_rms_hz<F: Fn(f64) -> f64>(s: &Spectro, t_lo: f64, t_hi: f64, true_if: F
             n += 1;
         }
     }
-    if n == 0 { f64::NAN } else { (sse / n as f64).sqrt() }
+    if n == 0 {
+        f64::NAN
+    } else {
+        (sse / n as f64).sqrt()
+    }
 }
 
 /// −3 dB (half-power) bandwidth (Hz) of the ridge, averaged over the eval
@@ -262,7 +307,11 @@ fn freq_bw3db_hz(s: &Spectro, t_lo: f64, t_hi: f64) -> f64 {
             if j + 1 < s.n_bins {
                 let p0 = (col[j] as f64).powi(2);
                 let p1 = (col[j + 1] as f64).powi(2);
-                let frac = if (p0 - p1).abs() > 1e-20 { ((p0 - half) / (p0 - p1)).clamp(0.0, 1.0) } else { 0.0 };
+                let frac = if (p0 - p1).abs() > 1e-20 {
+                    ((p0 - half) / (p0 - p1)).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
                 s.bin_hz(j) + frac * (s.bin_hz(j + 1) - s.bin_hz(j))
             } else {
                 s.bin_hz(j)
@@ -276,7 +325,11 @@ fn freq_bw3db_hz(s: &Spectro, t_lo: f64, t_hi: f64) -> f64 {
             if j > 0 {
                 let p0 = (col[j] as f64).powi(2);
                 let p1 = (col[j - 1] as f64).powi(2);
-                let frac = if (p0 - p1).abs() > 1e-20 { ((p0 - half) / (p0 - p1)).clamp(0.0, 1.0) } else { 0.0 };
+                let frac = if (p0 - p1).abs() > 1e-20 {
+                    ((p0 - half) / (p0 - p1)).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
                 s.bin_hz(j) - frac * (s.bin_hz(j) - s.bin_hz(j - 1))
             } else {
                 s.bin_hz(j)
@@ -285,7 +338,11 @@ fn freq_bw3db_hz(s: &Spectro, t_lo: f64, t_hi: f64) -> f64 {
         acc += (right - left).max(0.0);
         n += 1;
     }
-    if n == 0 { f64::NAN } else { acc / n as f64 }
+    if n == 0 {
+        f64::NAN
+    } else {
+        acc / n as f64
+    }
 }
 
 /// Power-weighted RMS bandwidth (Hz) of a column's spectrum, averaged over the
@@ -318,7 +375,11 @@ fn freq_spread_hz(s: &Spectro, t_lo: f64, t_hi: f64) -> f64 {
         acc += (sv / sw).sqrt();
         n += 1;
     }
-    if n == 0 { f64::NAN } else { acc / n as f64 }
+    if n == 0 {
+        f64::NAN
+    } else {
+        acc / n as f64
+    }
 }
 
 /// RMS temporal spread (ms) of band-limited energy around its centroid. For a
@@ -335,8 +396,18 @@ fn time_spread_ms(s: &Spectro, band_lo_hz: f64, band_hi_hz: f64) -> f64 {
     if tot <= 0.0 {
         return f64::NAN;
     }
-    let centroid: f64 = e.iter().zip(&s.col_time).map(|(&ee, &t)| ee * t).sum::<f64>() / tot;
-    let var: f64 = e.iter().zip(&s.col_time).map(|(&ee, &t)| ee * (t - centroid).powi(2)).sum::<f64>() / tot;
+    let centroid: f64 = e
+        .iter()
+        .zip(&s.col_time)
+        .map(|(&ee, &t)| ee * t)
+        .sum::<f64>()
+        / tot;
+    let var: f64 = e
+        .iter()
+        .zip(&s.col_time)
+        .map(|(&ee, &t)| ee * (t - centroid).powi(2))
+        .sum::<f64>()
+        / tot;
     var.sqrt() * 1000.0
 }
 
@@ -363,7 +434,11 @@ fn flatten_norm(s: &Spectro) -> Vec<f32> {
 }
 
 fn l2(a: &[f32], b: &[f32]) -> f64 {
-    a.iter().zip(b).map(|(x, y)| ((*x - *y) as f64).powi(2)).sum::<f64>().sqrt()
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| ((*x - *y) as f64).powi(2))
+        .sum::<f64>()
+        .sqrt()
 }
 
 /// Discriminability d′ between two image sets: (mean between-class distance −
@@ -471,7 +546,13 @@ fn render_reso_sched(sig: &Signal, fft_size: usize, hop: usize, sched: AlphaSche
         cols.push((0..n_bins).map(|k| bank.magnitude(k) * mag_scale).collect());
         col_time.push((frame + 1) as f64 * hop as f64 / sig.sr as f64);
     }
-    Spectro { cols, col_time, n_bins, fft_size, sr: sig.sr }
+    Spectro {
+        cols,
+        col_time,
+        n_bins,
+        fft_size,
+        sr: sig.sr,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +566,11 @@ fn render_reso_sched(sig: &Signal, fft_size: usize, hop: usize, sched: AlphaSche
 fn mix(a: &Signal, b: &Signal) -> Signal {
     let n = a.samples.len().min(b.samples.len());
     let samples = (0..n).map(|i| a.samples[i] + b.samples[i]).collect();
-    Signal { samples, sr: a.sr, dur_s: a.dur_s }
+    Signal {
+        samples,
+        sr: a.sr,
+        dur_s: a.dur_s,
+    }
 }
 
 /// For each target time, the index of the nearest column in `s` (both col_time
@@ -497,8 +582,8 @@ fn nearest_cols(s: &Spectro, t_targets: &[f64]) -> Vec<usize> {
         while j + 1 < s.col_time.len() && s.col_time[j + 1] <= t {
             j += 1;
         }
-        let nearer_next = j + 1 < s.col_time.len()
-            && (s.col_time[j + 1] - t).abs() < (s.col_time[j] - t).abs();
+        let nearer_next =
+            j + 1 < s.col_time.len() && (s.col_time[j + 1] - t).abs() < (s.col_time[j] - t).abs();
         out.push(if nearer_next { j + 1 } else { j });
     }
     out
@@ -531,7 +616,13 @@ fn fuse(a: &Spectro, b: &Spectro, op: impl Fn(f32, f32) -> f32) -> Spectro {
         .zip(&bres)
         .map(|(ac, bc)| ac.iter().zip(bc).map(|(&x, &y)| op(x, y)).collect())
         .collect();
-    Spectro { cols, col_time: a.col_time.clone(), n_bins: a.n_bins, fft_size: a.fft_size, sr: a.sr }
+    Spectro {
+        cols,
+        col_time: a.col_time.clone(),
+        n_bins: a.n_bins,
+        fft_size: a.fft_size,
+        sr: a.sr,
+    }
 }
 
 /// Geometric mean — high only where BOTH agree, so it keeps the resonator's
@@ -545,7 +636,13 @@ fn geomean(x: f32, y: f32) -> f32 {
 /// tonal (→1, favour the sharp/slow bank); a bin that jumps is transient (→0,
 /// favour the fast bank). `k` scales sensitivity to change.
 fn tonalness(f: &Spectro, k: f64) -> Vec<Vec<f32>> {
-    let fmax = f.cols.iter().flatten().copied().fold(0.0f32, f32::max).max(1e-9) as f64;
+    let fmax = f
+        .cols
+        .iter()
+        .flatten()
+        .copied()
+        .fold(0.0f32, f32::max)
+        .max(1e-9) as f64;
     (0..f.cols.len())
         .map(|ci| {
             let prev = ci.saturating_sub(1);
@@ -565,7 +662,14 @@ fn tonalness(f: &Spectro, k: f64) -> Vec<Vec<f32>> {
 /// which neither single bank can do alone. The gate FFT is short (good time
 /// resolution) so it localizes transients tightly; its weights are upsampled to
 /// the bank's fine bin grid.
-fn adaptive_blend(sig: &Signal, fft_bank: usize, hop: usize, sharp: AlphaSched, fast: AlphaSched, k: f64) -> Spectro {
+fn adaptive_blend(
+    sig: &Signal,
+    fft_bank: usize,
+    hop: usize,
+    sharp: AlphaSched,
+    fast: AlphaSched,
+    k: f64,
+) -> Spectro {
     let s = render_reso_sched(sig, fft_bank, hop, sharp);
     let fa = render_reso_sched(sig, fft_bank, hop, fast);
     let fft_img = render_stft(sig, 256, hop); // short window ⇒ tight transient detection
@@ -579,9 +683,19 @@ fn adaptive_blend(sig: &Signal, fft_bank: usize, hop: usize, sharp: AlphaSched, 
     let w = resample_to(&s, &wgrid);
     let faw = resample_to(&s, &fa);
     let cols: Vec<Vec<f32>> = (0..s.cols.len())
-        .map(|i| (0..s.n_bins).map(|b| w[i][b] * s.cols[i][b] + (1.0 - w[i][b]) * faw[i][b]).collect())
+        .map(|i| {
+            (0..s.n_bins)
+                .map(|b| w[i][b] * s.cols[i][b] + (1.0 - w[i][b]) * faw[i][b])
+                .collect()
+        })
         .collect();
-    Spectro { cols, col_time: s.col_time.clone(), n_bins: s.n_bins, fft_size: s.fft_size, sr: s.sr }
+    Spectro {
+        cols,
+        col_time: s.col_time.clone(),
+        n_bins: s.n_bins,
+        fft_size: s.fft_size,
+        sr: s.sr,
+    }
 }
 
 /// Like `time_spread_ms` but isolates TRANSIENTS: subtract each bin's temporal
@@ -599,14 +713,28 @@ fn time_spread_transient_ms(s: &Spectro, band_lo_hz: f64, band_hi_hz: f64) -> f6
     let e: Vec<f64> = s
         .cols
         .iter()
-        .map(|col| (blo..bhi).map(|b| ((col[b] - base[b]).max(0.0) as f64).powi(2)).sum())
+        .map(|col| {
+            (blo..bhi)
+                .map(|b| ((col[b] - base[b]).max(0.0) as f64).powi(2))
+                .sum()
+        })
         .collect();
     let tot: f64 = e.iter().sum();
     if tot <= 0.0 {
         return f64::NAN;
     }
-    let centroid: f64 = e.iter().zip(&s.col_time).map(|(&ee, &t)| ee * t).sum::<f64>() / tot;
-    let var: f64 = e.iter().zip(&s.col_time).map(|(&ee, &t)| ee * (t - centroid).powi(2)).sum::<f64>() / tot;
+    let centroid: f64 = e
+        .iter()
+        .zip(&s.col_time)
+        .map(|(&ee, &t)| ee * t)
+        .sum::<f64>()
+        / tot;
+    let var: f64 = e
+        .iter()
+        .zip(&s.col_time)
+        .map(|(&ee, &t)| ee * (t - centroid).powi(2))
+        .sum::<f64>()
+        / tot;
     var.sqrt() * 1000.0
 }
 
@@ -671,7 +799,13 @@ fn write_bmp(path: &Path, w: usize, h: usize, rgb: &[u8]) -> std::io::Result<()>
 
 fn slug(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -706,8 +840,14 @@ fn methods() -> Vec<Method> {
     vec![
         Method::Stft { fft: 512 },  // sharp in time, blurry in frequency
         Method::Stft { fft: 2048 }, // sharp in frequency, blurry in time
-        Method::Reso { fft: 2048, bw: NARROW_BW }, // sharp in freq, slow to track
-        Method::Reso { fft: 2048, bw: 400.0 },     // faster tracking, blurrier
+        Method::Reso {
+            fft: 2048,
+            bw: NARROW_BW,
+        }, // sharp in freq, slow to track
+        Method::Reso {
+            fft: 2048,
+            bw: 400.0,
+        }, // faster tracking, blurrier
     ]
 }
 
@@ -732,7 +872,10 @@ fn report() {
     let ms = methods();
 
     println!("\n=== TF-eval: STFT vs Resonators ===");
-    println!("sr={SR} Hz, hop={HOP} ({:.2} ms), dur={dur}s, eval window [{t_lo:.3}, {t_hi:.3}]s\n", HOP as f64 / SR as f64 * 1000.0);
+    println!(
+        "sr={SR} Hz, hop={HOP} ({:.2} ms), dur={dur}s, eval window [{t_lo:.3}, {t_hi:.3}]s\n",
+        HOP as f64 / SR as f64 * 1000.0
+    );
 
     // 1. Pure tone @ 40 kHz → frequency localization.
     //   bw_3db = line sharpness (resonators should win); rms_bw = includes the
@@ -740,13 +883,22 @@ fn report() {
     //   single-pole tails than a Hann window).
     let t = tone(SR, 40_000.0, dur, 0.5);
     println!("[1] Pure tone 40 kHz  — ridge accuracy, line sharpness, leakage");
-    println!("    {:<28} {:>12} {:>11} {:>11}", "method", "ridge_rms_hz", "bw_3db_hz", "rms_bw_hz");
+    println!(
+        "    {:<28} {:>12} {:>11} {:>11}",
+        "method", "ridge_rms_hz", "bw_3db_hz", "rms_bw_hz"
+    );
     for m in &ms {
         let s = m.render(&t, HOP);
         let rms = ridge_rms_hz(&s, t_lo, t_hi, |_| 40_000.0);
         let bw3 = freq_bw3db_hz(&s, t_lo, t_hi);
         let leak = freq_spread_hz(&s, t_lo, t_hi);
-        println!("    {:<28} {:>12.1} {:>11.0} {:>11.0}", m.label(), rms, bw3, leak);
+        println!(
+            "    {:<28} {:>12.1} {:>11.0} {:>11.0}",
+            m.label(),
+            rms,
+            bw3,
+            leak
+        );
     }
 
     // 2. Linear chirp 20→90 kHz → ridge tracking + line thickness (stays under
@@ -755,8 +907,14 @@ fn report() {
     let (cf0, cf1) = (20_000.0, 90_000.0);
     let c = linear_chirp(SR, cf0, cf1, dur, 0.5);
     let k = (cf1 - cf0) / dur;
-    println!("\n[2] Linear chirp 20→90 kHz — tracking & line thickness ({:.0} Hz/ms)", k / 1000.0);
-    println!("    {:<28} {:>12} {:>11}", "method", "ridge_rms_hz", "bw_3db_hz");
+    println!(
+        "\n[2] Linear chirp 20→90 kHz — tracking & line thickness ({:.0} Hz/ms)",
+        k / 1000.0
+    );
+    println!(
+        "    {:<28} {:>12} {:>11}",
+        "method", "ridge_rms_hz", "bw_3db_hz"
+    );
     for m in &ms {
         let s = m.render(&c, HOP);
         let rms = ridge_rms_hz(&s, t_lo, t_hi, |t| cf0 + k * t);
@@ -780,14 +938,20 @@ fn report() {
     //    noise + a smaller Δ keep d′ out of the trivially-separable regime so
     //    the metric actually ranks the methods on a hard call.
     let dur2 = 0.20;
-    let a_gen = |seed: u64| with_noise(&linear_chirp(SR, 20_000.0, 60_000.0, dur2, 0.5), 0.12, seed);
-    let b_gen = |seed: u64| with_noise(&linear_chirp(SR, 20_000.0, 62_000.0, dur2, 0.5), 0.12, seed);
+    let a_gen =
+        |seed: u64| with_noise(&linear_chirp(SR, 20_000.0, 60_000.0, dur2, 0.5), 0.12, seed);
+    let b_gen =
+        |seed: u64| with_noise(&linear_chirp(SR, 20_000.0, 62_000.0, dur2, 0.5), 0.12, seed);
     const N: u64 = 10;
     println!("\n[4] Discriminability d′ — chirp 20→60 kHz vs 20→62 kHz (noise σ=0.12, {N} draws)");
     println!("    {:<28} {:>10}", "method", "dprime");
     for m in &ms {
-        let a: Vec<Vec<f32>> = (0..N).map(|s| flatten_norm(&m.render(&a_gen(s), HOP))).collect();
-        let b: Vec<Vec<f32>> = (0..N).map(|s| flatten_norm(&m.render(&b_gen(s + 1000), HOP))).collect();
+        let a: Vec<Vec<f32>> = (0..N)
+            .map(|s| flatten_norm(&m.render(&a_gen(s), HOP)))
+            .collect();
+        let b: Vec<Vec<f32>> = (0..N)
+            .map(|s| flatten_norm(&m.render(&b_gen(s + 1000), HOP)))
+            .collect();
         println!("    {:<28} {:>10.2}", m.label(), dprime(&a, &b));
     }
 
@@ -803,18 +967,37 @@ fn report() {
     ];
     let probe_freqs = [8_000.0, 40_000.0, 80_000.0];
     println!("\n[5] Per-bin alpha (fine grid fft={fine}) — line sharpness bw_3db_hz by tone freq");
-    println!("    {:<18} {:>9} {:>9} {:>9}", "schedule", "8kHz", "40kHz", "80kHz");
+    println!(
+        "    {:<18} {:>9} {:>9} {:>9}",
+        "schedule", "8kHz", "40kHz", "80kHz"
+    );
     for sched in scheds {
         let cells: Vec<f64> = probe_freqs
             .iter()
-            .map(|&f| freq_bw3db_hz(&render_reso_sched(&tone(SR, f, dur, 0.5), fine, HOP, sched), t_lo, t_hi))
+            .map(|&f| {
+                freq_bw3db_hz(
+                    &render_reso_sched(&tone(SR, f, dur, 0.5), fine, HOP, sched),
+                    t_lo,
+                    t_hi,
+                )
+            })
             .collect();
-        println!("    {:<18} {:>9.0} {:>9.0} {:>9.0}", sched.label(), cells[0], cells[1], cells[2]);
+        println!(
+            "    {:<18} {:>9.0} {:>9.0} {:>9.0}",
+            sched.label(),
+            cells[0],
+            cells[1],
+            cells[2]
+        );
     }
     println!("\n    time_spread_ms on an 80 kHz σ=1 ms burst (lower = faster high-freq tracking):");
     let hb = gauss_burst(SR, 80_000.0, dur / 2.0, 0.001, dur, 0.6);
     for sched in scheds {
-        let ts = time_spread_ms(&render_reso_sched(&hb, fine, HOP, sched), 70_000.0, 90_000.0);
+        let ts = time_spread_ms(
+            &render_reso_sched(&hb, fine, HOP, sched),
+            70_000.0,
+            90_000.0,
+        );
         println!("    {:<18} {:>9.2}", sched.label(), ts);
     }
 
@@ -827,19 +1010,35 @@ fn report() {
     let chirp6 = linear_chirp(SR, 20_000.0, 90_000.0, dur, 0.5);
     let r6 = render_reso_sched(&chirp6, fcg, HOP, AlphaSched::ConstBw(60.0));
     let f6 = render_stft(&chirp6, 512, HOP);
-    let fmax6 = f6.cols.iter().flatten().copied().fold(0.0f32, f32::max).max(1e-9);
+    let fmax6 = f6
+        .cols
+        .iter()
+        .flatten()
+        .copied()
+        .fold(0.0f32, f32::max)
+        .max(1e-9);
     let gate_thresh = 0.03 * fmax6;
     let fused_gm = fuse(&r6, &f6, geomean);
-    let fused_gate = fuse(&r6, &f6, move |r, fv| r * (fv / gate_thresh).clamp(0.0, 1.0));
+    let fused_gate = fuse(&r6, &f6, move |r, fv| {
+        r * (fv / gate_thresh).clamp(0.0, 1.0)
+    });
     println!("\n[6] Hybrid leakage cleanup (20→90 kHz chirp, bank grid {fcg})");
-    println!("    {:<24} {:>11} {:>11}", "method", "bw_3db_hz", "rms_bw_hz");
+    println!(
+        "    {:<24} {:>11} {:>11}",
+        "method", "bw_3db_hz", "rms_bw_hz"
+    );
     for (name, s) in [
         ("FFT-512 (clean/blurry)", &f6),
         ("Reso bw60 (crisp/leaky)", &r6),
         ("Fused geomean", &fused_gm),
         ("Fused FFT-gated", &fused_gate),
     ] {
-        println!("    {:<24} {:>11.0} {:>11.0}", name, freq_bw3db_hz(s, t_lo, t_hi), freq_spread_hz(s, t_lo, t_hi));
+        println!(
+            "    {:<24} {:>11.0} {:>11.0}",
+            name,
+            freq_bw3db_hz(s, t_lo, t_hi),
+            freq_spread_hz(s, t_lo, t_hi)
+        );
     }
 
     // 7. HYBRID adaptive blend — mixed signal: a sustained 40 kHz tone PLUS a
@@ -856,7 +1055,10 @@ fn report() {
     let r_blend7 = adaptive_blend(&mixed7, fcg, HOP, sharp7, fast7, 80.0);
     let tone_hi = (dur / 2.0 - 0.01).max(t_lo + 0.01); // tone-only window (before the click)
     println!("\n[7] Hybrid adaptive blend (40 kHz tone + 50 kHz click, bank grid {fcg})");
-    println!("    {:<20} {:>15} {:>18}", "method", "tone bw_3db_hz", "click t_spread_ms");
+    println!(
+        "    {:<20} {:>15} {:>18}",
+        "method", "tone bw_3db_hz", "click t_spread_ms"
+    );
     for (name, s) in [
         ("Sharp bank bw40", &r_sharp7),
         ("Fast bank bw1000", &r_fast7),
@@ -875,20 +1077,36 @@ fn report() {
         let fmax = SR as f64 / 2.0;
         let signals: [(&str, Signal); 3] = [
             ("tone40k", tone(SR, 40_000.0, dur, 0.5)),
-            ("chirp20-90k", linear_chirp(SR, 20_000.0, 90_000.0, dur, 0.5)),
-            ("burst50k", gauss_burst(SR, 50_000.0, dur / 2.0, 0.002, dur, 0.6)),
+            (
+                "chirp20-90k",
+                linear_chirp(SR, 20_000.0, 90_000.0, dur, 0.5),
+            ),
+            (
+                "burst50k",
+                gauss_burst(SR, 50_000.0, dur / 2.0, 0.002, dur, 0.6),
+            ),
         ];
         for (name, sig) in &signals {
             for m in &ms {
                 let rgb = spectro_to_canvas(&m.render(sig, HOP), cw, ch, fmax);
-                let _ = write_bmp(Path::new(&format!("{rdir}/{name}__{}.bmp", slug(&m.label()))), cw, ch, &rgb);
+                let _ = write_bmp(
+                    Path::new(&format!("{rdir}/{name}__{}.bmp", slug(&m.label()))),
+                    cw,
+                    ch,
+                    &rgb,
+                );
             }
         }
         // Step-1 visual: three tones (8/40/80 kHz) under flat vs constant-Q.
         let mt = multitone(SR, &[8_000.0, 40_000.0, 80_000.0], dur, 0.6);
         for sched in scheds {
             let rgb = spectro_to_canvas(&render_reso_sched(&mt, fine, HOP, sched), cw, ch, fmax);
-            let _ = write_bmp(Path::new(&format!("{rdir}/multitone__{}.bmp", slug(&sched.label()))), cw, ch, &rgb);
+            let _ = write_bmp(
+                Path::new(&format!("{rdir}/multitone__{}.bmp", slug(&sched.label()))),
+                cw,
+                ch,
+                &rgb,
+            );
         }
         // Step-4 hybrid visuals: chirp leakage cleanup + mixed-signal blend.
         for (name, s) in [
@@ -921,8 +1139,14 @@ fn tone_localizes_in_frequency() {
     let reso = render_reso(&t, 2048, HOP, NARROW_BW, ResonatorLayout::Linear);
     let stft_rms = ridge_rms_hz(&stft, lo, hi, |_| 40_000.0);
     let reso_rms = ridge_rms_hz(&reso, lo, hi, |_| 40_000.0);
-    assert!(stft_rms < 150.0, "STFT tone ridge RMS too high: {stft_rms:.1} Hz");
-    assert!(reso_rms < 150.0, "Reso tone ridge RMS too high: {reso_rms:.1} Hz");
+    assert!(
+        stft_rms < 150.0,
+        "STFT tone ridge RMS too high: {stft_rms:.1} Hz"
+    );
+    assert!(
+        reso_rms < 150.0,
+        "Reso tone ridge RMS too high: {reso_rms:.1} Hz"
+    );
 }
 
 #[test]
@@ -940,7 +1164,10 @@ fn chirp_ridge_is_tracked() {
         .map(|m| ridge_rms_hz(&m.render(&c, HOP), lo, hi, |t| f0 + k * t))
         .filter(|x| x.is_finite())
         .fold(f64::INFINITY, f64::min);
-    assert!(best < 1500.0, "no method tracked the chirp (best RMS {best:.1} Hz)");
+    assert!(
+        best < 1500.0,
+        "no method tracked the chirp (best RMS {best:.1} Hz)"
+    );
 }
 
 #[test]
@@ -955,12 +1182,18 @@ fn stft_window_tradeoff_holds() {
     let t = tone(SR, 40_000.0, dur, 0.5);
     let short_f = freq_bw3db_hz(&render_stft(&t, 512, HOP), lo, hi);
     let long_f = freq_bw3db_hz(&render_stft(&t, 2048, HOP), lo, hi);
-    assert!(long_f < short_f, "long window not sharper in frequency: long={long_f:.0} short={short_f:.0}");
+    assert!(
+        long_f < short_f,
+        "long window not sharper in frequency: long={long_f:.0} short={short_f:.0}"
+    );
 
     let b = gauss_burst(SR, 50_000.0, dur / 2.0, 0.0015, dur, 0.6);
     let short_t = time_spread_ms(&render_stft(&b, 512, HOP), 40_000.0, 60_000.0);
     let long_t = time_spread_ms(&render_stft(&b, 2048, HOP), 40_000.0, 60_000.0);
-    assert!(short_t < long_t, "short window not sharper in time: short={short_t:.2} long={long_t:.2}");
+    assert!(
+        short_t < long_t,
+        "short window not sharper in time: short={short_t:.2} long={long_t:.2}"
+    );
 }
 
 #[test]
@@ -993,7 +1226,14 @@ fn hybrid_functions_run() {
     assert_eq!(fused.n_bins, r.n_bins);
     assert_eq!(fused.cols.len(), r.cols.len());
 
-    let blend = adaptive_blend(&mixed, fcg, HOP, AlphaSched::ConstBw(40.0), AlphaSched::ConstBw(1000.0), 80.0);
+    let blend = adaptive_blend(
+        &mixed,
+        fcg,
+        HOP,
+        AlphaSched::ConstBw(40.0),
+        AlphaSched::ConstBw(1000.0),
+        80.0,
+    );
     assert_eq!(blend.n_bins, r.n_bins);
     let (lo, _) = eval_window(dur);
     let tone_hi = (dur / 2.0 - 0.01).max(lo + 0.01);

@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use crate::annotations::{FileIdentity, AudioFileMetadata, Annotation, generate_uuid, now_iso8601};
+use crate::annotations::{generate_uuid, now_iso8601, Annotation, AudioFileMetadata, FileIdentity};
 use crate::dsp::notch::NoiseProfile;
+use serde::{Deserialize, Serialize};
 
 /// Current `.batproj` on-disk format version. Bump when the schema changes in a
 /// way older apps can't safely read. A file whose `version` exceeds this was
@@ -174,8 +174,12 @@ pub struct MergeRecord {
     pub deleted: bool,
 }
 
-fn is_zero(v: &f64) -> bool { *v == 0.0 }
-fn default_gap_threshold() -> f64 { 60.0 }
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+fn default_gap_threshold() -> f64 {
+    60.0
+}
 
 impl Default for BatProject {
     fn default() -> Self {
@@ -223,7 +227,9 @@ impl BatProject {
     /// Merge a .batm AnnotationSet into the corresponding project file entry.
     /// Returns true if annotations were merged, false if no matching file found.
     pub fn merge_batm(&mut self, set: &crate::annotations::AnnotationSet, batm_key: &str) -> bool {
-        let Some(idx) = self.find_file(&set.file_identity) else { return false };
+        let Some(idx) = self.find_file(&set.file_identity) else {
+            return false;
+        };
         let pf = &mut self.files[idx];
 
         // Merge annotations (append, skip duplicates by id)
@@ -271,7 +277,11 @@ impl BatProject {
     }
 
     /// Add a file to the project from a FileIdentity and optional audio metadata.
-    pub fn add_file(&mut self, identity: FileIdentity, audio_metadata: Option<AudioFileMetadata>) -> usize {
+    pub fn add_file(
+        &mut self,
+        identity: FileIdentity,
+        audio_metadata: Option<AudioFileMetadata>,
+    ) -> usize {
         let idx = self.files.len();
         self.files.push(ProjectFile {
             identity,

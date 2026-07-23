@@ -1,9 +1,12 @@
-use leptos::prelude::*;
+use crate::annotations::{
+    build_annotation_tree, collect_descendants, now_iso8601, renumber_children, Annotation,
+    AnnotationId, AnnotationKind, AnnotationNode, AnnotationSet, Group,
+};
 use crate::state::store_fields::*;
-use crate::state::DropPosition;
-use wasm_bindgen::JsCast;
 use crate::state::AppState;
-use crate::annotations::{Annotation, AnnotationKind, AnnotationSet, Group, AnnotationId, now_iso8601, build_annotation_tree, AnnotationNode, collect_descendants, renumber_children};
+use crate::state::DropPosition;
+use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 
 /// Time the resonator hot loop over a range of bank sizes and log the
 /// result to the in-app Debug panel (right sidebar). Uses
@@ -63,7 +66,10 @@ pub(crate) fn run_resonator_bench(state: AppState) {
             }
             state.log_debug(
                 "info",
-                format!("bins={:>4}: {:>7.2} ms ({} iters)", num_bins, total_ms, iterations),
+                format!(
+                    "bins={:>4}: {:>7.2} ms ({} iters)",
+                    num_bins, total_ms, iterations
+                ),
             );
         }
     });
@@ -77,14 +83,22 @@ pub(crate) fn SelectionPanel() -> impl IntoView {
         let id = state.current_file_id_tracked()?;
         let store = state.annotations.store().get();
         let set = store.get(id)?;
-        if set.annotations.is_empty() { None } else { Some(()) }
+        if set.annotations.is_empty() {
+            None
+        } else {
+            Some(())
+        }
     };
 
     let has_wav_markers = move || {
         let idx = state.library.current_index().get()?;
         let files = state.library.files().get();
         let file = files.get(idx)?;
-        if file.wav_markers.is_empty() { None } else { Some(()) }
+        if file.wav_markers.is_empty() {
+            None
+        } else {
+            Some(())
+        }
     };
 
     let has_nothing = move || has_annotations().is_none() && has_wav_markers().is_none();
@@ -116,7 +130,9 @@ fn WavMarkersList() -> impl IntoView {
         let idx = state.library.current_index().get()?;
         let files = state.library.files().get();
         let file = files.get(idx)?;
-        if file.wav_markers.is_empty() { return None; }
+        if file.wav_markers.is_empty() {
+            return None;
+        }
         let sr = file.audio.sample_rate;
         // Heading adapts to what kind of markers these are based on the
         // file format. Same underlying field, different source semantics.
@@ -126,12 +142,18 @@ fn WavMarkersList() -> impl IntoView {
         };
         Some((
             heading,
-            file.wav_markers.iter().map(|m| {
-                let time_secs = m.position as f64 / sr as f64;
-                let time_str = crate::format_time::format_time_display(time_secs, 3);
-                let label = m.label.clone().unwrap_or_else(|| format!("Marker {}", m.id));
-                (m.position, time_str, label)
-            }).collect::<Vec<_>>()
+            file.wav_markers
+                .iter()
+                .map(|m| {
+                    let time_secs = m.position as f64 / sr as f64;
+                    let time_str = crate::format_time::format_time_display(time_secs, 3);
+                    let label = m
+                        .label
+                        .clone()
+                        .unwrap_or_else(|| format!("Marker {}", m.id));
+                    (m.position, time_str, label)
+                })
+                .collect::<Vec<_>>(),
         ))
     };
 
@@ -195,9 +217,12 @@ fn annotation_display(a: &Annotation) -> (String, Option<String>, bool) {
     match &a.kind {
         AnnotationKind::Region(reg) => {
             let auto_label = match (reg.freq_low, reg.freq_high) {
-                (Some(fl), Some(fh)) => format!("{}, {:.0}–{:.0} kHz",
+                (Some(fl), Some(fh)) => format!(
+                    "{}, {:.0}–{:.0} kHz",
                     crate::format_time::format_time_range(reg.time_start, reg.time_end, 3),
-                    fl / 1000.0, fh / 1000.0),
+                    fl / 1000.0,
+                    fh / 1000.0
+                ),
                 _ => crate::format_time::format_time_range(reg.time_start, reg.time_end, 3),
             };
             let (display, italic) = match &reg.label {
@@ -235,10 +260,10 @@ fn annotation_display(a: &Annotation) -> (String, Option<String>, bool) {
 /// Icon prefix for annotation kind.
 fn annotation_icon(kind: &AnnotationKind) -> &'static str {
     match kind {
-        AnnotationKind::Region(r) if r.freq_low.is_some() => "\u{25AD} ",  // rectangle (region)
-        AnnotationKind::Region(_) => "\u{2500} ",  // horizontal line (segment)
-        AnnotationKind::Marker(_) => "\u{25C6} ",     // diamond
-        AnnotationKind::Group(_) => "",                // handled by collapse toggle
+        AnnotationKind::Region(r) if r.freq_low.is_some() => "\u{25AD} ", // rectangle (region)
+        AnnotationKind::Region(_) => "\u{2500} ", // horizontal line (segment)
+        AnnotationKind::Marker(_) => "\u{25C6} ", // diamond
+        AnnotationKind::Group(_) => "",           // handled by collapse toggle
         AnnotationKind::Measurement(_) => "\u{21D4} ", // double arrow
     }
 }
@@ -251,7 +276,9 @@ fn AnnotationsList() -> impl IntoView {
         let id = state.current_file_id_tracked()?;
         let store = state.annotations.store().get();
         let set = store.get(id)?;
-        if set.annotations.is_empty() { return None; }
+        if set.annotations.is_empty() {
+            return None;
+        }
         Some(build_annotation_tree(&set.annotations))
     };
 
@@ -274,7 +301,11 @@ fn AnnotationsList() -> impl IntoView {
         let id = state.current_file_id_tracked()?;
         let store = state.annotations.store().get();
         let set = store.get(id)?;
-        if set.annotations.is_empty() { None } else { Some(true) }
+        if set.annotations.is_empty() {
+            None
+        } else {
+            Some(true)
+        }
     };
 
     let selected_is_group = move || {
@@ -282,7 +313,9 @@ fn AnnotationsList() -> impl IntoView {
         let id = state.current_file_id_tracked()?;
         let store = state.annotations.store().get();
         let set = store.get(id)?;
-        set.annotations.iter().find(|a| a.id == sel_id)
+        set.annotations
+            .iter()
+            .find(|a| a.id == sel_id)
             .filter(|a| matches!(a.kind, AnnotationKind::Group(_)))
             .map(|_| true)
     };
@@ -678,18 +711,19 @@ fn restore_selection(state: AppState, annotation_id: &AnnotationId) {
         if &a.id == annotation_id {
             let jump_time = match &a.kind {
                 AnnotationKind::Region(reg) => {
-                    state.interaction.selection().set(Some(crate::state::Selection {
-                        time_start: reg.time_start,
-                        time_end: reg.time_end,
-                        freq_low: reg.freq_low,
-                        freq_high: reg.freq_high,
-                    }));
+                    state
+                        .interaction
+                        .selection()
+                        .set(Some(crate::state::Selection {
+                            time_start: reg.time_start,
+                            time_end: reg.time_end,
+                            freq_low: reg.freq_low,
+                            freq_high: reg.freq_high,
+                        }));
                     Some((reg.time_start + reg.time_end) / 2.0)
                 }
                 AnnotationKind::Marker(m) => Some(m.time),
-                AnnotationKind::Measurement(m) => {
-                    Some((m.start_time + m.end_time) / 2.0)
-                }
+                AnnotationKind::Measurement(m) => Some((m.start_time + m.end_time) / 2.0),
                 _ => None,
             };
             if let Some(t) = jump_time {
@@ -728,7 +762,10 @@ pub(crate) fn toggle_annotation_lock(state: AppState, annotation_id: &Annotation
             if let Some(ann) = set.annotations.iter_mut().find(|a| &a.id == annotation_id) {
                 if let AnnotationKind::Region(ref mut r) = ann.kind {
                     r.locked = if locked { Some(true) } else { None };
-                    ann.modified_at = js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_default();
+                    ann.modified_at = js_sys::Date::new_0()
+                        .to_iso_string()
+                        .as_string()
+                        .unwrap_or_default();
                 }
             }
         }
@@ -753,17 +790,30 @@ pub(crate) fn delete_annotation(state: AppState, annotation_id: &AnnotationId) {
     };
     state.annotations.store().update(|store| {
         if let Some(set) = store.get_mut(id) {
-            set.annotations.retain(|a| &a.id != annotation_id && !descendants.contains(&a.id));
+            set.annotations
+                .retain(|a| &a.id != annotation_id && !descendants.contains(&a.id));
         }
     });
-    let was_selected = state.annotations.selected_ids().get_untracked().iter().any(|x| x == annotation_id);
+    let was_selected = state
+        .annotations
+        .selected_ids()
+        .get_untracked()
+        .iter()
+        .any(|x| x == annotation_id);
     if was_selected {
-        state.annotations.selected_ids().update(|ids| ids.retain(|x| x != annotation_id));
+        state
+            .annotations
+            .selected_ids()
+            .update(|ids| ids.retain(|x| x != annotation_id));
     }
     state.annotations.dirty().set(true);
 }
 
-pub(crate) fn update_annotation_label(state: AppState, annotation_id: &AnnotationId, label: Option<String>) {
+pub(crate) fn update_annotation_label(
+    state: AppState,
+    annotation_id: &AnnotationId,
+    label: Option<String>,
+) {
     let id = match state.current_file_id() {
         Some(i) => i,
         None => return,
@@ -779,7 +829,9 @@ pub(crate) fn update_annotation_label(state: AppState, annotation_id: &Annotatio
                     None => return,
                 };
                 let default_label = crate::annotations::generate_default_label(
-                    &set.annotations, &kind, Some(annotation_id.as_str()),
+                    &set.annotations,
+                    &kind,
+                    Some(annotation_id.as_str()),
                 );
                 (Some(default_label), true)
             } else {
@@ -787,10 +839,18 @@ pub(crate) fn update_annotation_label(state: AppState, annotation_id: &Annotatio
             };
             if let Some(a) = set.annotations.iter_mut().find(|a| &a.id == annotation_id) {
                 match a.kind {
-                    AnnotationKind::Region(ref mut reg) => { reg.label = new_label; }
-                    AnnotationKind::Marker(ref mut m) => { m.label = new_label; }
-                    AnnotationKind::Group(ref mut g) => { g.label = new_label; }
-                    AnnotationKind::Measurement(ref mut m) => { m.label = new_label; }
+                    AnnotationKind::Region(ref mut reg) => {
+                        reg.label = new_label;
+                    }
+                    AnnotationKind::Marker(ref mut m) => {
+                        m.label = new_label;
+                    }
+                    AnnotationKind::Group(ref mut g) => {
+                        g.label = new_label;
+                    }
+                    AnnotationKind::Measurement(ref mut m) => {
+                        m.label = new_label;
+                    }
                 }
                 a.label_default = if is_default { Some(true) } else { None };
                 a.modified_at = now_iso8601();
@@ -800,7 +860,11 @@ pub(crate) fn update_annotation_label(state: AppState, annotation_id: &Annotatio
     state.annotations.dirty().set(true);
 }
 
-pub(crate) fn update_annotation_tags(state: AppState, annotation_id: &AnnotationId, tags: Vec<String>) {
+pub(crate) fn update_annotation_tags(
+    state: AppState,
+    annotation_id: &AnnotationId,
+    tags: Vec<String>,
+) {
     let id = match state.current_file_id() {
         Some(i) => i,
         None => return,
@@ -836,7 +900,9 @@ fn toggle_group_collapsed(state: AppState, annotation_id: &AnnotationId) {
 
 fn group_selected(state: AppState) {
     let sel_ids = state.annotations.selected_ids().get_untracked();
-    if sel_ids.is_empty() { return; }
+    if sel_ids.is_empty() {
+        return;
+    }
     let id = match state.current_file_id() {
         Some(i) => i,
         None => return,
@@ -851,7 +917,9 @@ fn group_selected(state: AppState) {
     state.annotations.store().update(|store| {
         if let Some(set) = store.get_mut(id) {
             // Use the first selected annotation's parent and sort_order for the group
-            let (parent, order) = set.annotations.iter()
+            let (parent, order) = set
+                .annotations
+                .iter()
                 .find(|a| sel_ids.contains(&a.id))
                 .map(|a| (a.parent_id.clone(), a.sort_order))
                 .unwrap_or((None, None));
@@ -860,7 +928,11 @@ fn group_selected(state: AppState) {
             let kind = AnnotationKind::Group(Group {
                 label: Some(crate::annotations::generate_default_label(
                     &set.annotations,
-                    &AnnotationKind::Group(Group { label: None, color: None, collapsed: None }),
+                    &AnnotationKind::Group(Group {
+                        label: None,
+                        color: None,
+                        collapsed: None,
+                    }),
                     None,
                 )),
                 color: None,
@@ -888,7 +960,9 @@ fn group_selected(state: AppState) {
             }
 
             // Renumber siblings at the old level
-            let parent_key = set.annotations.iter()
+            let parent_key = set
+                .annotations
+                .iter()
                 .find(|a| a.id == group_id)
                 .and_then(|a| a.parent_id.clone());
             renumber_children(&mut set.annotations, parent_key.as_ref());
@@ -943,14 +1017,19 @@ fn perform_drop(state: AppState) {
     };
     let (target_id, position) = match state.annotations.drop_target().get_untracked() {
         Some(t) => t,
-        None => { state.annotations.dragging_id().set(None); return; }
+        None => {
+            state.annotations.dragging_id().set(None);
+            return;
+        }
     };
 
     // Clear drag state
     state.annotations.dragging_id().set(None);
     state.annotations.drop_target().set(None);
 
-    if dragged_id == target_id { return; }
+    if dragged_id == target_id {
+        return;
+    }
 
     let id = match state.current_file_id() {
         Some(i) => i,
@@ -962,12 +1041,18 @@ fn perform_drop(state: AppState) {
         if let Some(set) = store.get_mut(id) {
             // Don't allow dropping into own descendants
             let descendants = collect_descendants(&set.annotations, &dragged_id);
-            if descendants.contains(&target_id) { return; }
+            if descendants.contains(&target_id) {
+                return;
+            }
 
             // Find target's parent and sort_order
-            let target_info = set.annotations.iter()
-                .find(|a| a.id == target_id)
-                .map(|a| (a.parent_id.clone(), a.sort_order.unwrap_or(0.0), matches!(a.kind, AnnotationKind::Group(_))));
+            let target_info = set.annotations.iter().find(|a| a.id == target_id).map(|a| {
+                (
+                    a.parent_id.clone(),
+                    a.sort_order.unwrap_or(0.0),
+                    matches!(a.kind, AnnotationKind::Group(_)),
+                )
+            });
             let (target_parent, target_order, target_is_group) = match target_info {
                 Some(info) => info,
                 None => return,
@@ -1005,17 +1090,26 @@ fn perform_drop(state: AppState) {
 fn export_annotations(state: AppState) {
     let id = match state.current_file_id() {
         Some(i) => i,
-        None => { state.show_error_toast("No file selected"); return; }
+        None => {
+            state.show_error_toast("No file selected");
+            return;
+        }
     };
     let store = state.annotations.store().get_untracked();
     let set = match store.get(id) {
         Some(s) => s,
-        None => { state.show_error_toast("No annotations to export"); return; }
+        None => {
+            state.show_error_toast("No annotations to export");
+            return;
+        }
     };
 
     let yaml = match yaml_serde::to_string(set) {
         Ok(y) => y,
-        Err(e) => { state.show_error_toast(format!("Serialize error: {e}")); return; }
+        Err(e) => {
+            state.show_error_toast(format!("Serialize error: {e}"));
+            return;
+        }
     };
 
     let filename = format!("{}.batm", set.file_identity.filename);
@@ -1024,8 +1118,16 @@ fn export_annotations(state: AppState) {
         // Tauri: export via IPC command to app data exports directory
         wasm_bindgen_futures::spawn_local(async move {
             let args = js_sys::Object::new();
-            let _ = js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("filename"), &wasm_bindgen::JsValue::from_str(&filename));
-            let _ = js_sys::Reflect::set(&args, &wasm_bindgen::JsValue::from_str("yaml"), &wasm_bindgen::JsValue::from_str(&yaml));
+            let _ = js_sys::Reflect::set(
+                &args,
+                &wasm_bindgen::JsValue::from_str("filename"),
+                &wasm_bindgen::JsValue::from_str(&filename),
+            );
+            let _ = js_sys::Reflect::set(
+                &args,
+                &wasm_bindgen::JsValue::from_str("yaml"),
+                &wasm_bindgen::JsValue::from_str(&yaml),
+            );
             match crate::tauri_bridge::tauri_invoke("export_annotations_file", &args.into()).await {
                 Ok(path) => {
                     let path_str = path.as_string().unwrap_or_default();
@@ -1040,8 +1142,12 @@ fn export_annotations(state: AppState) {
     } else {
         // Browser: download via blob URL
         let arr = js_sys::Array::of1(&wasm_bindgen::JsValue::from_str(&yaml));
-        let Ok(blob) = web_sys::Blob::new_with_str_sequence(&arr) else { return };
-        let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else { return };
+        let Ok(blob) = web_sys::Blob::new_with_str_sequence(&arr) else {
+            return;
+        };
+        let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else {
+            return;
+        };
 
         let doc = web_sys::window().unwrap().document().unwrap();
         let a: web_sys::HtmlAnchorElement = doc.create_element("a").unwrap().unchecked_into();
@@ -1060,42 +1166,48 @@ fn import_annotations(state: AppState) {
     input.set_type("file");
     input.set_attribute("accept", ".batm,.yaml,.yml").unwrap();
 
-    let on_change = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(move |ev: web_sys::Event| {
-        let target: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
-        let Some(file_list) = target.files() else { return };
-        let Some(file) = file_list.get(0) else { return };
+    let on_change = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+        move |ev: web_sys::Event| {
+            let target: web_sys::HtmlInputElement = ev.target().unwrap().unchecked_into();
+            let Some(file_list) = target.files() else {
+                return;
+            };
+            let Some(file) = file_list.get(0) else { return };
 
-        let reader = web_sys::FileReader::new().unwrap();
-        let reader_clone = reader.clone();
-        let on_load = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(move |_: web_sys::Event| {
-            let result = reader_clone.result().unwrap();
-            let text = result.as_string().unwrap_or_default();
-            match yaml_serde::from_str::<AnnotationSet>(&text) {
-                Ok(imported) => {
-                    let Some(id) = state.current_file_id() else {
-                        state.show_error_toast("No file selected");
-                        return;
-                    };
-                    state.snapshot_annotations();
-                    state.annotations.store().update(|store| {
-                        if let Some(existing) = store.get_mut(id) {
-                            existing.annotations.extend(imported.annotations);
-                        } else {
-                            store.insert(id, imported);
+            let reader = web_sys::FileReader::new().unwrap();
+            let reader_clone = reader.clone();
+            let on_load = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(
+                move |_: web_sys::Event| {
+                    let result = reader_clone.result().unwrap();
+                    let text = result.as_string().unwrap_or_default();
+                    match yaml_serde::from_str::<AnnotationSet>(&text) {
+                        Ok(imported) => {
+                            let Some(id) = state.current_file_id() else {
+                                state.show_error_toast("No file selected");
+                                return;
+                            };
+                            state.snapshot_annotations();
+                            state.annotations.store().update(|store| {
+                                if let Some(existing) = store.get_mut(id) {
+                                    existing.annotations.extend(imported.annotations);
+                                } else {
+                                    store.insert(id, imported);
+                                }
+                            });
+                            state.annotations.dirty().set(true);
+                            state.show_info_toast("Annotations imported");
                         }
-                    });
-                    state.annotations.dirty().set(true);
-                    state.show_info_toast("Annotations imported");
-                }
-                Err(e) => {
-                    state.show_error_toast(format!("Import error: {e}"));
-                }
-            }
-        });
-        reader.set_onload(Some(on_load.as_ref().unchecked_ref()));
-        on_load.forget();
-        reader.read_as_text(&file).unwrap();
-    });
+                        Err(e) => {
+                            state.show_error_toast(format!("Import error: {e}"));
+                        }
+                    }
+                },
+            );
+            reader.set_onload(Some(on_load.as_ref().unchecked_ref()));
+            on_load.forget();
+            reader.read_as_text(&file).unwrap();
+        },
+    );
     input.set_onchange(Some(on_change.as_ref().unchecked_ref()));
     on_change.forget();
     input.click();

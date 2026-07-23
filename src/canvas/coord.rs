@@ -1,9 +1,9 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use web_sys::HtmlCanvasElement;
 use crate::canvas::spectrogram_renderer;
+use crate::state::store_fields::*;
 use crate::state::AppState;
 use crate::viewport;
+use leptos::prelude::*;
+use web_sys::HtmlCanvasElement;
 
 /// Convert a pointer position (client_x, client_y) relative to the canvas
 /// into (px_x, px_y, time, freq).
@@ -29,24 +29,32 @@ pub fn pointer_to_xtf(
 
     // When the waterfall is active, use its parameters so interactions work
     // even without a file loaded (listening/recording mode).
-    let is_mic_active = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+    let is_mic_active =
+        state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
     let waterfall_active = is_mic_active && crate::canvas::live_waterfall::is_active();
 
     let (time_res, file_max_freq) = if waterfall_active {
-        (crate::canvas::live_waterfall::time_resolution(),
-         crate::canvas::live_waterfall::max_freq())
+        (
+            crate::canvas::live_waterfall::time_resolution(),
+            crate::canvas::live_waterfall::max_freq(),
+        )
     } else if let Some(ref tl) = timeline {
         let primary_file = tl.segments.first().and_then(|s| files.get(s.file_index))?;
-        (primary_file.spectrogram.time_resolution, primary_file.spectrogram.max_freq)
+        (
+            primary_file.spectrogram.time_resolution,
+            primary_file.spectrogram.max_freq,
+        )
     } else {
         let idx = state.library.current_index().get_untracked()?;
         let file = files.get(idx)?;
         (file.spectrogram.time_resolution, file.spectrogram.max_freq)
     };
-    let max_freq = state.view.max_display_freq().get_untracked()
+    let max_freq = state
+        .view
+        .max_display_freq()
+        .get_untracked()
         .unwrap_or(file_max_freq);
-    let min_freq = state.view.min_display_freq().get_untracked()
-        .unwrap_or(0.0);
+    let min_freq = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
     let scroll = state.view.scroll_offset().get_untracked();
     let zoom = state.view.zoom_level().get_untracked();
     let visible_time = viewport::visible_time(cw, zoom, time_res);

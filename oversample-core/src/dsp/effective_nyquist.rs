@@ -107,7 +107,8 @@ pub fn detect(samples: &[f32], sample_rate: u32) -> EffectiveNyquistResult {
     let populated_threshold = global_peak - POPULATED_GAP_DB;
 
     // Walk down from the top band, find the highest "populated" one.
-    let effective_band = (0..N_BANDS).rev()
+    let effective_band = (0..N_BANDS)
+        .rev()
         .find(|&b| band_peaks[b] > populated_threshold)
         .unwrap_or(0);
     let effective_hz = ((effective_band + 1) * band_size) as f64 * psd.freq_resolution;
@@ -150,17 +151,23 @@ pub fn detect(samples: &[f32], sample_rate: u32) -> EffectiveNyquistResult {
                  arithmetic) \u{2014} the recording was almost certainly \
                  upsampled from a lower-rate source, or has hardware bandwidth \
                  limiting.",
-                effective_hz / 1000.0, ratio * 100.0,
-                claimed_nyquist / 1000.0, upper_band_floor,
+                effective_hz / 1000.0,
+                ratio * 100.0,
+                claimed_nyquist / 1000.0,
+                upper_band_floor,
             ),
         )
     } else {
         (
-            EffectiveNyquistVerdict::FullBandwidth { claimed_nyquist_hz: claimed_nyquist },
+            EffectiveNyquistVerdict::FullBandwidth {
+                claimed_nyquist_hz: claimed_nyquist,
+            },
             format!(
                 "Spectrum has content / noise floor up to within {:.0}% of the \
                  claimed Nyquist of {:.1} kHz (top-band median {:.0} dB).",
-                ratio * 100.0, claimed_nyquist / 1000.0, upper_band_floor,
+                ratio * 100.0,
+                claimed_nyquist / 1000.0,
+                upper_band_floor,
             ),
         )
     };
@@ -204,7 +211,11 @@ mod tests {
             r,
         );
         // Effective Nyquist should be near 42 kHz (the highest tone)
-        assert!(r.effective_hz < 60_000.0, "effective_hz = {}", r.effective_hz);
+        assert!(
+            r.effective_hz < 60_000.0,
+            "effective_hz = {}",
+            r.effective_hz
+        );
     }
 
     #[test]

@@ -1,28 +1,28 @@
-pub mod types;
-pub mod dsp;
+pub mod annotations;
 pub mod audio;
+pub mod bat_book;
 pub mod canvas;
 pub mod components;
-pub mod state;
-pub mod focus_stack;
-pub mod tauri_bridge;
-pub mod bat_book;
-pub mod annotations;
+pub mod dsp;
 pub mod file_identity;
+pub mod focus_stack;
 pub mod format_time;
 pub mod opfs;
 pub mod project;
 pub mod project_store;
 pub mod scope;
 pub mod settings;
+pub mod state;
+pub mod tauri_bridge;
 pub mod test_hook;
 pub mod timeline;
+pub mod types;
 pub mod viewport;
-pub mod wikimedia;
 pub mod web_util;
+pub mod wikimedia;
 
-use leptos::prelude::*;
 use components::app::App;
+use leptos::prelude::*;
 
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn main() {

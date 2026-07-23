@@ -1,5 +1,5 @@
-use crate::state::LoadedFile;
 use crate::components::file_sidebar::file_groups::{self, TrackInfo};
+use crate::state::LoadedFile;
 
 /// Runtime view of a timeline — maps timeline-local time to file data.
 /// Built from selected files and their recording timestamps.
@@ -61,17 +61,16 @@ impl TimelineView {
         }
 
         // Sort: files with timestamps first (by timestamp), then files without
-        entries.sort_by(|a, b| {
-            match (&a.1, &b.1) {
-                (Some(ta), Some(tb)) => ta.partial_cmp(tb).unwrap_or(std::cmp::Ordering::Equal),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            }
+        entries.sort_by(|a, b| match (&a.1, &b.1) {
+            (Some(ta), Some(tb)) => ta.partial_cmp(tb).unwrap_or(std::cmp::Ordering::Equal),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
         });
 
         // Determine the origin (earliest start time)
-        let origin_ms = entries.iter()
+        let origin_ms = entries
+            .iter()
             .filter_map(|(_, start, _)| *start)
             .next()
             .unwrap_or(0.0);
@@ -117,7 +116,8 @@ impl TimelineView {
         }
 
         // Total duration
-        let total_duration_secs = segments.iter()
+        let total_duration_secs = segments
+            .iter()
             .map(|s| s.timeline_offset_secs + s.duration_secs)
             .fold(0.0_f64, f64::max);
 
@@ -132,7 +132,8 @@ impl TimelineView {
             if let Some(ti) = all_groups.get(idx).and_then(|g| g.as_ref()) {
                 if seen_groups.insert(ti.group_key.clone()) {
                     // Find all tracks in this group
-                    let group_members: Vec<(usize, TrackInfo)> = all_groups.iter()
+                    let group_members: Vec<(usize, TrackInfo)> = all_groups
+                        .iter()
                         .enumerate()
                         .filter_map(|(i, g)| {
                             g.as_ref()
@@ -143,13 +144,17 @@ impl TimelineView {
 
                     if group_members.len() >= 2 {
                         // Build alternates: map from primary (idx) to each other member
-                        let alternates: Vec<(usize, usize)> = group_members.iter()
+                        let alternates: Vec<(usize, usize)> = group_members
+                            .iter()
                             .filter(|(i, _)| *i != idx)
                             .map(|(i, _)| (idx, *i))
                             .collect();
 
                         for (_, member_ti) in &group_members {
-                            if !multitrack_groups.iter().any(|m: &MultitrackOption| m.label == member_ti.label) {
+                            if !multitrack_groups
+                                .iter()
+                                .any(|m: &MultitrackOption| m.label == member_ti.label)
+                            {
                                 multitrack_groups.push(MultitrackOption {
                                     group_id: ti.group_key.clone(),
                                     label: member_ti.label.clone(),
@@ -185,7 +190,8 @@ impl TimelineView {
 
     /// Get all segments that are visible in the given time range.
     pub fn segments_in_range(&self, start: f64, end: f64) -> Vec<&TimelineSegment> {
-        self.segments.iter()
+        self.segments
+            .iter()
             .filter(|s| {
                 let seg_end = s.timeline_offset_secs + s.duration_secs;
                 s.timeline_offset_secs < end && seg_end > start

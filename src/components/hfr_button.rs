@@ -49,7 +49,8 @@ fn fmt_khz(hz: f64) -> String {
 /// recording, the live waterfall has the most up-to-date sample rate (USB
 /// devices can re-negotiate after the AppState signal is first set).
 fn nyquist_for_current(state: AppState) -> f64 {
-    let is_mic_active = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+    let is_mic_active =
+        state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
     if is_mic_active && crate::canvas::live_waterfall::is_active() {
         crate::canvas::live_waterfall::max_freq()
     } else {
@@ -88,7 +89,11 @@ fn file_species_range(state: AppState) -> Option<(String, f64, f64)> {
         return None;
     }
     let nyq = file.spectrogram.max_freq;
-    Some((entry.name.to_string(), entry.freq_lo_hz, entry.freq_hi_hz.min(nyq)))
+    Some((
+        entry.name.to_string(),
+        entry.freq_lo_hz,
+        entry.freq_hi_hz.min(nyq),
+    ))
 }
 
 /// Range covering all currently-selected bat book species (min lo, max hi).
@@ -109,7 +114,11 @@ fn selected_species_range(state: AppState) -> Option<(f64, f64)> {
             }
         }
     }
-    if found && hi > lo { Some((lo, hi)) } else { None }
+    if found && hi > lo {
+        Some((lo, hi))
+    } else {
+        None
+    }
 }
 
 /// Range from whichever of selection / annotation / frequency-focus is
@@ -125,8 +134,16 @@ fn focused_range(state: AppState) -> Option<(f64, f64)> {
         }
         Some(ActiveFocus::Annotations) => state.selected_annotation_focus_range(),
         Some(ActiveFocus::FrequencyFocus) => {
-            let r = state.viewmode.focus_stack().get_untracked().effective_range();
-            if r.is_active() { Some((r.lo, r.hi)) } else { None }
+            let r = state
+                .viewmode
+                .focus_stack()
+                .get_untracked()
+                .effective_range();
+            if r.is_active() {
+                Some((r.lo, r.hi))
+            } else {
+                None
+            }
         }
         None => None,
     }
@@ -139,15 +156,26 @@ fn file_species_source(state: AppState) -> Option<String> {
     let idx = state.library.current_index().get_untracked()?;
     let file = files.get(idx)?;
     if let Some(meta) = &file.xc_metadata {
-        if meta.iter().any(|(k, v)| k == "Scientific name" && !v.is_empty()) {
+        if meta
+            .iter()
+            .any(|(k, v)| k == "Scientific name" && !v.is_empty())
+        {
             return Some("Xeno-Canto: species".to_string());
         }
     }
     if let Some(guano) = &file.audio.metadata.guano {
-        if guano.fields.iter().any(|(k, v)| k == "Species|Manual" && !v.is_empty()) {
+        if guano
+            .fields
+            .iter()
+            .any(|(k, v)| k == "Species|Manual" && !v.is_empty())
+        {
             return Some("GUANO: Species (Manual)".to_string());
         }
-        if guano.fields.iter().any(|(k, v)| k == "Species|Auto" && !v.is_empty()) {
+        if guano
+            .fields
+            .iter()
+            .any(|(k, v)| k == "Species|Auto" && !v.is_empty())
+        {
             return Some("GUANO: Species (Auto)".to_string());
         }
     }
@@ -181,7 +209,11 @@ fn selected_species_info(state: AppState) -> Option<(String, f64, f64)> {
     if count == 0 || hi <= lo {
         return None;
     }
-    let label = if count == 1 { first_name } else { format!("{count} species") };
+    let label = if count == 1 {
+        first_name
+    } else {
+        format!("{count} species")
+    };
     Some((label, lo, hi))
 }
 
@@ -201,14 +233,26 @@ fn band_selected(state: AppState, lo: f64, hi: f64) -> bool {
 pub fn RangeButton() -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::BandPresets));
-    let no_file = move || state.library.current_index().get().is_none() && state.timeline.active().get().is_none();
+    let is_open = Signal::derive(move || {
+        state.panels.layer_panel_open().get() == Some(LayerPanel::BandPresets)
+    });
+    let no_file = move || {
+        state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
+    };
 
     let btn_class = Signal::derive(move || {
         let mut s = String::from("layer-btn range-btn lock-grow");
-        if state.viewmode.hfr_enabled().get() { s.push_str(" hfr-on"); } else { s.push_str(" hfr-off"); }
-        if is_open.get() { s.push_str(" open"); }
-        if no_file() { s.push_str(" disabled"); }
+        if state.viewmode.hfr_enabled().get() {
+            s.push_str(" hfr-on");
+        } else {
+            s.push_str(" hfr-off");
+        }
+        if is_open.get() {
+            s.push_str(" open");
+        }
+        if no_file() {
+            s.push_str(" disabled");
+        }
         s
     });
 
@@ -226,7 +270,9 @@ pub fn RangeButton() -> impl IntoView {
     });
 
     let toggle = move |_: web_sys::MouseEvent| {
-        if no_file() { return; }
+        if no_file() {
+            return;
+        }
         toggle_panel(&state, LayerPanel::BandPresets);
     };
 

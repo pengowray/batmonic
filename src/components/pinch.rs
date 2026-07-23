@@ -231,7 +231,8 @@ pub fn apply_pinch(
     let new_zoom = (pinch.initial_zoom * scale).clamp(viewport::MIN_ZOOM, viewport::MAX_ZOOM);
 
     // What time was under the initial midpoint?
-    let initial_visible_time = viewport::visible_time(canvas_width, pinch.initial_zoom, pinch.time_res);
+    let initial_visible_time =
+        viewport::visible_time(canvas_width, pinch.initial_zoom, pinch.time_res);
     let initial_mid_canvas_x = pinch.initial_mid_client_x - canvas_left;
     let mid_frac = (initial_mid_canvas_x / canvas_width).clamp(0.0, 1.0);
     let anchor_time = pinch.initial_scroll + mid_frac * initial_visible_time;
@@ -314,10 +315,16 @@ mod tests {
         let ps = time_pinch();
         // Spread apart → zoom in.
         let (zoom_in, _) = apply_pinch(&ps, 200.0, 0.0, 0.0, 800.0);
-        assert!(zoom_in > ps.initial_zoom, "spreading should zoom in: {zoom_in}");
+        assert!(
+            zoom_in > ps.initial_zoom,
+            "spreading should zoom in: {zoom_in}"
+        );
         // Pinch together → zoom out.
         let (zoom_out, _) = apply_pinch(&ps, 50.0, 0.0, 0.0, 800.0);
-        assert!(zoom_out < ps.initial_zoom, "contracting should zoom out: {zoom_out}");
+        assert!(
+            zoom_out < ps.initial_zoom,
+            "contracting should zoom out: {zoom_out}"
+        );
     }
 
     #[test]
@@ -348,9 +355,15 @@ mod tests {
         // Spread apart (100 → 200px) halves the visible range, centered.
         let (min, max) = apply_freq_pinch(&ps, 200.0, 100.0, 200.0);
         let range = max - min;
-        assert!(range < (ps.initial_max_freq - ps.initial_min_freq), "should zoom in: {range}");
+        assert!(
+            range < (ps.initial_max_freq - ps.initial_min_freq),
+            "should zoom in: {range}"
+        );
         // Anchor freq (under the midpoint) stays centered.
-        assert!(((min + max) / 2.0 - 48_000.0).abs() < 1.0, "anchor drifted: {min}..{max}");
+        assert!(
+            ((min + max) / 2.0 - 48_000.0).abs() < 1.0,
+            "anchor drifted: {min}..{max}"
+        );
     }
 
     #[test]
@@ -359,6 +372,9 @@ mod tests {
         // Pinch together hard → range would exceed Nyquist; clamps to 0..nyquist.
         let (min, max) = apply_freq_pinch(&ps, 25.0, 100.0, 200.0);
         assert!(min >= 0.0 && max <= ps.nyquist + 1.0);
-        assert!((max - min - ps.nyquist).abs() < 1.0, "should clamp to full range: {min}..{max}");
+        assert!(
+            (max - min - ps.nyquist).abs() < 1.0,
+            "should clamp to full range: {min}..{max}"
+        );
     }
 }

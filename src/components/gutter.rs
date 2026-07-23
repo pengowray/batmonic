@@ -6,19 +6,18 @@
 // strip below a view, owning time-range selection and rendering the
 // time axis labels that previously sat inside the main canvas.
 
-use crate::state::store_fields::*;
-use leptos::prelude::*;
-use wasm_bindgen::{JsCast, JsValue};
-use wasm_bindgen::closure::Closure;
-use js_sys;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 use crate::canvas::gutter_renderer;
 use crate::components::axis_drag::{
-    apply_axis_drag, finalize_axis_drag, freq_snap, select_all_frequencies,
-    select_all_time,
+    apply_axis_drag, finalize_axis_drag, freq_snap, select_all_frequencies, select_all_time,
 };
 use crate::components::pinch::{apply_freq_pinch, two_finger_y_geometry, FreqPinchState};
+use crate::state::store_fields::*;
 use crate::state::{ActiveFocus, AppState, Selection};
+use js_sys;
+use leptos::prelude::*;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::{JsCast, JsValue};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 /// Slack (CSS px) before a pointer press on a gutter is promoted from
 /// "tap" to "drag". Wider than the spectrogram's 3 px because touch
@@ -35,7 +34,8 @@ const DBLTAP_WINDOW_MS: f64 = 400.0;
 /// `spectrogram_events::file_nyquist` but duplicated here to keep the
 /// gutter self-contained.
 fn gutter_nyquist(state: AppState) -> f64 {
-    let is_mic_active = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+    let is_mic_active =
+        state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
     if is_mic_active && crate::canvas::live_waterfall::is_active() {
         crate::canvas::live_waterfall::max_freq()
     } else {
@@ -130,7 +130,9 @@ pub fn BandGutter() -> impl IntoView {
         let _tile_ready = state.viewmode.tile_ready_signal().get();
         let _size_tick = canvas_size_tick.get();
 
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         // Measure the parent .band-gutter so the canvas pixel buffer tracks
         // the flex-sized container height even when `height: 100%` on the
@@ -145,14 +147,20 @@ pub fn BandGutter() -> impl IntoView {
                 (r.width() as u32, r.height() as u32)
             }
         };
-        if display_w == 0 || display_h == 0 { return; }
+        if display_w == 0 || display_h == 0 {
+            return;
+        }
         if canvas.width() != display_w || canvas.height() != display_h {
             canvas.set_width(display_w);
             canvas.set_height(display_h);
         }
 
-        let Ok(Some(obj)) = canvas.get_context("2d") else { return };
-        let Ok(ctx) = obj.dyn_into::<CanvasRenderingContext2d>() else { return };
+        let Ok(Some(obj)) = canvas.get_context("2d") else {
+            return;
+        };
+        let Ok(ctx) = obj.dyn_into::<CanvasRenderingContext2d>() else {
+            return;
+        };
 
         gutter_renderer::draw_band_gutter(
             &ctx,
@@ -174,21 +182,22 @@ pub fn BandGutter() -> impl IntoView {
     Effect::new(move |_| {
         let Some(el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = el.as_ref();
-        let Some(parent) = canvas.parent_element() else { return };
+        let Some(parent) = canvas.parent_element() else {
+            return;
+        };
         let cb = Closure::<dyn Fn(js_sys::Array)>::new(move |_entries: js_sys::Array| {
             // Bail if the component (and this signal) was disposed between
             // the DOM mutation and the observer firing — otherwise
             // `get_untracked` on a disposed signal panics.
-            let Some(cur) = canvas_size_tick.try_get_untracked() else { return };
+            let Some(cur) = canvas_size_tick.try_get_untracked() else {
+                return;
+            };
             canvas_size_tick.set(cur.wrapping_add(1));
         });
         if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
             observer.observe(&parent);
-            let _ = js_sys::Reflect::set(
-                &parent,
-                &JsValue::from_str("__band_resize_obs"),
-                &observer,
-            );
+            let _ =
+                js_sys::Reflect::set(&parent, &JsValue::from_str("__band_resize_obs"), &observer);
         }
         cb.forget();
     });
@@ -201,19 +210,29 @@ pub fn BandGutter() -> impl IntoView {
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let rect = canvas.get_bounding_client_rect();
         let h = rect.height();
-        if h <= 0.0 { return None; }
+        if h <= 0.0 {
+            return None;
+        }
         let y = ev.client_y() as f64 - rect.top();
         let (min_freq, max_freq) = display_range();
-        if max_freq <= min_freq { return None; }
+        if max_freq <= min_freq {
+            return None;
+        }
         Some((y, h, min_freq, max_freq))
     };
 
     let on_pointerdown = move |ev: web_sys::PointerEvent| {
-        if ev.button() != 0 { return; }
+        if ev.button() != 0 {
+            return;
+        }
         // Two-finger touch is handled by the touchstart path (pinch/pan).
         // Skip the pointer path so it doesn't race with the pinch state.
-        if pinch_state.get_value().is_some() { return; }
-        let Some((y, h, min_freq, max_freq)) = pointer_context(&ev) else { return };
+        if pinch_state.get_value().is_some() {
+            return;
+        }
+        let Some((y, h, min_freq, max_freq)) = pointer_context(&ev) else {
+            return;
+        };
         ev.prevent_default();
 
         // Explicit double-tap on touch: browsers don't always fire
@@ -248,7 +267,11 @@ pub fn BandGutter() -> impl IntoView {
         // Shift+click extend: anchor at the edge of the existing range
         // farthest from the click, so dragging grows the band from there.
         let raw_start = if shift && has_range {
-            if (freq - band_lo).abs() < (freq - band_hi).abs() { band_hi } else { band_lo }
+            if (freq - band_lo).abs() < (freq - band_hi).abs() {
+                band_hi
+            } else {
+                band_lo
+            }
         } else {
             freq
         };
@@ -266,8 +289,14 @@ pub fn BandGutter() -> impl IntoView {
         // if the pointer never leaves the slop zone.
         let snap_s = freq_snap(raw_start, shift);
         let snap_e = freq_snap(freq, shift);
-        state.interaction.axis_drag_start_freq().set(Some((raw_start / snap_s).round() * snap_s));
-        state.interaction.axis_drag_current_freq().set(Some((freq / snap_e).round() * snap_e));
+        state
+            .interaction
+            .axis_drag_start_freq()
+            .set(Some((raw_start / snap_s).round() * snap_s));
+        state
+            .interaction
+            .axis_drag_current_freq()
+            .set(Some((freq / snap_e).round() * snap_e));
         state.interaction.is_dragging().set(true);
 
         // Shift-extend should update the band immediately; a fresh drag
@@ -290,8 +319,12 @@ pub fn BandGutter() -> impl IntoView {
     };
 
     let on_pointermove = move |ev: web_sys::PointerEvent| {
-        let Some(raw_start) = drag_anchor.get_value() else { return };
-        let Some((y, h, min_freq, max_freq)) = pointer_context(&ev) else { return };
+        let Some(raw_start) = drag_anchor.get_value() else {
+            return;
+        };
+        let Some((y, h, min_freq, max_freq)) = pointer_context(&ev) else {
+            return;
+        };
         tooltip_y.set(Some(y.clamp(0.0, h)));
 
         // Tap-zone gate: don't promote a press into a drag (which would
@@ -300,7 +333,10 @@ pub fn BandGutter() -> impl IntoView {
         // gutter routinely exceeded 1–2 px on mobile, causing every tap
         // to register as a drag.
         if !drag_active.get_value() {
-            let dy = drag_start_y.get_value().map(|s0| (y - s0).abs()).unwrap_or(0.0);
+            let dy = drag_start_y
+                .get_value()
+                .map(|s0| (y - s0).abs())
+                .unwrap_or(0.0);
             if dy < TAP_SLOP_PX {
                 return;
             }
@@ -312,7 +348,9 @@ pub fn BandGutter() -> impl IntoView {
     };
 
     let on_pointerup = move |ev: web_sys::PointerEvent| {
-        if drag_anchor.get_value().is_none() { return; }
+        if drag_anchor.get_value().is_none() {
+            return;
+        }
         let was_active = drag_active.get_value();
         drag_anchor.set_value(None);
         drag_start_y.set_value(None);
@@ -377,15 +415,25 @@ pub fn BandGutter() -> impl IntoView {
             state.interaction.axis_drag_current_freq().set(None);
             state.interaction.is_dragging().set(false);
 
-            let Some(canvas_el) = canvas_ref.get() else { return };
+            let Some(canvas_el) = canvas_ref.get() else {
+                return;
+            };
             let canvas: &HtmlCanvasElement = canvas_el.as_ref();
             let rect = canvas.get_bounding_client_rect();
-            if rect.height() <= 0.0 { return; }
-            let Some((mid_client_y, dist_y)) = two_finger_y_geometry(&touches) else { return };
+            if rect.height() <= 0.0 {
+                return;
+            }
+            let Some((mid_client_y, dist_y)) = two_finger_y_geometry(&touches) else {
+                return;
+            };
 
             let nyquist = gutter_nyquist(state);
             let initial_min_freq = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-            let initial_max_freq = state.view.max_display_freq().get_untracked().unwrap_or(nyquist);
+            let initial_max_freq = state
+                .view
+                .max_display_freq()
+                .get_untracked()
+                .unwrap_or(nyquist);
             pinch_state.set_value(Some(FreqPinchState {
                 initial_dist_y: dist_y.max(1.0),
                 initial_min_freq,
@@ -398,16 +446,26 @@ pub fn BandGutter() -> impl IntoView {
 
     let on_touchmove = move |ev: web_sys::TouchEvent| {
         let touches = ev.touches();
-        if touches.length() != 2 { return; }
-        let Some(ps) = pinch_state.get_value() else { return };
+        if touches.length() != 2 {
+            return;
+        }
+        let Some(ps) = pinch_state.get_value() else {
+            return;
+        };
         ev.prevent_default();
 
-        let Some((mid_client_y, dist_y)) = two_finger_y_geometry(&touches) else { return };
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some((mid_client_y, dist_y)) = two_finger_y_geometry(&touches) else {
+            return;
+        };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let rect = canvas.get_bounding_client_rect();
         let canvas_h = rect.height();
-        if canvas_h <= 0.0 { return; }
+        if canvas_h <= 0.0 {
+            return;
+        }
         let current_mid_canvas_y = mid_client_y - rect.top();
 
         let (new_min, new_max) = apply_freq_pinch(&ps, dist_y, current_mid_canvas_y, canvas_h);
@@ -427,15 +485,25 @@ pub fn BandGutter() -> impl IntoView {
     // navigation control on desktop too.
     let on_wheel = move |ev: web_sys::WheelEvent| {
         ev.prevent_default();
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let rect = canvas.get_bounding_client_rect();
         let h = rect.height();
-        if h <= 0.0 { return; }
+        if h <= 0.0 {
+            return;
+        }
         let nyquist = gutter_nyquist(state);
-        if nyquist <= 0.0 { return; }
+        if nyquist <= 0.0 {
+            return;
+        }
         let cur_min = state.view.min_display_freq().get_untracked().unwrap_or(0.0);
-        let cur_max = state.view.max_display_freq().get_untracked().unwrap_or(nyquist);
+        let cur_max = state
+            .view
+            .max_display_freq()
+            .get_untracked()
+            .unwrap_or(nyquist);
         let range = (cur_max - cur_min).max(1.0);
 
         if ev.shift_key() || ev.ctrl_key() || ev.meta_key() {
@@ -447,8 +515,14 @@ pub fn BandGutter() -> impl IntoView {
             let new_range = (range * factor).clamp(500.0_f64.min(nyquist), nyquist);
             let mut new_max = anchor_freq + anchor_frac * new_range;
             let mut new_min = new_max - new_range;
-            if new_min < 0.0 { new_min = 0.0; new_max = new_range.min(nyquist); }
-            if new_max > nyquist { new_max = nyquist; new_min = (new_max - new_range).max(0.0); }
+            if new_min < 0.0 {
+                new_min = 0.0;
+                new_max = new_range.min(nyquist);
+            }
+            if new_max > nyquist {
+                new_max = nyquist;
+                new_min = (new_max - new_range).max(0.0);
+            }
             state.view.min_display_freq().set(Some(new_min));
             state.view.max_display_freq().set(Some(new_max));
         } else {
@@ -458,8 +532,14 @@ pub fn BandGutter() -> impl IntoView {
             let step = raw.signum() * range * 0.1 * (raw.abs() / 100.0).min(3.0);
             let mut new_max = cur_max - step;
             let mut new_min = cur_min - step;
-            if new_min < 0.0 { new_min = 0.0; new_max = range.min(nyquist); }
-            if new_max > nyquist { new_max = nyquist; new_min = (new_max - range).max(0.0); }
+            if new_min < 0.0 {
+                new_min = 0.0;
+                new_max = range.min(nyquist);
+            }
+            if new_max > nyquist {
+                new_max = nyquist;
+                new_min = (new_max - range).max(0.0);
+            }
             state.view.min_display_freq().set(Some(new_min));
             state.view.max_display_freq().set(Some(new_max));
         }
@@ -469,7 +549,9 @@ pub fn BandGutter() -> impl IntoView {
     let format_range = move || {
         let lo = state.filter.band_ff_freq_lo().get();
         let hi = state.filter.band_ff_freq_hi().get();
-        if hi <= lo { return String::new(); }
+        if hi <= lo {
+            return String::new();
+        }
         format!("{:.1} – {:.1} kHz", lo / 1000.0, hi / 1000.0)
     };
 
@@ -585,9 +667,13 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
         let _main_view = state.viewmode.main_view().get();
         let show_clock = state.timeline.show_clock_time().get();
         let _size_tick = canvas_size_tick.get();
-        let Some((scroll, visible_time, duration, _time_res, clock)) = time_window() else { return };
+        let Some((scroll, visible_time, duration, _time_res, clock)) = time_window() else {
+            return;
+        };
 
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         // Measure the parent .time-gutter, not the canvas. The canvas'
         // `height: 100%` can fail to resolve through the flex chain and
@@ -604,14 +690,20 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
                 (r.width() as u32, r.height() as u32)
             }
         };
-        if display_w == 0 || display_h == 0 { return; }
+        if display_w == 0 || display_h == 0 {
+            return;
+        }
         if canvas.width() != display_w || canvas.height() != display_h {
             canvas.set_width(display_w);
             canvas.set_height(display_h);
         }
 
-        let Ok(Some(obj)) = canvas.get_context("2d") else { return };
-        let Ok(ctx) = obj.dyn_into::<CanvasRenderingContext2d>() else { return };
+        let Ok(Some(obj)) = canvas.get_context("2d") else {
+            return;
+        };
+        let Ok(ctx) = obj.dyn_into::<CanvasRenderingContext2d>() else {
+            return;
+        };
 
         let w = display_w as f64;
         let h = display_h as f64;
@@ -625,8 +717,12 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
         ctx.fill_rect(0.0, 0.0, w, h);
         gutter_renderer::draw_time_gutter_overlay(
             &ctx,
-            data_x, 0.0, data_w, h,
-            scroll, scroll + visible_time,
+            data_x,
+            0.0,
+            data_w,
+            h,
+            scroll,
+            scroll + visible_time,
             selection.map(|s| (s.time_start, s.time_end)),
         );
 
@@ -636,8 +732,15 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
         ctx.save();
         let _ = ctx.translate(data_x, 0.0);
         crate::canvas::time_markers::draw_time_markers(
-            &ctx, scroll, visible_time, data_w, h,
-            duration, clock, show_clock, 1.0,
+            &ctx,
+            scroll,
+            visible_time,
+            data_w,
+            h,
+            duration,
+            clock,
+            show_clock,
+            1.0,
         );
         ctx.restore();
     });
@@ -648,21 +751,22 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
     Effect::new(move |_| {
         let Some(el) = canvas_ref.get() else { return };
         let canvas: &HtmlCanvasElement = el.as_ref();
-        let Some(parent) = canvas.parent_element() else { return };
+        let Some(parent) = canvas.parent_element() else {
+            return;
+        };
         let cb = Closure::<dyn Fn(js_sys::Array)>::new(move |_entries: js_sys::Array| {
             // Bail if the component (and this signal) was disposed between
             // the DOM mutation and the observer firing — otherwise
             // `get_untracked` on a disposed signal panics.
-            let Some(cur) = canvas_size_tick.try_get_untracked() else { return };
+            let Some(cur) = canvas_size_tick.try_get_untracked() else {
+                return;
+            };
             canvas_size_tick.set(cur.wrapping_add(1));
         });
         if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
             observer.observe(&parent);
-            let _ = js_sys::Reflect::set(
-                &parent,
-                &JsValue::from_str("__time_resize_obs"),
-                &observer,
-            );
+            let _ =
+                js_sys::Reflect::set(&parent, &JsValue::from_str("__time_resize_obs"), &observer);
         }
         cb.forget();
     });
@@ -681,8 +785,12 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
     };
 
     let on_pointerdown = move |ev: web_sys::PointerEvent| {
-        if ev.button() != 0 { return; }
-        let Some(t) = x_to_time(ev.client_x() as f64) else { return };
+        if ev.button() != 0 {
+            return;
+        }
+        let Some(t) = x_to_time(ev.client_x() as f64) else {
+            return;
+        };
         ev.prevent_default();
 
         // Explicit double-tap on touch: browsers sometimes suppress
@@ -705,11 +813,21 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
         drag_start_client.set_value((ev.client_x() as f64, ev.client_y() as f64));
         // Seed a zero-width selection so the highlight starts drawing; the
         // range expands as the pointer moves.
-        let ff = state.viewmode.focus_stack().get_untracked().effective_range();
-        let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
+        let ff = state
+            .viewmode
+            .focus_stack()
+            .get_untracked()
+            .effective_range();
+        let (fl, fh) = if ff.is_active() {
+            (Some(ff.lo), Some(ff.hi))
+        } else {
+            (None, None)
+        };
         state.interaction.selection().set(Some(Selection {
-            time_start: t, time_end: t,
-            freq_low: fl, freq_high: fh,
+            time_start: t,
+            time_end: t,
+            freq_low: fl,
+            freq_high: fh,
         }));
         state.interaction.is_dragging().set(true);
         if let Some(target) = ev.target() {
@@ -720,26 +838,46 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
     };
 
     let on_pointermove = move |ev: web_sys::PointerEvent| {
-        let Some(anchor) = drag_anchor.get_value() else { return };
-        let Some(t) = x_to_time(ev.client_x() as f64) else { return };
+        let Some(anchor) = drag_anchor.get_value() else {
+            return;
+        };
+        let Some(t) = x_to_time(ev.client_x() as f64) else {
+            return;
+        };
         let (ts, te) = if t < anchor { (t, anchor) } else { (anchor, t) };
-        let ff = state.viewmode.focus_stack().get_untracked().effective_range();
-        let (fl, fh) = if ff.is_active() { (Some(ff.lo), Some(ff.hi)) } else { (None, None) };
+        let ff = state
+            .viewmode
+            .focus_stack()
+            .get_untracked()
+            .effective_range();
+        let (fl, fh) = if ff.is_active() {
+            (Some(ff.lo), Some(ff.hi))
+        } else {
+            (None, None)
+        };
         state.interaction.selection().set(Some(Selection {
-            time_start: ts, time_end: te,
-            freq_low: fl, freq_high: fh,
+            time_start: ts,
+            time_end: te,
+            freq_low: fl,
+            freq_high: fh,
         }));
     };
 
     let on_pointerup = move |ev: web_sys::PointerEvent| {
-        if drag_anchor.get_value().is_none() { return; }
+        if drag_anchor.get_value().is_none() {
+            return;
+        }
         let (sx, sy) = drag_start_client.get_value();
         let dx = (ev.client_x() as f64 - sx).abs();
         let dy = (ev.client_y() as f64 - sy).abs();
         // Tap slop: generous enough to ride through finger wobble on
         // touch; the tight 3 px threshold used to force a mobile tap to
         // carve out a half-second selection before the user could release.
-        let slop = if pointer_is_touch(&ev) { TAP_SLOP_PX } else { 3.0 };
+        let slop = if pointer_is_touch(&ev) {
+            TAP_SLOP_PX
+        } else {
+            3.0
+        };
         let was_tap = dx < slop && dy < slop;
         drag_anchor.set_value(None);
         state.interaction.is_dragging().set(false);
@@ -764,7 +902,11 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
             if sel.time_end - sel.time_start < 1e-4 {
                 state.interaction.selection().set(None);
             } else if sel.freq_low.is_none() {
-                let ff = state.viewmode.focus_stack().get_untracked().effective_range();
+                let ff = state
+                    .viewmode
+                    .focus_stack()
+                    .get_untracked()
+                    .effective_range();
                 if ff.is_active() {
                     state.interaction.selection().set(Some(Selection {
                         freq_low: Some(ff.lo),
@@ -774,7 +916,10 @@ pub fn TimeGutter(#[prop(default = 0.0)] data_left_offset: f64) -> impl IntoView
                 }
             }
         }
-        state.interaction.active_focus().set(Some(ActiveFocus::TransientSelection));
+        state
+            .interaction
+            .active_focus()
+            .set(Some(ActiveFocus::TransientSelection));
     };
 
     let on_dblclick = move |ev: web_sys::MouseEvent| {

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only OR MIT OR Apache-2.0
-use crate::state::store_fields::*;
-use sha2::{Sha256, Digest};
-use leptos::prelude::{Update, WithUntracked};
 use crate::annotations::FileIdentity;
+use crate::state::store_fields::*;
 use crate::state::AppState;
 use crate::web_util::yield_now;
+use leptos::prelude::{Update, WithUntracked};
+use sha2::{Digest, Sha256};
 
 /// Size of each chunk for the multi-point spot hash (1 MB).
 const SPOT_CHUNK_SIZE: u64 = 1_048_576;
@@ -43,12 +43,14 @@ fn spot_chunk_positions(audio_start: u64, audio_len: u64) -> Vec<(u64, u64)> {
         return Vec::new();
     }
     let num_chunks = NUM_SPOT_CHUNKS.min((audio_len / SPOT_CHUNK_SIZE).max(1));
-    (0..num_chunks).map(|i| {
-        let chunk_start = audio_start + i * (audio_len / num_chunks);
-        let remaining = audio_len - (chunk_start - audio_start);
-        let chunk_len = SPOT_CHUNK_SIZE.min(remaining);
-        (chunk_start, chunk_len)
-    }).collect()
+    (0..num_chunks)
+        .map(|i| {
+            let chunk_start = audio_start + i * (audio_len / num_chunks);
+            let remaining = audio_len - (chunk_start - audio_start);
+            let chunk_len = SPOT_CHUNK_SIZE.min(remaining);
+            (chunk_start, chunk_len)
+        })
+        .collect()
 }
 
 /// Combine individual chunk hashes into the final spot hash.
@@ -69,11 +71,14 @@ pub fn compute_spot_hash_b3_sync(
     let (audio_start, audio_len) = audio_region(file_bytes.len() as u64, data_offset, data_size);
     let positions = spot_chunk_positions(audio_start, audio_len);
 
-    let chunk_hashes: Vec<blake3::Hash> = positions.iter().map(|&(start, len)| {
-        let s = start as usize;
-        let e = (start + len).min(file_bytes.len() as u64) as usize;
-        blake3::hash(&file_bytes[s..e])
-    }).collect();
+    let chunk_hashes: Vec<blake3::Hash> = positions
+        .iter()
+        .map(|&(start, len)| {
+            let s = start as usize;
+            let e = (start + len).min(file_bytes.len() as u64) as usize;
+            blake3::hash(&file_bytes[s..e])
+        })
+        .collect();
 
     finalize_spot_hash(&chunk_hashes)
 }
@@ -192,12 +197,20 @@ pub async fn compute_full_sha256(
         }
     }
 
-    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 /// Trait for async range reading (implemented for web File blobs and Tauri paths).
 pub trait AsyncRangeReader {
-    fn read(&self, offset: u64, length: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>>;
+    fn read(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>>;
 }
 
 /// Web File blob range reader.
@@ -206,7 +219,11 @@ pub struct BlobRangeReader {
 }
 
 impl AsyncRangeReader for BlobRangeReader {
-    fn read(&self, offset: u64, length: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
+    fn read(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
         let start = offset as f64;
         let end = (offset + length) as f64;
         Box::pin(async move {
@@ -221,10 +238,14 @@ pub struct TauriRangeReader {
 }
 
 impl AsyncRangeReader for TauriRangeReader {
-    fn read(&self, offset: u64, length: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
-        Box::pin(async move {
-            crate::tauri_bridge::read_file_range(&self.path, offset, length).await
-        })
+    fn read(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
+        Box::pin(
+            async move { crate::tauri_bridge::read_file_range(&self.path, offset, length).await },
+        )
     }
 }
 
@@ -235,7 +256,11 @@ pub struct MediaStoreRangeReader {
 }
 
 impl AsyncRangeReader for MediaStoreRangeReader {
-    fn read(&self, offset: u64, length: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
+    fn read(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
         Box::pin(async move {
             crate::audio::streaming_source::read_media_store_range(&self.uri, offset, length).await
         })
@@ -243,7 +268,9 @@ impl AsyncRangeReader for MediaStoreRangeReader {
 }
 
 /// Construct an AsyncRangeReader from a FileHandle.
-pub fn reader_from_handle(handle: &crate::audio::streaming_source::FileHandle) -> Box<dyn AsyncRangeReader + '_> {
+pub fn reader_from_handle(
+    handle: &crate::audio::streaming_source::FileHandle,
+) -> Box<dyn AsyncRangeReader + '_> {
     match handle {
         crate::audio::streaming_source::FileHandle::WebFile(file) => {
             Box::new(BlobRangeReader { file: file.clone() })
@@ -266,7 +293,11 @@ pub struct BytesRangeReader {
 }
 
 impl AsyncRangeReader for BytesRangeReader {
-    fn read(&self, offset: u64, length: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
+    fn read(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<u8>, String>> + '_>> {
         Box::pin(async move {
             let len = self.bytes.len() as u64;
             let s = offset.min(len) as usize;
@@ -302,13 +333,27 @@ fn merge_references(
 
     // Override with XC hashes (more authoritative for downloaded files)
     if let Some(xc) = xc_hashes {
-        if xc.blake3.is_some() { merged.blake3 = xc.blake3.clone(); }
-        if xc.sha256.is_some() { merged.sha256 = xc.sha256.clone(); }
-        if xc.spot_hash_b3.is_some() { merged.spot_hash_b3 = xc.spot_hash_b3.clone(); }
-        if xc.content_hash.is_some() { merged.content_hash = xc.content_hash.clone(); }
-        if xc.file_size.is_some() { merged.file_size = xc.file_size; }
-        if xc.data_offset.is_some() { merged.data_offset = xc.data_offset; }
-        if xc.data_size.is_some() { merged.data_size = xc.data_size; }
+        if xc.blake3.is_some() {
+            merged.blake3 = xc.blake3.clone();
+        }
+        if xc.sha256.is_some() {
+            merged.sha256 = xc.sha256.clone();
+        }
+        if xc.spot_hash_b3.is_some() {
+            merged.spot_hash_b3 = xc.spot_hash_b3.clone();
+        }
+        if xc.content_hash.is_some() {
+            merged.content_hash = xc.content_hash.clone();
+        }
+        if xc.file_size.is_some() {
+            merged.file_size = xc.file_size;
+        }
+        if xc.data_offset.is_some() {
+            merged.data_offset = xc.data_offset;
+        }
+        if xc.data_size.is_some() {
+            merged.data_size = xc.data_size;
+        }
     }
 
     merged
@@ -361,7 +406,9 @@ fn run_verification(
     }
 
     // 3. Content hash fallback
-    if let (Some(computed_ch), Some(expected_ch)) = (&identity.content_hash, &reference.content_hash) {
+    if let (Some(computed_ch), Some(expected_ch)) =
+        (&identity.content_hash, &reference.content_hash)
+    {
         if computed_ch == expected_ch {
             return VerifyOutcome::ContentMatch;
         }
@@ -372,13 +419,15 @@ fn run_verification(
 
 /// Read the current reference hashes for a file from state.
 fn get_merged_reference(state: AppState, file_index: usize) -> crate::state::SidecarHashes {
-    let xc_hashes = state.library.files().with_untracked(|files| {
-        files.get(file_index).and_then(|f| f.xc_hashes.clone())
-    });
+    let xc_hashes = state
+        .library
+        .files()
+        .with_untracked(|files| files.get(file_index).and_then(|f| f.xc_hashes.clone()));
     let sidecar_id = state.file_id_at(file_index).and_then(|id| {
-        state.annotations.store().with_untracked(|store| {
-            store.get(id).map(|set| set.file_identity.clone())
-        })
+        state
+            .annotations
+            .store()
+            .with_untracked(|store| store.get(id).map(|set| set.file_identity.clone()))
     });
     merge_references(&xc_hashes, &sidecar_id)
 }
@@ -405,14 +454,16 @@ pub fn start_identity_computation(
     last_modified_ms: Option<f64>,
 ) {
     // Skip if identity already computed (e.g. by load_named_bytes)
-    let already_has_identity = state.library.files().with_untracked(|files| {
-        files.get(file_index).is_some_and(|f| f.identity.is_some())
-    });
+    let already_has_identity = state
+        .library
+        .files()
+        .with_untracked(|files| files.get(file_index).is_some_and(|f| f.identity.is_some()));
     if already_has_identity {
         // Still try loading saved annotations even if identity was already set
-        let identity = state.library.files().with_untracked(|files| {
-            files.get(file_index).and_then(|f| f.identity.clone())
-        });
+        let identity = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_index).and_then(|f| f.identity.clone()));
         if let Some(id) = identity {
             crate::opfs::load_annotations(state, file_index, id);
         }
@@ -441,12 +492,15 @@ pub fn start_identity_computation(
             Some(compute_spot_hash_b3_sync(bytes, data_offset, data_size))
         } else {
             // No bytes available (streaming load) — need file handle for range reads
-            let handle = state.library.files().with_untracked(|files| {
-                files.get(file_index).and_then(|f| f.file_handle.clone())
-            });
+            let handle = state
+                .library
+                .files()
+                .with_untracked(|files| files.get(file_index).and_then(|f| f.file_handle.clone()));
             if let Some(handle) = handle {
                 let reader = reader_from_handle(&handle);
-                compute_spot_hash_b3(reader.as_ref(), file_size, data_offset, data_size).await.ok()
+                compute_spot_hash_b3(reader.as_ref(), file_size, data_offset, data_size)
+                    .await
+                    .ok()
             } else {
                 None
             }
@@ -462,9 +516,10 @@ pub fn start_identity_computation(
             });
 
             // Try loading annotations again with the better spot_hash_b3 key
-            let identity = state.library.files().with_untracked(|files| {
-                files.get(file_index).and_then(|f| f.identity.clone())
-            });
+            let identity = state
+                .library
+                .files()
+                .with_untracked(|files| files.get(file_index).and_then(|f| f.identity.clone()));
             if let Some(id) = identity {
                 crate::opfs::load_annotations(state, file_index, id);
             }
@@ -484,7 +539,9 @@ pub fn start_identity_computation(
                     None => bytes.len(),
                 };
                 let audio_start = audio_start.min(audio_end);
-                let content_hash = blake3::hash(&bytes[audio_start..audio_end]).to_hex().to_string();
+                let content_hash = blake3::hash(&bytes[audio_start..audio_end])
+                    .to_hex()
+                    .to_string();
                 let full_blake3 = blake3::hash(&bytes).to_hex().to_string();
 
                 state.library.files().update(|files| {
@@ -500,7 +557,9 @@ pub fn start_identity_computation(
             } else {
                 // Small file without in-memory bytes: compute via file handle
                 let has_handle = state.library.files().with_untracked(|files| {
-                    files.get(file_index).is_some_and(|f| f.file_handle.is_some())
+                    files
+                        .get(file_index)
+                        .is_some_and(|f| f.file_handle.is_some())
                 });
                 if has_handle {
                     start_full_hash_computation(state, file_index, false);
@@ -510,9 +569,10 @@ pub fn start_identity_computation(
 
         // Run verification against reference hashes
         let reference = get_merged_reference(state, file_index);
-        let identity = state.library.files().with_untracked(|files| {
-            files.get(file_index).and_then(|f| f.identity.clone())
-        });
+        let identity = state
+            .library
+            .files()
+            .with_untracked(|files| files.get(file_index).and_then(|f| f.identity.clone()));
 
         if let Some(ref id) = identity {
             let mut outcome = run_verification(id, &reference);
@@ -526,8 +586,15 @@ pub fn start_identity_computation(
                 if let Some(handle) = handle {
                     let reader = reader_from_handle(&handle);
                     let check = |_: u32| false; // no cancellation for fallback
-                    if let Ok((content_hash, full_blake3)) =
-                        compute_full_hashes(reader.as_ref(), file_size, data_offset, data_size, 0, &check).await
+                    if let Ok((content_hash, full_blake3)) = compute_full_hashes(
+                        reader.as_ref(),
+                        file_size,
+                        data_offset,
+                        data_size,
+                        0,
+                        &check,
+                    )
+                    .await
                     {
                         state.library.files().update(|files| {
                             if let Some(f) = files.get_mut(file_index) {
@@ -565,21 +632,32 @@ pub fn start_full_hash_computation(state: AppState, file_index: usize, include_s
     state.status.hash_generation().set(gen);
     state.status.hash_computing().set(true);
 
-    let file_size = state.library.files().with_untracked(|files| {
-        files.get(file_index).map(|f| f.identity.as_ref().map(|id| id.file_size).unwrap_or(0))
-    }).unwrap_or(0);
+    let file_size = state
+        .library
+        .files()
+        .with_untracked(|files| {
+            files
+                .get(file_index)
+                .map(|f| f.identity.as_ref().map(|id| id.file_size).unwrap_or(0))
+        })
+        .unwrap_or(0);
 
     let data_offset = state.library.files().with_untracked(|files| {
-        files.get(file_index).and_then(|f| f.identity.as_ref().and_then(|id| id.data_offset))
+        files
+            .get(file_index)
+            .and_then(|f| f.identity.as_ref().and_then(|id| id.data_offset))
     });
 
     let data_size = state.library.files().with_untracked(|files| {
-        files.get(file_index).and_then(|f| f.identity.as_ref().and_then(|id| id.data_size))
+        files
+            .get(file_index)
+            .and_then(|f| f.identity.as_ref().and_then(|id| id.data_size))
     });
 
-    let handle = state.library.files().with_untracked(|files| {
-        files.get(file_index).and_then(|f| f.file_handle.clone())
-    });
+    let handle = state
+        .library
+        .files()
+        .with_untracked(|files| files.get(file_index).and_then(|f| f.file_handle.clone()));
 
     let Some(handle) = handle else {
         log::warn!("No file handle available for hash computation (file_index={file_index})");
@@ -592,7 +670,16 @@ pub fn start_full_hash_computation(state: AppState, file_index: usize, include_s
         let check = |g: u32| state.status.hash_generation().get() != g;
 
         // Compute BLAKE3 layers 3+4
-        match compute_full_hashes(reader.as_ref(), file_size, data_offset, data_size, gen, &check).await {
+        match compute_full_hashes(
+            reader.as_ref(),
+            file_size,
+            data_offset,
+            data_size,
+            gen,
+            &check,
+        )
+        .await
+        {
             Ok((content_hash, full_blake3)) => {
                 state.library.files().update(|files| {
                     if let Some(f) = files.get_mut(file_index) {
@@ -643,9 +730,10 @@ pub fn start_full_hash_computation(state: AppState, file_index: usize, include_s
             });
 
             let reference = get_merged_reference(state, file_index);
-            let identity = state.library.files().with_untracked(|files| {
-                files.get(file_index).and_then(|f| f.identity.clone())
-            });
+            let identity = state
+                .library
+                .files()
+                .with_untracked(|files| files.get(file_index).and_then(|f| f.identity.clone()));
             if let Some(ref id) = identity {
                 let outcome = run_verification(id, &reference);
                 set_verify_outcome(state, file_index, outcome);

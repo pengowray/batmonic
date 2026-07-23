@@ -1,10 +1,14 @@
+use crate::audio::streaming_source;
+use crate::components::file_sidebar::file_badges::{
+    get_xc_field, parse_cc_license, FileBadgeData, FileBadgeRow,
+};
+use crate::components::file_sidebar::file_groups;
 use crate::state::store_fields::*;
+use crate::state::{
+    AppState, MicAcquisitionState, PlaybackMode, RecordReadyState, RightSidebarTab,
+};
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-use crate::state::{AppState, RightSidebarTab, MicAcquisitionState, PlaybackMode, RecordReadyState};
-use crate::audio::streaming_source;
-use crate::components::file_sidebar::file_groups;
-use crate::components::file_sidebar::file_badges::{FileBadgeData, FileBadgeRow, parse_cc_license, get_xc_field};
 
 #[component]
 pub fn Toolbar() -> impl IntoView {
@@ -22,8 +26,14 @@ pub fn Toolbar() -> impl IntoView {
     Effect::new(move |_| {
         if let Some(el) = toolbar_ref.get() {
             let h = el.offset_height();
-            if let Some(doc_el) = web_sys::window().and_then(|w| w.document()).and_then(|d| d.document_element()) {
-                let _ = doc_el.unchecked_ref::<web_sys::HtmlElement>().style().set_property("--toolbar-h", &format!("{}px", h));
+            if let Some(doc_el) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.document_element())
+            {
+                let _ = doc_el
+                    .unchecked_ref::<web_sys::HtmlElement>()
+                    .style()
+                    .set_property("--toolbar-h", &format!("{}px", h));
             }
         }
     });
@@ -97,7 +107,9 @@ pub fn Toolbar() -> impl IntoView {
         let cur_seq = groups.get(idx)?.sequence.as_ref()?;
         let key = cur_seq.sequence_key.clone();
         let tlabel = cur_seq.track_label.clone();
-        let mut matches: Vec<(usize, String, u32)> = groups.iter().enumerate()
+        let mut matches: Vec<(usize, String, u32)> = groups
+            .iter()
+            .enumerate()
             .filter_map(|(i, g)| {
                 let s = g.sequence.as_ref()?;
                 if s.sequence_key == key && s.track_label == tlabel {
@@ -119,7 +131,9 @@ pub fn Toolbar() -> impl IntoView {
         let groups = file_groups::compute_all_groups(&names, &files);
         let cur_track = groups.get(idx)?.track.as_ref()?;
         let key = cur_track.group_key.clone();
-        let matches: Vec<(usize, String, String)> = groups.iter().enumerate()
+        let matches: Vec<(usize, String, String)> = groups
+            .iter()
+            .enumerate()
             .filter_map(|(i, g)| {
                 let t = g.track.as_ref()?;
                 if t.group_key == key {
@@ -170,7 +184,11 @@ pub fn Toolbar() -> impl IntoView {
         } else if playing && !recording {
             parts.push("\u{25B6}\u{FE0F}"); // ▶️
         }
-        if parts.is_empty() { None } else { Some(parts.join("")) }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(""))
+        }
     });
 
     // Derived: recording file name
@@ -179,7 +197,10 @@ pub fn Toolbar() -> impl IntoView {
         let listening = state.mic.listening().get();
         if recording || (recording && listening) {
             let files = state.library.files().get();
-            state.mic.live_file_idx().get()
+            state
+                .mic
+                .live_file_idx()
+                .get()
                 .and_then(|idx| files.get(idx).map(|f| f.name.clone()))
                 .or_else(|| file_name.get())
         } else {
@@ -194,7 +215,11 @@ pub fn Toolbar() -> impl IntoView {
 
         if recording {
             let _ = state.mic.timer_tick().get(); // subscribe to timer ticks
-            let start = state.mic.recording_start_time().get_untracked().unwrap_or(0.0);
+            let start = state
+                .mic
+                .recording_start_time()
+                .get_untracked()
+                .unwrap_or(0.0);
             let now = js_sys::Date::now();
             let secs = (now - start) / 1000.0;
             let dur = crate::format_time::format_duration_compact(secs);
@@ -228,7 +253,11 @@ pub fn Toolbar() -> impl IntoView {
 
         let title = if recording {
             let _ = state.mic.timer_tick().get(); // subscribe for live updates
-            let start = state.mic.recording_start_time().get_untracked().unwrap_or(0.0);
+            let start = state
+                .mic
+                .recording_start_time()
+                .get_untracked()
+                .unwrap_or(0.0);
             let now = js_sys::Date::now();
             let secs = (now - start) / 1000.0;
             let dur = crate::format_time::format_duration_compact(secs);
@@ -275,10 +304,17 @@ pub fn Toolbar() -> impl IntoView {
                 } else {
                     // On web, trigger browser download with preserved GUANO + cue markers
                     let total = f.audio.source.total_samples() as usize;
-                    let samples = f.audio.source.read_region(crate::audio::source::ChannelView::MonoMix, 0, total);
+                    let samples = f.audio.source.read_region(
+                        crate::audio::source::ChannelView::MonoMix,
+                        0,
+                        total,
+                    );
                     crate::audio::wav_encoder::download_recording_wav(
-                        &samples, f.audio.sample_rate, &f.name,
-                        f.audio.metadata.guano.as_ref(), &f.wav_markers,
+                        &samples,
+                        f.audio.sample_rate,
+                        &f.name,
+                        f.audio.metadata.guano.as_ref(),
+                        &f.wav_markers,
                     );
                 }
                 // Clear unsaved state

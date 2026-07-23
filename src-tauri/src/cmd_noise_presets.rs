@@ -1,7 +1,11 @@
 use tauri::Manager;
 
 #[tauri::command]
-pub fn save_noise_preset(app: tauri::AppHandle, name: String, json: String) -> Result<String, String> {
+pub fn save_noise_preset(
+    app: tauri::AppHandle,
+    name: String,
+    json: String,
+) -> Result<String, String> {
     let dir = app
         .path()
         .app_data_dir()
@@ -10,7 +14,13 @@ pub fn save_noise_preset(app: tauri::AppHandle, name: String, json: String) -> R
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let sanitized: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let sanitized = sanitized.trim().to_string();
     let filename = if sanitized.is_empty() {
@@ -31,8 +41,7 @@ pub fn load_noise_preset(app: tauri::AppHandle, name: String) -> Result<String, 
         .map_err(|e| e.to_string())?
         .join("noise-presets")
         .join(&name);
-    std::fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read preset '{}': {}", name, e))
+    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read preset '{}': {}", name, e))
 }
 
 #[tauri::command]
@@ -50,7 +59,11 @@ pub fn list_noise_presets(app: tauri::AppHandle) -> Result<Vec<String>, String> 
         .flatten()
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".batm") || name.ends_with(".json") { Some(name) } else { None }
+            if name.ends_with(".batm") || name.ends_with(".json") {
+                Some(name)
+            } else {
+                None
+            }
         })
         .collect();
     presets.sort();

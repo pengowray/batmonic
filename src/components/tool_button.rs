@@ -1,10 +1,14 @@
-use crate::state::store_fields::*;
-use leptos::prelude::*;
 use crate::components::popup::{Align, PopupPanel, Side};
+use crate::state::store_fields::*;
 use crate::state::{AppState, CanvasTool, LayerPanel};
+use leptos::prelude::*;
 
 fn layer_opt_class(active: bool) -> &'static str {
-    if active { "layer-panel-opt sel" } else { "layer-panel-opt" }
+    if active {
+        "layer-panel-opt sel"
+    } else {
+        "layer-panel-opt"
+    }
 }
 
 fn toggle_panel(state: &AppState, panel: LayerPanel) {

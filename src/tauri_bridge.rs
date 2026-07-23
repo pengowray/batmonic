@@ -95,10 +95,18 @@ pub async fn read_file_range(path: &str, offset: u64, length: u64) -> Result<Vec
     let args = js_sys::Object::new();
     js_sys::Reflect::set(&args, &JsValue::from_str("path"), &JsValue::from_str(path))
         .map_err(|e| format!("set path: {:?}", e))?;
-    js_sys::Reflect::set(&args, &JsValue::from_str("offset"), &JsValue::from_f64(offset as f64))
-        .map_err(|e| format!("set offset: {:?}", e))?;
-    js_sys::Reflect::set(&args, &JsValue::from_str("length"), &JsValue::from_f64(length as f64))
-        .map_err(|e| format!("set length: {:?}", e))?;
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("offset"),
+        &JsValue::from_f64(offset as f64),
+    )
+    .map_err(|e| format!("set offset: {:?}", e))?;
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("length"),
+        &JsValue::from_f64(length as f64),
+    )
+    .map_err(|e| format!("set length: {:?}", e))?;
 
     let result = tauri_invoke("read_file_range", &args.into()).await?;
 
@@ -114,13 +122,22 @@ pub async fn read_file_range(path: &str, offset: u64, length: u64) -> Result<Vec
 /// listener lives for the lifetime of the app.  Returns `true` if the
 /// listener was registered successfully.
 pub fn tauri_listen(event_name: &str, callback: Closure<dyn FnMut(JsValue)>) -> bool {
-    let Some(tauri) = get_tauri_internals() else { return false };
+    let Some(tauri) = get_tauri_internals() else {
+        return false;
+    };
 
-    let Ok(transform_fn) = js_sys::Reflect::get(&tauri, &JsValue::from_str("transformCallback")) else { return false };
+    let Ok(transform_fn) = js_sys::Reflect::get(&tauri, &JsValue::from_str("transformCallback"))
+    else {
+        return false;
+    };
     let transform_fn = js_sys::Function::from(transform_fn);
-    let Ok(handler_id) = transform_fn.call1(&tauri, callback.as_ref().unchecked_ref()) else { return false };
+    let Ok(handler_id) = transform_fn.call1(&tauri, callback.as_ref().unchecked_ref()) else {
+        return false;
+    };
 
-    let Ok(invoke_fn) = js_sys::Reflect::get(&tauri, &JsValue::from_str("invoke")) else { return false };
+    let Ok(invoke_fn) = js_sys::Reflect::get(&tauri, &JsValue::from_str("invoke")) else {
+        return false;
+    };
     let invoke_fn = js_sys::Function::from(invoke_fn);
 
     let args = js_sys::Object::new();

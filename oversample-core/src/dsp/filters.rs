@@ -29,7 +29,11 @@ impl BandMode {
     }
 }
 
-pub fn harmonics_band_bounds(freq_low: f64, freq_high: f64, band_mode: BandMode) -> Option<(f64, f64)> {
+pub fn harmonics_band_bounds(
+    freq_low: f64,
+    freq_high: f64,
+    band_mode: BandMode,
+) -> Option<(f64, f64)> {
     if !band_mode.has_harmonics() || freq_high <= 0.0 || freq_low >= freq_high {
         return None;
     }
@@ -123,7 +127,9 @@ pub fn apply_eq_filter(
         }
 
         // Forward FFT
-        fft_fwd.process(&mut frame, &mut spectrum).expect("FFT forward failed");
+        fft_fwd
+            .process(&mut frame, &mut spectrum)
+            .expect("FFT forward failed");
 
         // Apply per-bin gains
         for (bin, gain) in gains.iter().enumerate() {
@@ -133,7 +139,9 @@ pub fn apply_eq_filter(
         }
 
         // Inverse FFT
-        fft_inv.process(&mut spectrum, &mut time_out).expect("FFT inverse failed");
+        fft_inv
+            .process(&mut spectrum, &mut time_out)
+            .expect("FFT inverse failed");
 
         // Normalize (realfft inverse doesn't normalize)
         let norm = 1.0 / fft_size as f32;
@@ -180,12 +188,24 @@ pub fn apply_eq_filter_fast(
     let gain_below = 10.0_f64.powf(db_below / 20.0) as f32;
     let gain_selected = 10.0_f64.powf(db_selected / 20.0) as f32;
     let harmonics_bounds = harmonics_band_bounds(freq_low, freq_high, band_mode);
-    let gain_harmonics = if harmonics_bounds.is_some() { 10.0_f64.powf(db_harmonics / 20.0) as f32 } else { 0.0 };
-    let gain_above = if band_mode.has_above_band() { 10.0_f64.powf(db_above / 20.0) as f32 } else { gain_selected };
+    let gain_harmonics = if harmonics_bounds.is_some() {
+        10.0_f64.powf(db_harmonics / 20.0) as f32
+    } else {
+        0.0
+    };
+    let gain_above = if band_mode.has_above_band() {
+        10.0_f64.powf(db_above / 20.0) as f32
+    } else {
+        gain_selected
+    };
 
     // Split at freq_low: below vs rest
     let lp_low = cascaded_lowpass(samples, freq_low, sample_rate, 4);
-    let hp_low: Vec<f32> = samples.iter().zip(lp_low.iter()).map(|(s, l)| s - l).collect();
+    let hp_low: Vec<f32> = samples
+        .iter()
+        .zip(lp_low.iter())
+        .map(|(s, l)| s - l)
+        .collect();
 
     // Split rest at freq_high: selected vs upper
     let lp_high = cascaded_lowpass(&hp_low, freq_high, sample_rate, 4);
@@ -205,11 +225,19 @@ pub fn apply_eq_filter_fast(
 
     if let Some((harmonics_lower, harmonics_upper)) = harmonics_bounds {
         // Split the upper region around the harmonics band so widened selections map to 2x bounds.
-        let hp_high: Vec<f32> = hp_low.iter().zip(lp_high.iter()).map(|(s, l)| s - l).collect();
+        let hp_high: Vec<f32> = hp_low
+            .iter()
+            .zip(lp_high.iter())
+            .map(|(s, l)| s - l)
+            .collect();
         let lp_harm_upper = cascaded_lowpass(&hp_high, harmonics_upper, sample_rate, 4);
         let hp_harm_lower: Vec<f32> = if harmonics_lower > freq_high {
             let lp_harm_lower = cascaded_lowpass(&hp_high, harmonics_lower, sample_rate, 4);
-            hp_high.iter().zip(lp_harm_lower.iter()).map(|(s, l)| s - l).collect()
+            hp_high
+                .iter()
+                .zip(lp_harm_lower.iter())
+                .map(|(s, l)| s - l)
+                .collect()
         } else {
             hp_high.clone()
         };
@@ -298,14 +326,20 @@ pub fn split_three_bands_fft(
             }
         }
 
-        fft_fwd.process(&mut frame, &mut spectrum).expect("FFT forward failed");
+        fft_fwd
+            .process(&mut frame, &mut spectrum)
+            .expect("FFT forward failed");
 
-        let emit = |target: &mut [f32], bin_gate: &dyn Fn(usize) -> bool,
-                    scratch: &mut [Complex<f32>], time_out: &mut [f32]| {
+        let emit = |target: &mut [f32],
+                    bin_gate: &dyn Fn(usize) -> bool,
+                    scratch: &mut [Complex<f32>],
+                    time_out: &mut [f32]| {
             for bin in 0..num_bins {
                 scratch[bin] = if bin_gate(bin) { spectrum[bin] } else { zero };
             }
-            fft_inv.process(scratch, time_out).expect("FFT inverse failed");
+            fft_inv
+                .process(scratch, time_out)
+                .expect("FFT inverse failed");
             for i in 0..fft_size {
                 if pos + i < len {
                     target[pos + i] += time_out[i] * norm * window[i];
@@ -314,7 +348,12 @@ pub fn split_three_bands_fft(
         };
 
         emit(&mut below, &|bin| bin < lo_bin, &mut scratch, &mut time_out);
-        emit(&mut middle, &|bin| bin >= lo_bin && bin <= hi_bin, &mut scratch, &mut time_out);
+        emit(
+            &mut middle,
+            &|bin| bin >= lo_bin && bin <= hi_bin,
+            &mut scratch,
+            &mut time_out,
+        );
         emit(&mut above, &|bin| bin > hi_bin, &mut scratch, &mut time_out);
 
         for i in 0..fft_size {
@@ -411,18 +450,30 @@ mod tests {
 
     #[test]
     fn harmonics_band_uses_doubled_low_when_it_exceeds_focus_high() {
-        assert_eq!(harmonics_band_bounds(20_000.0, 30_000.0, BandMode::FourBand), Some((40_000.0, 60_000.0)));
+        assert_eq!(
+            harmonics_band_bounds(20_000.0, 30_000.0, BandMode::FourBand),
+            Some((40_000.0, 60_000.0))
+        );
     }
 
     #[test]
     fn harmonics_band_uses_focus_high_as_lower_floor() {
-        assert_eq!(harmonics_band_bounds(20_000.0, 50_000.0, BandMode::FourBand), Some((50_000.0, 100_000.0)));
+        assert_eq!(
+            harmonics_band_bounds(20_000.0, 50_000.0, BandMode::FourBand),
+            Some((50_000.0, 100_000.0))
+        );
     }
 
     #[test]
     fn harmonics_band_is_disabled_for_invalid_ranges() {
-        assert_eq!(harmonics_band_bounds(50_000.0, 50_000.0, BandMode::FourBand), None);
-        assert_eq!(harmonics_band_bounds(20_000.0, 50_000.0, BandMode::ThreeBand), None);
+        assert_eq!(
+            harmonics_band_bounds(50_000.0, 50_000.0, BandMode::FourBand),
+            None
+        );
+        assert_eq!(
+            harmonics_band_bounds(20_000.0, 50_000.0, BandMode::ThreeBand),
+            None
+        );
     }
 
     #[test]

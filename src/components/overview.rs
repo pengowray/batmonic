@@ -1,10 +1,10 @@
 use crate::state::store_fields::*;
-use std::cell::RefCell;
-use leptos::prelude::*;
-use wasm_bindgen::{Clamped, JsCast};
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, MouseEvent};
 use crate::state::{AppState, OverviewView};
 use crate::types::PreviewImage;
+use leptos::prelude::*;
+use std::cell::RefCell;
+use wasm_bindgen::{Clamped, JsCast};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, MouseEvent};
 
 /// Cached min/max envelope for overview waveform rendering.
 /// Instead of iterating all samples (~57M for a 20MB MP3) on every frame,
@@ -45,7 +45,10 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
-fn get_overview_tmp_canvas(w: u32, h: u32) -> Option<(HtmlCanvasElement, CanvasRenderingContext2d)> {
+fn get_overview_tmp_canvas(
+    w: u32,
+    h: u32,
+) -> Option<(HtmlCanvasElement, CanvasRenderingContext2d)> {
     OVERVIEW_TMP.with(|cell| {
         let mut slot = cell.borrow_mut();
         if let Some((ref c, ref ctx)) = *slot {
@@ -54,11 +57,18 @@ fn get_overview_tmp_canvas(w: u32, h: u32) -> Option<(HtmlCanvasElement, CanvasR
             }
         }
         let doc = web_sys::window()?.document()?;
-        let c = doc.create_element("canvas").ok()?
-            .dyn_into::<HtmlCanvasElement>().ok()?;
+        let c = doc
+            .create_element("canvas")
+            .ok()?
+            .dyn_into::<HtmlCanvasElement>()
+            .ok()?;
         c.set_width(w);
         c.set_height(h);
-        let ctx = c.get_context("2d").ok()??.dyn_into::<CanvasRenderingContext2d>().ok()?;
+        let ctx = c
+            .get_context("2d")
+            .ok()??
+            .dyn_into::<CanvasRenderingContext2d>()
+            .ok()?;
         *slot = Some((c.clone(), ctx.clone()));
         Some((c, ctx))
     })
@@ -86,17 +96,17 @@ fn draw_overview_spectrogram(
     ctx: &CanvasRenderingContext2d,
     canvas: &HtmlCanvasElement,
     preview: &PreviewImage,
-    scroll_offset: f64,       // main view left edge, seconds
-    zoom: f64,                // main view zoom (px per spectrogram column)
-    spec_time_res: f64,       // seconds per full-FFT spectrogram column (for viewport width)
-    total_duration: f64,      // total file duration in seconds (from audio, always correct)
-    main_canvas_width: f64,   // actual pixel width of main spectrogram canvas
-    main_freq_crop_lo: f64,   // 0..1: low fraction of Nyquist shown in main view
-    main_freq_crop_hi: f64,   // 0..1: high fraction of Nyquist shown in main view
+    scroll_offset: f64,     // main view left edge, seconds
+    zoom: f64,              // main view zoom (px per spectrogram column)
+    spec_time_res: f64,     // seconds per full-FFT spectrogram column (for viewport width)
+    total_duration: f64,    // total file duration in seconds (from audio, always correct)
+    main_canvas_width: f64, // actual pixel width of main spectrogram canvas
+    main_freq_crop_lo: f64, // 0..1: low fraction of Nyquist shown in main view
+    main_freq_crop_hi: f64, // 0..1: high fraction of Nyquist shown in main view
     bookmarks: &[(f64,)],
-    overview_freq_crop: f64,  // 0..1: fraction shown in the overview itself
+    overview_freq_crop: f64, // 0..1: fraction shown in the overview itself
     band_ff_range: Option<(f64, f64)>, // BandFF range as (lo_frac, hi_frac) of Nyquist
-    clean_view: bool,         // hide all overlays (viewport rect, bookmarks, BandFF range)
+    clean_view: bool,        // hide all overlays (viewport rect, bookmarks, BandFF range)
 ) {
     let cw = canvas.width() as f64;
     let ch = canvas.height() as f64;
@@ -129,23 +139,29 @@ fn draw_overview_spectrogram(
         });
         if needs_render {
             let clamped = Clamped(&preview.pixels[..]);
-            if let Ok(img) = ImageData::new_with_u8_clamped_array_and_sh(
-                clamped, preview.width, preview.height,
-            ) {
+            if let Ok(img) =
+                ImageData::new_with_u8_clamped_array_and_sh(clamped, preview.width, preview.height)
+            {
                 let _ = tc.put_image_data(&img, 0.0, 0.0);
             }
         }
         let _ = ctx.draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
             &tmp,
-            0.0, src_y,
-            preview.width as f64, src_h,
-            0.0, 0.0,
-            cw, ch,
+            0.0,
+            src_y,
+            preview.width as f64,
+            src_h,
+            0.0,
+            0.0,
+            cw,
+            ch,
         );
     }
 
     // Convert to px/sec using the true audio duration (not preview columns × FFT hop)
-    if total_duration <= 0.0 { return; }
+    if total_duration <= 0.0 {
+        return;
+    }
     let px_per_sec = cw / total_duration;
 
     if !clean_view {
@@ -193,7 +209,6 @@ fn draw_overview_spectrogram(
             }
         }
     }
-
 }
 
 /// Compute a min/max envelope from samples: one (min, max) pair per pixel column.
@@ -209,12 +224,18 @@ fn compute_envelope(samples: &[f32], pixel_width: u32, gain_linear: f64) -> Vec<
     for px in 0..pw {
         let i0 = (px as f64 * samples_per_px) as usize;
         let i1 = (((px + 1) as f64 * samples_per_px) as usize).min(samples.len());
-        if i0 >= i1 { continue; }
+        if i0 >= i1 {
+            continue;
+        }
         let mut lo = f32::MAX;
         let mut hi = f32::MIN;
         for &s in &samples[i0..i1] {
-            if s < lo { lo = s; }
-            if s > hi { hi = s; }
+            if s < lo {
+                lo = s;
+            }
+            if s > hi {
+                hi = s;
+            }
         }
         envelope[px * 2] = lo * gain_linear as f32;
         envelope[px * 2 + 1] = hi * gain_linear as f32;
@@ -286,9 +307,7 @@ impl LiveWaveEnvelope {
     /// deterministically from `(span, sample_rate, w)`, so bit-equality holds
     /// tick-to-tick within a session; a change forces a rebuild.
     fn matches(&self, w: u32, spp: f64, sample_rate: u32) -> bool {
-        self.w == w.max(1)
-            && self.sample_rate == sample_rate
-            && self.spp.to_bits() == spp.to_bits()
+        self.w == w.max(1) && self.sample_rate == sample_rate && self.spp.to_bits() == spp.to_bits()
     }
 
     /// Fold the newly captured samples into the per-pixel envelope. `abs_latest`
@@ -336,8 +355,12 @@ impl LiveWaveEnvelope {
             } else {
                 // Continuing the current (head) pixel.
                 let cell = &mut self.cells[(pixel as usize) % w];
-                if s < cell.0 { cell.0 = s; }
-                if s > cell.1 { cell.1 = s; }
+                if s < cell.0 {
+                    cell.0 = s;
+                }
+                if s > cell.1 {
+                    cell.1 = s;
+                }
             }
         }
         self.consumed = start + new;
@@ -391,7 +414,11 @@ fn draw_live_waveform_cached(
     // The window's left edge in absolute pixels:
     //   Fill phase  → 0      (data left-anchored, screen x == absolute pixel)
     //   Scroll phase → head-w+1 (the last w absolute pixels fill the strip)
-    let lo_pix = if env.head + 1 <= wi { 0 } else { env.head - wi + 1 };
+    let lo_pix = if env.head + 1 <= wi {
+        0
+    } else {
+        env.head - wi + 1
+    };
     // Only draw pixels that have actually been written (>= tail); any left gap
     // (post-stall partial refill) stays blank. `x = p - lo_pix` keeps the data
     // positioned correctly within the strip.
@@ -424,12 +451,20 @@ fn draw_overview_waveform(
 ) {
     let cw = canvas.width() as u32;
     let ch = canvas.height() as u32;
-    if samples.is_empty() || cw == 0 || ch == 0 { return; }
+    if samples.is_empty() || cw == 0 || ch == 0 {
+        return;
+    }
 
     let total_duration = samples.len() as f64 / sample_rate as f64;
 
     // Cache key includes dimensions + gain so we re-render on resize or gain change.
-    let cache_key = (samples.as_ptr() as usize, samples.len(), cw, ch, gain_db.to_bits());
+    let cache_key = (
+        samples.as_ptr() as usize,
+        samples.len(),
+        cw,
+        ch,
+        gain_db.to_bits(),
+    );
 
     // Get or create the cached off-screen canvas with the rendered waveform.
     // The waveform bitmap only changes when the file, canvas size, or gain changes —
@@ -450,7 +485,12 @@ fn draw_overview_waveform(
         let gain_linear = 10.0f64.powf(gain_db / 20.0);
 
         // Get or compute the min/max envelope (O(total_samples) once).
-        let envelope_key = (samples.as_ptr() as usize, samples.len(), cw, gain_db.to_bits());
+        let envelope_key = (
+            samples.as_ptr() as usize,
+            samples.len(),
+            cw,
+            gain_db.to_bits(),
+        );
         let envelope = OVERVIEW_ENVELOPE.with(|cell| {
             let mut slot = cell.borrow_mut();
             if let Some(ref cached) = *slot {
@@ -459,7 +499,10 @@ fn draw_overview_waveform(
                 }
             }
             let env = compute_envelope(samples, cw, gain_linear);
-            *slot = Some(WaveformEnvelope { data: env.clone(), key: envelope_key });
+            *slot = Some(WaveformEnvelope {
+                data: env.clone(),
+                key: envelope_key,
+            });
             env
         });
 
@@ -477,7 +520,8 @@ fn draw_overview_waveform(
                     Some(d) => d,
                     None => return,
                 };
-                let c = match doc.create_element("canvas")
+                let c = match doc
+                    .create_element("canvas")
                     .ok()
                     .and_then(|e| e.dyn_into::<HtmlCanvasElement>().ok())
                 {
@@ -486,7 +530,8 @@ fn draw_overview_waveform(
                 };
                 c.set_width(cw);
                 c.set_height(ch);
-                let oc = match c.get_context("2d")
+                let oc = match c
+                    .get_context("2d")
                     .ok()
                     .flatten()
                     .and_then(|o| o.dyn_into::<CanvasRenderingContext2d>().ok())
@@ -597,7 +642,12 @@ fn draw_live_status(
     let (label, color) = live_status_label(file.is_live_listen);
     let elapsed = crate::canvas::live_waterfall::total_time().max(file.audio.duration_secs);
     let text = if elapsed >= 1.0 {
-        format!("\u{25CF} {} {}:{:02}", label, elapsed as u32 / 60, elapsed as u32 % 60)
+        format!(
+            "\u{25CF} {} {}:{:02}",
+            label,
+            elapsed as u32 / 60,
+            elapsed as u32 % 60
+        )
     } else {
         format!("\u{25CF} {}\u{2026}", label)
     };
@@ -620,10 +670,14 @@ fn draw_live_status(
 /// waterfall can actually hold so both overviews share a span there's data for.
 fn live_overview_span(state: &AppState) -> f64 {
     const GESTURE_HEADROOM_SECS: u32 = 2;
-    let buf_secs = (state.mic.preroll_buffer_secs().get_untracked().max(2)
-        + GESTURE_HEADROOM_SECS) as f64;
+    let buf_secs =
+        (state.mic.preroll_buffer_secs().get_untracked().max(2) + GESTURE_HEADROOM_SECS) as f64;
     let cap = crate::canvas::live_waterfall::capacity_time();
-    if cap > 0.0 { buf_secs.min(cap) } else { buf_secs }
+    if cap > 0.0 {
+        buf_secs.min(cap)
+    } else {
+        buf_secs
+    }
 }
 
 /// The single time window the live overview displays, in absolute session
@@ -656,7 +710,9 @@ pub(crate) fn live_overview_window(state: &AppState) -> Option<(f64, f64)> {
 /// the left-anchored data has filled toward the right edge. 1.0 once the ring is
 /// full (steady-state scrolling). Used to left-anchor the live overview content.
 fn live_fill_frac(axis_start: f64, span: f64) -> f64 {
-    if span <= 0.0 { return 1.0; }
+    if span <= 0.0 {
+        return 1.0;
+    }
     let now = crate::canvas::live_waterfall::total_time();
     ((now - axis_start) / span).clamp(0.0, 1.0)
 }
@@ -686,7 +742,10 @@ fn scrub_apply_scroll(state: &AppState, desired_scroll: f64, visible: f64, full_
         }
     }
     let max_scroll = (full_duration - visible).max(0.0);
-    state.view.scroll_offset().set(desired_scroll.clamp(0.0, max_scroll));
+    state
+        .view
+        .scroll_offset()
+        .set(desired_scroll.clamp(0.0, max_scroll));
 }
 
 /// Draw a min/max waveform envelope for the live overview, recomputed fresh on
@@ -796,9 +855,15 @@ pub fn OverviewToolbar() -> impl IntoView {
 fn size_canvas_to_display(canvas: &HtmlCanvasElement) -> Option<(u32, u32)> {
     let w = canvas.client_width() as u32;
     let h = canvas.client_height() as u32;
-    if w == 0 || h == 0 { return None; }
-    if canvas.width() != w { canvas.set_width(w); }
-    if canvas.height() != h { canvas.set_height(h); }
+    if w == 0 || h == 0 {
+        return None;
+    }
+    if canvas.width() != w {
+        canvas.set_width(w);
+    }
+    if canvas.height() != h {
+        canvas.set_height(h);
+    }
     Some((w, h))
 }
 
@@ -840,19 +905,29 @@ pub fn OverviewPanel() -> impl IntoView {
         // otherwise, so static files don't pay for this.
         let _live_cols = state.mic.live_data_cols().get();
         let auto_gain = state.gain.auto().get();
-        let gain_db = if auto_gain { state.compute_auto_gain_untracked() } else { state.gain.db().get() };
+        let gain_db = if auto_gain {
+            state.compute_auto_gain_untracked()
+        } else {
+            state.gain.db().get()
+        };
         // Re-read canvas dimensions when sidebar layout changes
         let _sidebar = state.panels.left_collapsed().get();
         let _sidebar_width = state.panels.left_width().get();
         let _rsidebar = state.panels.right_collapsed().get();
         let _rsidebar_width = state.panels.right_width().get();
 
-        let Some(canvas_el) = canvas_ref.get() else { return };
+        let Some(canvas_el) = canvas_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
 
-        let Some((w, h)) = size_canvas_to_display(canvas) else { return };
+        let Some((w, h)) = size_canvas_to_display(canvas) else {
+            return;
+        };
 
-        let Some(ctx) = get_canvas_ctx(canvas) else { return };
+        let Some(ctx) = get_canvas_ctx(canvas) else {
+            return;
+        };
         ctx.set_fill_style_str("#000");
         ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
 
@@ -861,7 +936,9 @@ pub fn OverviewPanel() -> impl IntoView {
         if let Some(ref tl) = timeline {
             // ── Timeline mode: render segment previews ──
             let total_duration = tl.total_duration_secs;
-            if total_duration <= 0.0 { return; }
+            if total_duration <= 0.0 {
+                return;
+            }
             let cw = w as f64;
             let ch = h as f64;
             let px_per_sec = cw / total_duration;
@@ -871,12 +948,19 @@ pub fn OverviewPanel() -> impl IntoView {
                     Some(f) => f,
                     None => continue,
                 };
-                let overview_src = seg_file.overview_image.as_ref().or(seg_file.preview.as_ref());
-                let Some(preview) = overview_src else { continue };
+                let overview_src = seg_file
+                    .overview_image
+                    .as_ref()
+                    .or(seg_file.preview.as_ref());
+                let Some(preview) = overview_src else {
+                    continue;
+                };
 
                 let seg_x = seg.timeline_offset_secs * px_per_sec;
                 let seg_w = seg.duration_secs * px_per_sec;
-                if seg_w < 1.0 { continue; }
+                if seg_w < 1.0 {
+                    continue;
+                }
 
                 ctx.save();
                 ctx.begin_path();
@@ -886,7 +970,9 @@ pub fn OverviewPanel() -> impl IntoView {
                 if let Some((tmp, tc)) = get_overview_tmp_canvas(preview.width, preview.height) {
                     let clamped = wasm_bindgen::Clamped(preview.pixels.as_slice());
                     if let Ok(img) = web_sys::ImageData::new_with_u8_clamped_array_and_sh(
-                        clamped, preview.width, preview.height,
+                        clamped,
+                        preview.width,
+                        preview.height,
                     ) {
                         let _ = tc.put_image_data(&img, 0.0, 0.0);
                         let _ = ctx.draw_image_with_html_canvas_element_and_dw_and_dh(
@@ -913,7 +999,11 @@ pub fn OverviewPanel() -> impl IntoView {
                     ctx.set_font("11px system-ui");
                     ctx.set_text_align("center");
                     ctx.set_text_baseline("middle");
-                    let _ = ctx.fill_text(&format!("\u{25CF} {}\u{2026}", label), w as f64 / 2.0, h as f64 / 2.0);
+                    let _ = ctx.fill_text(
+                        &format!("\u{25CF} {}\u{2026}", label),
+                        w as f64 / 2.0,
+                        h as f64 / 2.0,
+                    );
                     let peak = state.mic.peak_level().get_untracked();
                     if peak > 0.01 {
                         let bar_w = (peak as f64 * w as f64).min(w as f64);
@@ -940,18 +1030,24 @@ pub fn OverviewPanel() -> impl IntoView {
                 let data_w = ((w as f64 * frac).round() as u32).min(w);
                 match overview_view {
                     OverviewView::Spectrogram => {
-                        let recent_cols =
-                            (span / crate::canvas::live_waterfall::time_resolution()).ceil() as usize;
+                        let recent_cols = (span / crate::canvas::live_waterfall::time_resolution())
+                            .ceil() as usize;
                         // Render the retained columns into just the filled width,
                         // then blit them at the left (black background already drawn).
                         let img = if data_w > 0 {
-                            crate::canvas::live_waterfall::render_overview(data_w, h, Some(recent_cols))
+                            crate::canvas::live_waterfall::render_overview(
+                                data_w,
+                                h,
+                                Some(recent_cols),
+                            )
                         } else {
                             None
                         };
                         match img {
                             Some(img) if img.width > 0 => {
-                                if let Some((tmp, tc)) = get_overview_tmp_canvas(img.width, img.height) {
+                                if let Some((tmp, tc)) =
+                                    get_overview_tmp_canvas(img.width, img.height)
+                                {
                                     let clamped = Clamped(&img.pixels[..]);
                                     if let Ok(image) = ImageData::new_with_u8_clamped_array_and_sh(
                                         clamped, img.width, img.height,
@@ -974,28 +1070,40 @@ pub fn OverviewPanel() -> impl IntoView {
                         // recomputing the whole ~span-second min/max every tick —
                         // which both wasted CPU and shimmered. See LiveWaveEnvelope.
                         let sr = file.audio.sample_rate;
-                        let drew = crate::audio::mic_backend::with_live_samples(
-                            state.is_tauri,
-                            |ring| {
-                                if ring.is_empty() { return false; }
+                        let drew =
+                            crate::audio::mic_backend::with_live_samples(state.is_tauri, |ring| {
+                                if ring.is_empty() {
+                                    return false;
+                                }
                                 let spp = span * sr as f64 / w as f64;
                                 if spp < 1.0 {
                                     // Degenerate (tiny window): fall back to a full
                                     // recompute — streaming needs >=1 sample/pixel.
-                                    if data_w == 0 { return false; }
+                                    if data_w == 0 {
+                                        return false;
+                                    }
                                     let n = ((span * sr as f64) as usize).clamp(1, ring.len());
-                                    draw_live_waveform(&ctx, w, data_w, h, &ring[ring.len() - n..], gain_db);
+                                    draw_live_waveform(
+                                        &ctx,
+                                        w,
+                                        data_w,
+                                        h,
+                                        &ring[ring.len() - n..],
+                                        gain_db,
+                                    );
                                     return true;
                                 }
-                                let abs_latest = (crate::canvas::live_waterfall::total_time()
-                                    * sr as f64)
-                                    .floor() as u64;
+                                let abs_latest =
+                                    (crate::canvas::live_waterfall::total_time() * sr as f64)
+                                        .floor() as u64;
                                 LIVE_WAVE_ENV.with(|cell| {
                                     let mut slot = cell.borrow_mut();
                                     let rebuild = match slot.as_ref() {
                                         // New geometry, or `total_time` went backwards
                                         // (a fresh live session) → start clean.
-                                        Some(e) => !e.matches(w, spp, sr) || abs_latest < e.consumed,
+                                        Some(e) => {
+                                            !e.matches(w, spp, sr) || abs_latest < e.consumed
+                                        }
                                         None => true,
                                     };
                                     if rebuild {
@@ -1006,123 +1114,139 @@ pub fn OverviewPanel() -> impl IntoView {
                                     draw_live_waveform_cached(env, &ctx, w, h, gain_db);
                                 });
                                 true
-                            },
-                        );
+                            });
                         if !drew {
                             draw_live_status(&ctx, w, h, file, &state);
                         }
                     }
                 }
             } else {
-            match overview_view {
-                OverviewView::Spectrogram => {
-                    let overview_src = file.overview_image.as_ref().or(file.preview.as_ref());
-                    if let Some(preview) = overview_src {
-                        // Draw spectrogram image only (clean_view=true skips all overlays).
-                        draw_overview_spectrogram(
-                            &ctx, canvas, preview,
-                            0.0, 1.0,
-                            file.spectrogram.time_resolution,
-                            file.audio.duration_secs,
-                            0.0,
-                            0.0, 1.0,
-                            &[],
-                            1.0,
-                            None,
-                            true, // clean_view — overlays drawn by overlay Effect
-                        );
-                    } else if file.is_recording && !file.audio.samples.is_empty() {
-                        let scroll = state.view.scroll_offset().get_untracked();
-                        let is_live_wf = (file.is_live_listen || file.is_recording)
-                            && crate::canvas::live_waterfall::is_active();
-                        let buf_scroll = if is_live_wf {
-                            let wf_total = crate::canvas::live_waterfall::total_time();
-                            let offset = (wf_total - file.audio.duration_secs).max(0.0);
-                            (scroll - offset).clamp(0.0, file.audio.duration_secs)
-                        } else {
-                            scroll
+                match overview_view {
+                    OverviewView::Spectrogram => {
+                        let overview_src = file.overview_image.as_ref().or(file.preview.as_ref());
+                        if let Some(preview) = overview_src {
+                            // Draw spectrogram image only (clean_view=true skips all overlays).
+                            draw_overview_spectrogram(
+                                &ctx,
+                                canvas,
+                                preview,
+                                0.0,
+                                1.0,
+                                file.spectrogram.time_resolution,
+                                file.audio.duration_secs,
+                                0.0,
+                                0.0,
+                                1.0,
+                                &[],
+                                1.0,
+                                None,
+                                true, // clean_view — overlays drawn by overlay Effect
+                            );
+                        } else if file.is_recording && !file.audio.samples.is_empty() {
+                            let scroll = state.view.scroll_offset().get_untracked();
+                            let is_live_wf = (file.is_live_listen || file.is_recording)
+                                && crate::canvas::live_waterfall::is_active();
+                            let buf_scroll = if is_live_wf {
+                                let wf_total = crate::canvas::live_waterfall::total_time();
+                                let offset = (wf_total - file.audio.duration_secs).max(0.0);
+                                (scroll - offset).clamp(0.0, file.audio.duration_secs)
+                            } else {
+                                scroll
+                            };
+                            draw_overview_waveform(
+                                &ctx,
+                                canvas,
+                                &file.audio.samples,
+                                file.audio.sample_rate,
+                                file.spectrogram.time_resolution,
+                                buf_scroll,
+                                1.0,
+                                0.0,
+                                &[],
+                                gain_db,
+                                true,
+                            );
+                        } else if file.is_recording {
+                            ctx.set_fill_style_str("#1a1a1a");
+                            ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
+                            let is_listen = file.is_live_listen;
+                            let (label, color) = live_status_label(is_listen);
+                            let elapsed = if is_listen && crate::canvas::live_waterfall::is_active()
+                            {
+                                crate::canvas::live_waterfall::total_time()
+                            } else {
+                                file.audio.duration_secs
+                            };
+                            let text = if elapsed >= 1.0 {
+                                let mins = elapsed as u32 / 60;
+                                let secs = elapsed as u32 % 60;
+                                format!("\u{25CF} {} {}:{:02}", label, mins, secs)
+                            } else {
+                                format!("\u{25CF} {}\u{2026}", label)
+                            };
+                            ctx.set_fill_style_str(color);
+                            ctx.set_font("11px system-ui");
+                            ctx.set_text_align("center");
+                            ctx.set_text_baseline("middle");
+                            let _ = ctx.fill_text(&text, w as f64 / 2.0, h as f64 / 2.0);
+                            let peak = state.mic.peak_level().get_untracked();
+                            if peak > 0.01 {
+                                let bar_w = (peak as f64 * w as f64).min(w as f64);
+                                ctx.set_fill_style_str(color);
+                                ctx.fill_rect(0.0, h as f64 - 2.0, bar_w, 2.0);
+                            }
+                        } else if file.loading_id.is_some() {
+                            // A real file still being decoded — show a loading hint.
+                            ctx.set_fill_style_str("#333");
+                            ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
+                            ctx.set_fill_style_str("#666");
+                            ctx.set_font("11px system-ui");
+                            ctx.set_text_align("center");
+                            ctx.set_text_baseline("middle");
+                            let _ =
+                                ctx.fill_text("Loading\u{2026}", w as f64 / 2.0, h as f64 / 2.0);
+                        }
+                        // else: an empty / armed live placeholder (no samples, no
+                        // preview, not loading) — leave the strip blank rather than
+                        // showing a misleading "Loading…".
+                    }
+                    OverviewView::Waveform => {
+                        let ov_buf;
+                        // Cap non-MonoMix reads to file.audio.samples.len() so
+                        // streaming sources don't allocate gigabytes for
+                        // multi-hour files.
+                        let read_len = file.audio.samples.len();
+                        let ov_samples: &[f32] = match cv {
+                            // Stereo (the default view) and MonoMix both resolve to the
+                            // mono buffer (read_samples → read_mono), so borrow it
+                            // zero-copy instead of read_region's full-length alloc+copy
+                            // — which, on a gain-drag redraw, would re-copy the entire
+                            // (potentially hundreds-of-MB) buffer to reproduce identical
+                            // data. Per-channel / Difference views still go through it.
+                            crate::audio::source::ChannelView::MonoMix
+                            | crate::audio::source::ChannelView::Stereo => &file.audio.samples,
+                            _ => {
+                                ov_buf = file.audio.source.read_region(cv, 0, read_len);
+                                &ov_buf
+                            }
                         };
                         draw_overview_waveform(
-                            &ctx, canvas, &file.audio.samples,
+                            &ctx,
+                            canvas,
+                            ov_samples,
                             file.audio.sample_rate,
                             file.spectrogram.time_resolution,
-                            buf_scroll, 1.0, 0.0,
-                            &[], gain_db, true,
+                            0.0,
+                            1.0,
+                            0.0,
+                            &[],
+                            gain_db,
+                            true, // clean_view — overlays drawn by overlay Effect
                         );
-                    } else if file.is_recording {
-                        ctx.set_fill_style_str("#1a1a1a");
-                        ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
-                        let is_listen = file.is_live_listen;
-                        let (label, color) = live_status_label(is_listen);
-                        let elapsed = if is_listen && crate::canvas::live_waterfall::is_active() {
-                            crate::canvas::live_waterfall::total_time()
-                        } else {
-                            file.audio.duration_secs
-                        };
-                        let text = if elapsed >= 1.0 {
-                            let mins = elapsed as u32 / 60;
-                            let secs = elapsed as u32 % 60;
-                            format!("\u{25CF} {} {}:{:02}", label, mins, secs)
-                        } else {
-                            format!("\u{25CF} {}\u{2026}", label)
-                        };
-                        ctx.set_fill_style_str(color);
-                        ctx.set_font("11px system-ui");
-                        ctx.set_text_align("center");
-                        ctx.set_text_baseline("middle");
-                        let _ = ctx.fill_text(&text, w as f64 / 2.0, h as f64 / 2.0);
-                        let peak = state.mic.peak_level().get_untracked();
-                        if peak > 0.01 {
-                            let bar_w = (peak as f64 * w as f64).min(w as f64);
-                            ctx.set_fill_style_str(color);
-                            ctx.fill_rect(0.0, h as f64 - 2.0, bar_w, 2.0);
-                        }
-                    } else if file.loading_id.is_some() {
-                        // A real file still being decoded — show a loading hint.
-                        ctx.set_fill_style_str("#333");
-                        ctx.fill_rect(0.0, 0.0, w as f64, h as f64);
-                        ctx.set_fill_style_str("#666");
-                        ctx.set_font("11px system-ui");
-                        ctx.set_text_align("center");
-                        ctx.set_text_baseline("middle");
-                        let _ = ctx.fill_text("Loading\u{2026}", w as f64 / 2.0, h as f64 / 2.0);
                     }
-                    // else: an empty / armed live placeholder (no samples, no
-                    // preview, not loading) — leave the strip blank rather than
-                    // showing a misleading "Loading…".
                 }
-                OverviewView::Waveform => {
-                    let ov_buf;
-                    // Cap non-MonoMix reads to file.audio.samples.len() so
-                    // streaming sources don't allocate gigabytes for
-                    // multi-hour files.
-                    let read_len = file.audio.samples.len();
-                    let ov_samples: &[f32] = match cv {
-                        // Stereo (the default view) and MonoMix both resolve to the
-                        // mono buffer (read_samples → read_mono), so borrow it
-                        // zero-copy instead of read_region's full-length alloc+copy
-                        // — which, on a gain-drag redraw, would re-copy the entire
-                        // (potentially hundreds-of-MB) buffer to reproduce identical
-                        // data. Per-channel / Difference views still go through it.
-                        crate::audio::source::ChannelView::MonoMix
-                        | crate::audio::source::ChannelView::Stereo => &file.audio.samples,
-                        _ => {
-                            ov_buf = file.audio.source.read_region(cv, 0, read_len);
-                            &ov_buf
-                        }
-                    };
-                    draw_overview_waveform(
-                        &ctx, canvas,
-                        ov_samples,
-                        file.audio.sample_rate,
-                        file.spectrogram.time_resolution,
-                        0.0, 1.0, 0.0,
-                        &[], gain_db, true, // clean_view — overlays drawn by overlay Effect
-                    );
-                }
-            }
             } // end else (not live)
-            // Time markers are drawn by the overlay Effect.
+              // Time markers are drawn by the overlay Effect.
         }
     });
 
@@ -1153,15 +1277,23 @@ pub fn OverviewPanel() -> impl IntoView {
         // when the follow-scroll animation happens to nudge scroll_offset).
         let _live_cols = state.mic.live_data_cols().get();
 
-        let Some(canvas_el) = overlay_ref.get() else { return };
+        let Some(canvas_el) = overlay_ref.get() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
 
-        let Some((w, h)) = size_canvas_to_display(canvas) else { return };
+        let Some((w, h)) = size_canvas_to_display(canvas) else {
+            return;
+        };
 
-        let Some(ctx) = get_canvas_ctx(canvas) else { return };
+        let Some(ctx) = get_canvas_ctx(canvas) else {
+            return;
+        };
         ctx.clear_rect(0.0, 0.0, w as f64, h as f64);
 
-        if clean_view { return; }
+        if clean_view {
+            return;
+        }
 
         let cw = w as f64;
         let ch = h as f64;
@@ -1171,13 +1303,19 @@ pub fn OverviewPanel() -> impl IntoView {
         if let Some(ref tl) = timeline {
             // ── Timeline overlay ──
             let total_duration = tl.total_duration_secs;
-            if total_duration <= 0.0 { return; }
+            if total_duration <= 0.0 {
+                return;
+            }
             let px_per_sec = cw / total_duration;
 
             let files = state.library.files().get_untracked();
             let primary_file = tl.segments.first().and_then(|s| files.get(s.file_index));
-            let max_freq = primary_file.map(|f| f.spectrogram.max_freq).unwrap_or(96_000.0);
-            let spec_time_res = primary_file.map(|f| f.spectrogram.time_resolution).unwrap_or(1.0);
+            let max_freq = primary_file
+                .map(|f| f.spectrogram.max_freq)
+                .unwrap_or(96_000.0);
+            let spec_time_res = primary_file
+                .map(|f| f.spectrogram.time_resolution)
+                .unwrap_or(1.0);
 
             let main_freq_crop_hi = max_display_freq
                 .map(|mdf| (mdf / max_freq).clamp(0.001, 1.0))
@@ -1274,7 +1412,9 @@ pub fn OverviewPanel() -> impl IntoView {
                 smooth_now.set_value(0.0); // reset between live sessions
                 (0.0, file.audio.duration_secs)
             };
-            if total_duration <= 0.0 { return; }
+            if total_duration <= 0.0 {
+                return;
+            }
             let spec_time_res = file.spectrogram.time_resolution;
             let px_per_sec = cw / total_duration;
 
@@ -1344,10 +1484,11 @@ pub fn OverviewPanel() -> impl IntoView {
             // Time markers — span the live retained window [axis_start, now] or
             // the whole file. (scroll_offset arg = left-edge time, visible_time =
             // span shown, duration = end time.)
-            let clock_cfg = file.recording_start_epoch_ms()
-                .map(|ms| crate::canvas::time_markers::ClockTimeConfig {
+            let clock_cfg = file.recording_start_epoch_ms().map(|ms| {
+                crate::canvas::time_markers::ClockTimeConfig {
                     recording_start_epoch_ms: ms,
-                });
+                }
+            });
             crate::canvas::time_markers::draw_time_markers(
                 &ctx,
                 axis_start,
@@ -1369,7 +1510,8 @@ pub fn OverviewPanel() -> impl IntoView {
         if let Some(ref tl) = state.timeline.active().get_untracked() {
             return tl.total_duration_secs;
         }
-        let is_live = state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
+        let is_live =
+            state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
         if is_live && crate::canvas::live_waterfall::is_active() {
             return crate::canvas::live_waterfall::total_time();
         }
@@ -1384,7 +1526,9 @@ pub fn OverviewPanel() -> impl IntoView {
     // overview spans only the shared ring window [axis_start, now], so map
     // within that window rather than [0, now].
     let x_to_time = move |canvas_x: f64, canvas_w: f64| -> Option<f64> {
-        if canvas_w <= 0.0 { return None; }
+        if canvas_w <= 0.0 {
+            return None;
+        }
         let is_live = (state.mic.recording().get_untracked()
             || state.mic.listening().get_untracked())
             && state.timeline.active().get_untracked().is_none();
@@ -1394,7 +1538,9 @@ pub fn OverviewPanel() -> impl IntoView {
             }
         }
         let dur = file_duration();
-        if dur <= 0.0 { return None; }
+        if dur <= 0.0 {
+            return None;
+        }
         Some((canvas_x / canvas_w) * dur)
     };
 
@@ -1402,8 +1548,8 @@ pub fn OverviewPanel() -> impl IntoView {
     // the shared ring window during live, else the whole file/timeline.
     let overview_span = move || -> f64 {
         if state.timeline.active().get_untracked().is_none() {
-            let is_live = state.mic.recording().get_untracked()
-                || state.mic.listening().get_untracked();
+            let is_live =
+                state.mic.recording().get_untracked() || state.mic.listening().get_untracked();
             if is_live {
                 if let Some((_, span)) = live_overview_window(&state) {
                     return span;
@@ -1417,17 +1563,23 @@ pub fn OverviewPanel() -> impl IntoView {
     let half_visible_time = move || -> f64 {
         let files = state.library.files().get_untracked();
         let idx = state.library.current_index().get_untracked();
-        idx.and_then(|i| files.get(i)).map(|f| {
-            let zoom = state.view.zoom_level().get_untracked();
-            let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-            (canvas_w / zoom) * f.spectrogram.time_resolution / 2.0
-        }).unwrap_or(0.0)
+        idx.and_then(|i| files.get(i))
+            .map(|f| {
+                let zoom = state.view.zoom_level().get_untracked();
+                let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
+                (canvas_w / zoom) * f.spectrogram.time_resolution / 2.0
+            })
+            .unwrap_or(0.0)
     };
 
     let on_pointerdown = move |ev: web_sys::PointerEvent| {
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
         ev.prevent_default();
-        let Some(canvas_el) = overlay_ref.get_untracked() else { return };
+        let Some(canvas_el) = overlay_ref.get_untracked() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let rect = canvas.get_bounding_client_rect();
         let canvas_x = ev.client_x() as f64 - rect.left();
@@ -1450,27 +1602,40 @@ pub fn OverviewPanel() -> impl IntoView {
     };
 
     let on_pointermove = move |ev: web_sys::PointerEvent| {
-        if !drag_active.get_untracked() { return; }
-        let Some(canvas_el) = overlay_ref.get_untracked() else { return };
+        if !drag_active.get_untracked() {
+            return;
+        }
+        let Some(canvas_el) = overlay_ref.get_untracked() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let rect = canvas.get_bounding_client_rect();
         let cw = rect.width();
         let full_duration = file_duration();
-        if full_duration <= 0.0 || cw <= 0.0 { return; }
+        if full_duration <= 0.0 || cw <= 0.0 {
+            return;
+        }
         let dx = ev.client_x() as f64 - drag_start_x.get_untracked();
         // Map per-pixel motion against the span the overview actually displays.
         let dt = (dx / cw) * overview_span();
         let visible_time = {
             let files = state.library.files().get_untracked();
             let idx = state.library.current_index().get_untracked();
-            idx.and_then(|i| files.get(i)).map(|f| {
-                let zoom = state.view.zoom_level().get_untracked();
-                let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-                (canvas_w / zoom) * f.spectrogram.time_resolution
-            }).unwrap_or(0.0)
+            idx.and_then(|i| files.get(i))
+                .map(|f| {
+                    let zoom = state.view.zoom_level().get_untracked();
+                    let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
+                    (canvas_w / zoom) * f.spectrogram.time_resolution
+                })
+                .unwrap_or(0.0)
         };
         state.suspend_follow();
-        scrub_apply_scroll(&state, drag_start_scroll.get_untracked() + dt, visible_time, full_duration);
+        scrub_apply_scroll(
+            &state,
+            drag_start_scroll.get_untracked() + dt,
+            visible_time,
+            full_duration,
+        );
     };
 
     let on_pointerup = move |_: web_sys::PointerEvent| {
@@ -1479,12 +1644,18 @@ pub fn OverviewPanel() -> impl IntoView {
 
     // ── Touch event handlers (mobile) ──────────────────────────────────────────
     let on_touchstart = move |ev: web_sys::TouchEvent| {
-        if state.status.viewport_zoomed().get_untracked() { return; }
+        if state.status.viewport_zoomed().get_untracked() {
+            return;
+        }
         let touches = ev.touches();
-        if touches.length() != 1 { return; }
+        if touches.length() != 1 {
+            return;
+        }
         ev.prevent_default();
         let touch = touches.get(0).unwrap();
-        let Some(canvas_el) = overlay_ref.get_untracked() else { return };
+        let Some(canvas_el) = overlay_ref.get_untracked() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let rect = canvas.get_bounding_client_rect();
         let canvas_x = touch.client_x() as f64 - rect.left();
@@ -1501,31 +1672,46 @@ pub fn OverviewPanel() -> impl IntoView {
     };
 
     let on_touchmove = move |ev: web_sys::TouchEvent| {
-        if !drag_active.get_untracked() { return; }
+        if !drag_active.get_untracked() {
+            return;
+        }
         let touches = ev.touches();
-        if touches.length() != 1 { return; }
+        if touches.length() != 1 {
+            return;
+        }
         ev.prevent_default();
         let touch = touches.get(0).unwrap();
-        let Some(canvas_el) = overlay_ref.get_untracked() else { return };
+        let Some(canvas_el) = overlay_ref.get_untracked() else {
+            return;
+        };
         let canvas: &HtmlCanvasElement = canvas_el.as_ref();
         let rect = canvas.get_bounding_client_rect();
         let cw = rect.width();
         let full_duration = file_duration();
-        if full_duration <= 0.0 || cw <= 0.0 { return; }
+        if full_duration <= 0.0 || cw <= 0.0 {
+            return;
+        }
         let dx = touch.client_x() as f64 - drag_start_x.get_untracked();
         // Map per-pixel motion against the span the overview actually displays.
         let dt = (dx / cw) * overview_span();
         let visible_time = {
             let files = state.library.files().get_untracked();
             let idx = state.library.current_index().get_untracked();
-            idx.and_then(|i| files.get(i)).map(|f| {
-                let zoom = state.view.zoom_level().get_untracked();
-                let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-                (canvas_w / zoom) * f.spectrogram.time_resolution
-            }).unwrap_or(0.0)
+            idx.and_then(|i| files.get(i))
+                .map(|f| {
+                    let zoom = state.view.zoom_level().get_untracked();
+                    let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
+                    (canvas_w / zoom) * f.spectrogram.time_resolution
+                })
+                .unwrap_or(0.0)
         };
         state.suspend_follow();
-        scrub_apply_scroll(&state, drag_start_scroll.get_untracked() + dt, visible_time, full_duration);
+        scrub_apply_scroll(
+            &state,
+            drag_start_scroll.get_untracked() + dt,
+            visible_time,
+            full_duration,
+        );
     };
 
     let on_touchend = move |_ev: web_sys::TouchEvent| {
@@ -1539,11 +1725,13 @@ pub fn OverviewPanel() -> impl IntoView {
         let visible_time = {
             let files = state.library.files().get_untracked();
             let idx = state.library.current_index().get_untracked();
-            idx.and_then(|i| files.get(i)).map(|f| {
-                let zoom = state.view.zoom_level().get_untracked();
-                let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
-                (canvas_w / zoom) * f.spectrogram.time_resolution
-            }).unwrap_or(0.0)
+            idx.and_then(|i| files.get(i))
+                .map(|f| {
+                    let zoom = state.view.zoom_level().get_untracked();
+                    let canvas_w = state.viewmode.spectrogram_canvas_width().get_untracked();
+                    (canvas_w / zoom) * f.spectrogram.time_resolution
+                })
+                .unwrap_or(0.0)
         };
         let delta = raw_delta.signum() * visible_time * 0.1 * (raw_delta.abs() / 100.0).min(3.0);
         state.suspend_follow();
@@ -1635,8 +1823,12 @@ mod tests {
             let p = pixel_of(idx, spp);
             let s = full[idx as usize];
             let e = cells.entry(p).or_insert((s, s));
-            if s < e.0 { e.0 = s; }
-            if s > e.1 { e.1 = s; }
+            if s < e.0 {
+                e.0 = s;
+            }
+            if s > e.1 {
+                e.1 = s;
+            }
         }
         let (lo_pix, n_render) = if head + 1 <= w as i64 {
             (0i64, (head + 1) as usize)
@@ -1675,8 +1867,16 @@ mod tests {
         let want = ref_window(&full, spp, w as usize);
         assert_eq!(got.len(), want.len(), "window length");
         for (i, (g, e)) in got.iter().zip(want.iter()).enumerate() {
-            assert_eq!(g.0.to_bits(), e.0.to_bits(), "min mismatch at screen px {i}");
-            assert_eq!(g.1.to_bits(), e.1.to_bits(), "max mismatch at screen px {i}");
+            assert_eq!(
+                g.0.to_bits(),
+                e.0.to_bits(),
+                "min mismatch at screen px {i}"
+            );
+            assert_eq!(
+                g.1.to_bits(),
+                e.1.to_bits(),
+                "max mismatch at screen px {i}"
+            );
         }
     }
 
@@ -1738,15 +1938,30 @@ mod tests {
         for (j, &s) in ring.iter().enumerate() {
             let p = pixel_of(50_000 + j as u64, spp);
             let e = want.entry(p).or_insert((s, s));
-            if s < e.0 { e.0 = s; }
-            if s > e.1 { e.1 = s; }
+            if s < e.0 {
+                e.0 = s;
+            }
+            if s > e.1 {
+                e.1 = s;
+            }
         }
         for p in env.tail..=env.head {
-            assert_eq!(env.cell(p).0.to_bits(), want[&p].0.to_bits(), "min at pixel {p}");
-            assert_eq!(env.cell(p).1.to_bits(), want[&p].1.to_bits(), "max at pixel {p}");
+            assert_eq!(
+                env.cell(p).0.to_bits(),
+                want[&p].0.to_bits(),
+                "min at pixel {p}"
+            );
+            assert_eq!(
+                env.cell(p).1.to_bits(),
+                want[&p].1.to_bits(),
+                "max at pixel {p}"
+            );
         }
         // The window's left edge sits below tail, so the gap exists and is fenced.
         let lo_pix = env.head - w as i64 + 1;
-        assert!(lo_pix < env.tail, "expected an un-refilled left gap to fence");
+        assert!(
+            lo_pix < env.tail,
+            "expected an un-refilled left gap to fence"
+        );
     }
 }

@@ -1,9 +1,11 @@
-use crate::canvas::colors::{freq_marker_color, freq_marker_label, freq_resistor_bands, freq_shield_color};
-use crate::state::ShieldStyle;
+use crate::annotations::AnnotationId;
+use crate::canvas::colors::{
+    freq_marker_color, freq_marker_label, freq_resistor_bands, freq_shield_color,
+};
 use crate::canvas::spectrogram_renderer::freq_to_y;
 use crate::dsp::filters::{harmonics_band_bounds, BandMode};
-use crate::annotations::AnnotationId;
-use crate::state::{FftMode, SpectrogramHandle, Selection, ResizeHandlePosition};
+use crate::state::ShieldStyle;
+use crate::state::{FftMode, ResizeHandlePosition, Selection, SpectrogramHandle};
 use web_sys::CanvasRenderingContext2d;
 
 // Time markers extracted to crate::canvas::time_markers
@@ -57,11 +59,16 @@ fn colors_similar(a: [u8; 3], b: [u8; 3]) -> bool {
 /// between adjacent bands when their colors are too similar.
 pub fn draw_bend_shield(
     ctx: &CanvasRenderingContext2d,
-    x: f64, y_top: f64, w: f64, h: f64,
+    x: f64,
+    y_top: f64,
+    w: f64,
+    h: f64,
     bands: [[u8; 3]; 3],
     alpha: f64,
 ) {
-    if h < 1.0 { return; } // too small to draw
+    if h < 1.0 {
+        return;
+    } // too small to draw
 
     // Clip to the shield rectangle so nothing renders outside the range
     ctx.save();
@@ -148,12 +155,20 @@ pub fn draw_bend_shield(
 /// Draw a solid-color shield (single color fill with dark border).
 pub fn draw_solid_shield(
     ctx: &CanvasRenderingContext2d,
-    x: f64, y_top: f64, w: f64, h: f64,
+    x: f64,
+    y_top: f64,
+    w: f64,
+    h: f64,
     color: [u8; 3],
     alpha: f64,
 ) {
-    if h < 1.0 { return; }
-    ctx.set_fill_style_str(&format!("rgba({},{},{},{:.2})", color[0], color[1], color[2], alpha));
+    if h < 1.0 {
+        return;
+    }
+    ctx.set_fill_style_str(&format!(
+        "rgba({},{},{},{:.2})",
+        color[0], color[1], color[2], alpha
+    ));
     ctx.fill_rect(x, y_top, w, h);
     ctx.set_stroke_style_str(&format!("rgba(0,0,0,{:.2})", alpha * 0.7));
     ctx.set_line_width(1.0);
@@ -176,7 +191,12 @@ pub fn draw_freq_markers(
     let cutoff = het_cutoff;
     let color_bar_w = 10.0;
     let (color_bar_x, label_x, tick_len, right_tick_len) = if labels_on_right {
-        (canvas_width - color_bar_w, canvas_width - color_bar_w - 3.0, 15.0, 22.0)
+        (
+            canvas_width - color_bar_w,
+            canvas_width - color_bar_w - 3.0,
+            15.0,
+            22.0,
+        )
     } else {
         (0.0, color_bar_w + 3.0, 22.0, 15.0)
     };
@@ -203,7 +223,11 @@ pub fn draw_freq_markers(
     let is_nyquist_top = (max_freq - ms.file_max_freq).abs() < 1.0;
     // Find topmost division for nyquist overlap check
     let topmost_div = divisions.last().copied().unwrap_or(0.0);
-    let topmost_div_y_frac = if max_freq > min_freq { (topmost_div - min_freq) / (max_freq - min_freq) } else { 0.0 };
+    let topmost_div_y_frac = if max_freq > min_freq {
+        (topmost_div - min_freq) / (max_freq - min_freq)
+    } else {
+        0.0
+    };
     let hide_topmost_for_nyquist = is_nyquist_top && topmost_div_y_frac > 0.95;
 
     for &freq in &divisions {
@@ -219,7 +243,11 @@ pub fn draw_freq_markers(
         // Determine alpha based on HET audible band
         let base_alpha = match shift_mode {
             FreqShiftMode::Heterodyne(hf) => {
-                if (freq - hf).abs() <= cutoff { 0.8 } else { 0.3 }
+                if (freq - hf).abs() <= cutoff {
+                    0.8
+                } else {
+                    0.3
+                }
             }
             _ => 0.7,
         };
@@ -234,10 +262,20 @@ pub fn draw_freq_markers(
                 (Some(lo), Some(hi)) => bar_top_freq > lo && freq < hi,
                 _ => false,
             };
-            let band_ff_drag_in_range = ms.band_ff_drag_active && ms.band_ff_hi > ms.band_ff_lo && bar_top_freq > ms.band_ff_lo && freq < ms.band_ff_hi;
-            let band_ff_active_in_range = !ms.band_ff_drag_active && ms.band_ff_hi > ms.band_ff_lo && bar_top_freq > ms.band_ff_lo && freq < ms.band_ff_hi;
+            let band_ff_drag_in_range = ms.band_ff_drag_active
+                && ms.band_ff_hi > ms.band_ff_lo
+                && bar_top_freq > ms.band_ff_lo
+                && freq < ms.band_ff_hi;
+            let band_ff_active_in_range = !ms.band_ff_drag_active
+                && ms.band_ff_hi > ms.band_ff_lo
+                && bar_top_freq > ms.band_ff_lo
+                && freq < ms.band_ff_hi;
             if axis_drag_in_range || band_ff_drag_in_range || band_ff_active_in_range {
-                let bar_alpha = if axis_drag_in_range || band_ff_drag_in_range { 0.8 } else { 0.6 };
+                let bar_alpha = if axis_drag_in_range || band_ff_drag_in_range {
+                    0.8
+                } else {
+                    0.6
+                };
                 // Clamp bar extent to active range boundaries
                 let (clamp_lo, clamp_hi) = if axis_drag_in_range {
                     (ms.axis_drag_lo.unwrap(), ms.axis_drag_hi.unwrap())
@@ -252,11 +290,27 @@ pub fn draw_freq_markers(
                 match ms.shield_style {
                     ShieldStyle::Resistor => {
                         let bands = freq_resistor_bands(freq);
-                        draw_bend_shield(ctx, color_bar_x, bar_y_top, color_bar_w, bar_h, bands, bar_alpha);
+                        draw_bend_shield(
+                            ctx,
+                            color_bar_x,
+                            bar_y_top,
+                            color_bar_w,
+                            bar_h,
+                            bands,
+                            bar_alpha,
+                        );
                     }
                     ShieldStyle::Solid => {
                         let c = freq_shield_color(freq, div_interval);
-                        draw_solid_shield(ctx, color_bar_x, bar_y_top, color_bar_w, bar_h, c, bar_alpha);
+                        draw_solid_shield(
+                            ctx,
+                            color_bar_x,
+                            bar_y_top,
+                            color_bar_w,
+                            bar_h,
+                            c,
+                            bar_alpha,
+                        );
                     }
                     ShieldStyle::Off => {}
                 }
@@ -329,7 +383,11 @@ pub fn draw_freq_markers(
             let bg_metrics = ctx.measure_text(&full_label_for_measure).unwrap();
             let bg_w = bg_metrics.width() + 4.0;
             let bg_h = 14.0;
-            let text_x = if labels_on_right { label_x - bg_metrics.width() } else { label_x };
+            let text_x = if labels_on_right {
+                label_x - bg_metrics.width()
+            } else {
+                label_x
+            };
             let bg_x = text_x - 2.0;
             ctx.set_fill_style_str("rgba(0,0,0,0.6)");
             ctx.fill_rect(bg_x, y - 2.0 - bg_h, bg_w, bg_h);
@@ -347,7 +405,11 @@ pub fn draw_freq_markers(
             let bg_metrics = ctx.measure_text(&label).unwrap();
             let bg_w = bg_metrics.width() + 4.0;
             let bg_h = 14.0;
-            let text_x = if labels_on_right { label_x - bg_metrics.width() } else { label_x };
+            let text_x = if labels_on_right {
+                label_x - bg_metrics.width()
+            } else {
+                label_x
+            };
             let bg_x = text_x - 2.0;
             ctx.set_fill_style_str("rgba(0,0,0,0.6)");
             ctx.fill_rect(bg_x, y - 2.0 - bg_h, bg_w, bg_h);
@@ -361,7 +423,13 @@ pub fn draw_freq_markers(
         let tr = 200 + (color[0] as u16 * 55 / 255) as u8;
         let tg = 200 + (color[1] as u16 * 55 / 255) as u8;
         let tb = 200 + (color[2] as u16 * 55 / 255) as u8;
-        ctx.set_stroke_style_str(&format!("rgba({},{},{},{:.2})", tr, tg, tb, base_alpha * 0.5));
+        ctx.set_stroke_style_str(&format!(
+            "rgba({},{},{},{:.2})",
+            tr,
+            tg,
+            tb,
+            base_alpha * 0.5
+        ));
         ctx.set_line_width(1.0);
         ctx.begin_path();
         ctx.move_to(0.0, y);
@@ -404,7 +472,9 @@ pub fn draw_freq_markers(
                 let minor_alpha = 0.3;
 
                 // Short left tick
-                let tr = minor_color[0]; let tg = minor_color[1]; let tb = minor_color[2];
+                let tr = minor_color[0];
+                let tg = minor_color[1];
+                let tb = minor_color[2];
                 ctx.set_stroke_style_str(&format!("rgba({},{},{},{:.2})", tr, tg, tb, minor_alpha));
                 ctx.set_line_width(1.0);
                 ctx.begin_path();
@@ -442,10 +512,20 @@ pub fn draw_freq_markers(
                 (Some(lo), Some(hi)) => bar_top_freq_m > lo && mf < hi,
                 _ => false,
             };
-            let band_ff_drag_in_m = ms.band_ff_drag_active && ms.band_ff_hi > ms.band_ff_lo && bar_top_freq_m > ms.band_ff_lo && mf < ms.band_ff_hi;
-            let band_ff_active_in_m = !ms.band_ff_drag_active && ms.band_ff_hi > ms.band_ff_lo && bar_top_freq_m > ms.band_ff_lo && mf < ms.band_ff_hi;
+            let band_ff_drag_in_m = ms.band_ff_drag_active
+                && ms.band_ff_hi > ms.band_ff_lo
+                && bar_top_freq_m > ms.band_ff_lo
+                && mf < ms.band_ff_hi;
+            let band_ff_active_in_m = !ms.band_ff_drag_active
+                && ms.band_ff_hi > ms.band_ff_lo
+                && bar_top_freq_m > ms.band_ff_lo
+                && mf < ms.band_ff_hi;
             if axis_drag_in_m || band_ff_drag_in_m || band_ff_active_in_m {
-                let bar_alpha_m = if axis_drag_in_m || band_ff_drag_in_m { 0.6 } else { 0.4 };
+                let bar_alpha_m = if axis_drag_in_m || band_ff_drag_in_m {
+                    0.6
+                } else {
+                    0.4
+                };
                 // Clamp bar extent to active range boundaries
                 let (clamp_lo, clamp_hi) = if axis_drag_in_m {
                     (ms.axis_drag_lo.unwrap(), ms.axis_drag_hi.unwrap())
@@ -461,11 +541,27 @@ pub fn draw_freq_markers(
                     match ms.shield_style {
                         ShieldStyle::Resistor => {
                             let bands = freq_resistor_bands(mf);
-                            draw_bend_shield(ctx, color_bar_x, by_top, color_bar_w, bar_h, bands, bar_alpha_m);
+                            draw_bend_shield(
+                                ctx,
+                                color_bar_x,
+                                by_top,
+                                color_bar_w,
+                                bar_h,
+                                bands,
+                                bar_alpha_m,
+                            );
                         }
                         ShieldStyle::Solid => {
                             let c = freq_shield_color(mf, minor_interval);
-                            draw_solid_shield(ctx, color_bar_x, by_top, color_bar_w, bar_h, c, bar_alpha_m);
+                            draw_solid_shield(
+                                ctx,
+                                color_bar_x,
+                                by_top,
+                                color_bar_w,
+                                bar_h,
+                                c,
+                                bar_alpha_m,
+                            );
                         }
                         ShieldStyle::Off => {}
                     }
@@ -508,7 +604,6 @@ pub fn draw_freq_markers(
         ctx.stroke();
     }
 
-
     ctx.set_text_baseline("alphabetic"); // reset
 }
 
@@ -530,7 +625,9 @@ pub fn draw_band_ff_overlay(
     pointer_down: bool,
     mouse_freq: Option<f64>,
 ) {
-    if band_ff_hi <= band_ff_lo { return; }
+    if band_ff_hi <= band_ff_lo {
+        return;
+    }
 
     let y_top = freq_to_y(band_ff_hi.min(max_freq), min_freq, max_freq, canvas_height);
     let y_bottom = freq_to_y(band_ff_lo.max(min_freq), min_freq, max_freq, canvas_height);
@@ -544,8 +641,21 @@ pub fn draw_band_ff_overlay(
         ctx.fill_rect(0.0, y_bottom, canvas_width, canvas_height - y_bottom);
     }
 
-    let any_band_ff_active = matches!(hover_handle, Some(SpectrogramHandle::BandFfUpper | SpectrogramHandle::BandFfLower | SpectrogramHandle::BandFfMiddle))
-        || matches!(drag_handle, Some(SpectrogramHandle::BandFfUpper | SpectrogramHandle::BandFfLower | SpectrogramHandle::BandFfMiddle));
+    let any_band_ff_active = matches!(
+        hover_handle,
+        Some(
+            SpectrogramHandle::BandFfUpper
+                | SpectrogramHandle::BandFfLower
+                | SpectrogramHandle::BandFfMiddle
+        )
+    ) || matches!(
+        drag_handle,
+        Some(
+            SpectrogramHandle::BandFfUpper
+                | SpectrogramHandle::BandFfLower
+                | SpectrogramHandle::BandFfMiddle
+        )
+    );
 
     let is_active = |handle: SpectrogramHandle| -> bool {
         drag_handle == Some(handle) || hover_handle == Some(handle)
@@ -555,11 +665,21 @@ pub fn draw_band_ff_overlay(
     let handle_zone_half = crate::canvas::hit_test::FF_HANDLE_HALF_WIDTH;
 
     // Mouse Y position in canvas pixels (for proximity checks)
-    let mouse_y = mouse_freq.map(|f| freq_to_y(f.clamp(min_freq, max_freq), min_freq, max_freq, canvas_height));
+    let mouse_y = mouse_freq.map(|f| {
+        freq_to_y(
+            f.clamp(min_freq, max_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        )
+    });
 
     // Edge lines (full width) + centered diamond drag handles
     // Focused: dotted yellow lines; Unfocused: solid muted blue-gray lines
-    for &(y, handle) in &[(y_top, SpectrogramHandle::BandFfUpper), (y_bottom, SpectrogramHandle::BandFfLower)] {
+    for &(y, handle) in &[
+        (y_top, SpectrogramHandle::BandFfUpper),
+        (y_bottom, SpectrogramHandle::BandFfLower),
+    ] {
         let active = is_active(handle);
         if band_ff_focused {
             // Focused: dotted yellow/amber lines
@@ -588,16 +708,29 @@ pub fn draw_band_ff_overlay(
 
         // Diamond handle at center — visible when BandFF is focused and
         // hovering/dragging any BandFF handle, pointer is held down, or on mobile
-        let show_handle = band_ff_focused && (active || any_band_ff_active || is_mobile || pointer_down);
+        let show_handle =
+            band_ff_focused && (active || any_band_ff_active || is_mobile || pointer_down);
         if show_handle {
-            let handle_size = if active { 8.0 } else if is_mobile { 6.0 } else { 5.0 };
-            let handle_alpha = if active { 0.9 } else if is_mobile { 0.5 } else { 0.45 };
+            let handle_size = if active {
+                8.0
+            } else if is_mobile {
+                6.0
+            } else {
+                5.0
+            };
+            let handle_alpha = if active {
+                0.9
+            } else if is_mobile {
+                0.5
+            } else {
+                0.45
+            };
             ctx.set_fill_style_str(&format!("rgba(255, 180, 60, {:.2})", handle_alpha));
             ctx.begin_path();
-            ctx.move_to(center_x, y - handle_size);              // top
-            ctx.line_to(center_x + handle_size, y);              // right
-            ctx.line_to(center_x, y + handle_size);              // bottom
-            ctx.line_to(center_x - handle_size, y);              // left
+            ctx.move_to(center_x, y - handle_size); // top
+            ctx.line_to(center_x + handle_size, y); // right
+            ctx.line_to(center_x, y + handle_size); // bottom
+            ctx.line_to(center_x - handle_size, y); // left
             ctx.close_path();
             ctx.fill();
 
@@ -617,11 +750,23 @@ pub fn draw_band_ff_overlay(
     let mid_y = (y_top + y_bottom) / 2.0;
     let mid_active = is_active(SpectrogramHandle::BandFfMiddle);
     let mid_near = mouse_y.map_or(false, |my| (my - mid_y).abs() < 100.0);
-    let show_mid = band_ff_focused && (mid_active || is_mobile
-        || ((any_band_ff_active || pointer_down) && mid_near));
+    let show_mid = band_ff_focused
+        && (mid_active || is_mobile || ((any_band_ff_active || pointer_down) && mid_near));
     if show_mid {
-        let mid_size = if mid_active { 7.0 } else if is_mobile { 5.0 } else { 4.0 };
-        let mid_alpha = if mid_active { 0.9 } else if is_mobile { 0.4 } else { 0.35 };
+        let mid_size = if mid_active {
+            7.0
+        } else if is_mobile {
+            5.0
+        } else {
+            4.0
+        };
+        let mid_alpha = if mid_active {
+            0.9
+        } else if is_mobile {
+            0.4
+        } else {
+            0.35
+        };
         ctx.set_fill_style_str(&format!("rgba(255, 180, 60, {:.2})", mid_alpha));
         ctx.begin_path();
         ctx.move_to(center_x, mid_y - mid_size);
@@ -634,7 +779,14 @@ pub fn draw_band_ff_overlay(
 
     // BandFF range labels — only when hovering/dragging BandFF handles specifically
     let band_ff_handle_active = any_band_ff_active
-        || matches!(drag_handle, Some(SpectrogramHandle::BandFfUpper | SpectrogramHandle::BandFfLower | SpectrogramHandle::BandFfMiddle));
+        || matches!(
+            drag_handle,
+            Some(
+                SpectrogramHandle::BandFfUpper
+                    | SpectrogramHandle::BandFfLower
+                    | SpectrogramHandle::BandFfMiddle
+            )
+        );
     if band_ff_focused && band_ff_handle_active {
         ctx.set_font("11px sans-serif");
         let label_x = center_x + handle_zone_half + 8.0;
@@ -717,8 +869,18 @@ pub fn draw_het_overlay(
             return;
         }
         let y = freq_to_y(freq, min_freq, max_freq, canvas_height);
-        let y_top = freq_to_y((freq + cutoff).min(max_freq), min_freq, max_freq, canvas_height);
-        let y_bot = freq_to_y((freq - cutoff).max(min_freq), min_freq, max_freq, canvas_height);
+        let y_top = freq_to_y(
+            (freq + cutoff).min(max_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
+        let y_bot = freq_to_y(
+            (freq - cutoff).max(min_freq),
+            min_freq,
+            max_freq,
+            canvas_height,
+        );
 
         // LP cutoff edges
         ctx.set_stroke_style_str(&format!("rgba(0, 200, 255, {:.2})", 0.3 * op));
@@ -768,7 +930,10 @@ pub fn draw_het_overlay(
     let y_band_bottom = freq_to_y(band_low, min_freq, max_freq, canvas_height);
 
     // Anchor band edge lines (brighten + thicken when their handle is active)
-    for &(y, handle) in &[(y_band_top, SpectrogramHandle::HetBandUpper), (y_band_bottom, SpectrogramHandle::HetBandLower)] {
+    for &(y, handle) in &[
+        (y_band_top, SpectrogramHandle::HetBandUpper),
+        (y_band_bottom, SpectrogramHandle::HetBandLower),
+    ] {
         let active = interactive && is_active(handle);
         let alpha = (if active { 0.7 } else { 0.3 }) * op;
         let width = if active { 2.0 } else { 1.0 };
@@ -936,7 +1101,9 @@ pub fn draw_selection(
         (Some(fh), Some(fl)) => {
             let y0 = freq_to_y(fh, min_freq, max_freq, canvas_height).max(0.0);
             let y1 = freq_to_y(fl, min_freq, max_freq, canvas_height).min(canvas_height);
-            if y1 <= y0 { return; }
+            if y1 <= y0 {
+                return;
+            }
             (y0, y1)
         }
         _ => (0.0, canvas_height),
@@ -1018,7 +1185,8 @@ pub fn draw_harmonic_shadows(
     let lo_high = freq_high / 2.0;
     {
         let y0 = freq_to_y(lo_high, min_freq, max_freq, canvas_height).max(0.0);
-        let y1 = freq_to_y(lo_low.max(min_freq), min_freq, max_freq, canvas_height).min(canvas_height);
+        let y1 =
+            freq_to_y(lo_low.max(min_freq), min_freq, max_freq, canvas_height).min(canvas_height);
         if y1 > y0 {
             ctx.set_fill_style_str("rgba(50, 120, 200, 0.06)");
             ctx.fill_rect(x0, y0, w, y1 - y0);
@@ -1051,21 +1219,24 @@ pub fn draw_filter_overlay(
 
     // Determine the frequency range for the hovered band
     let (band_lo, band_hi, color) = match hovered_band {
-        0 => (0.0, freq_low, "rgba(255, 80, 80, 0.15)"),       // below — red tint
+        0 => (0.0, freq_low, "rgba(255, 80, 80, 0.15)"), // below — red tint
         1 => (freq_low, freq_high, "rgba(80, 255, 120, 0.15)"), // selected — green
         2 if harmonics_bounds.is_some() => {
             let (harmonics_lower, harmonics_upper) = harmonics_bounds.expect("checked is_some");
             (harmonics_lower, harmonics_upper, "rgba(80, 120, 255, 0.15)")
         }
         3 => {
-            let lo = harmonics_bounds.map(|(_, harmonics_upper)| harmonics_upper).unwrap_or(freq_high);
-            (lo, max_freq, "rgba(255, 180, 60, 0.15)")          // above — orange
+            let lo = harmonics_bounds
+                .map(|(_, harmonics_upper)| harmonics_upper)
+                .unwrap_or(freq_high);
+            (lo, max_freq, "rgba(255, 180, 60, 0.15)") // above — orange
         }
         _ => return,
     };
 
     let y_top = freq_to_y(band_hi.min(max_freq), min_freq, max_freq, canvas_height).max(0.0);
-    let y_bot = freq_to_y(band_lo.max(min_freq), min_freq, max_freq, canvas_height).min(canvas_height);
+    let y_bot =
+        freq_to_y(band_lo.max(min_freq), min_freq, max_freq, canvas_height).min(canvas_height);
 
     if y_bot <= y_top {
         return;
@@ -1107,7 +1278,8 @@ pub fn pixel_to_time_freq(
 ) -> (f64, f64) {
     let visible_time = (canvas_width / zoom) * time_resolution;
     let time = scroll_offset + (px_x / canvas_width) * visible_time;
-    let freq = crate::canvas::spectrogram_renderer::y_to_freq(px_y, min_freq, max_freq, canvas_height);
+    let freq =
+        crate::canvas::spectrogram_renderer::y_to_freq(px_y, min_freq, max_freq, canvas_height);
     (time, freq)
 }
 
@@ -1143,11 +1315,26 @@ pub fn draw_notch_bands(
         let is_hovered = hovered_index == Some(band_idx);
 
         let (fill, line, label_color, line_width) = if is_hovered {
-            ("rgba(255, 220, 40, 0.25)", "rgba(255, 220, 40, 0.9)", "rgba(255, 240, 100, 1.0)", 2.0)
+            (
+                "rgba(255, 220, 40, 0.25)",
+                "rgba(255, 220, 40, 0.9)",
+                "rgba(255, 240, 100, 1.0)",
+                2.0,
+            )
         } else if notch_enabled && band.enabled {
-            ("rgba(255, 40, 40, 0.12)", "rgba(255, 60, 60, 0.6)", "rgba(255, 100, 100, 0.8)", 1.0)
+            (
+                "rgba(255, 40, 40, 0.12)",
+                "rgba(255, 60, 60, 0.6)",
+                "rgba(255, 100, 100, 0.8)",
+                1.0,
+            )
         } else {
-            ("rgba(128, 128, 128, 0.08)", "rgba(128, 128, 128, 0.3)", "rgba(160, 160, 160, 0.5)", 1.0)
+            (
+                "rgba(128, 128, 128, 0.08)",
+                "rgba(128, 128, 128, 0.3)",
+                "rgba(160, 160, 160, 0.5)",
+                1.0,
+            )
         };
 
         // Band fill
@@ -1164,7 +1351,11 @@ pub fn draw_notch_bands(
 
         // Frequency label
         ctx.set_fill_style_str(label_color);
-        ctx.set_font(if is_hovered { "bold 11px sans-serif" } else { "10px sans-serif" });
+        ctx.set_font(if is_hovered {
+            "bold 11px sans-serif"
+        } else {
+            "10px sans-serif"
+        });
         ctx.set_text_baseline("bottom");
         let label = if center >= 1000.0 {
             format!("{:.1}k", center / 1000.0)
@@ -1220,7 +1411,9 @@ pub enum DebugTileKind {
     /// Flow tiles — same FFT as magnitude but stats come from the flow cache.
     Flow { fft_mode: FftMode },
     /// Resonator tiles — per-LOD bins come from `ResonatorFftMode`.
-    Resonators { mode: crate::state::ResonatorFftMode },
+    Resonators {
+        mode: crate::state::ResonatorFftMode,
+    },
 }
 
 impl DebugTileKind {
@@ -1259,7 +1452,9 @@ pub fn draw_tile_debug_overlay(
 
     let cw = viewport_width;
     let ch = viewport_height;
-    if total_cols == 0 || zoom <= 0.0 { return; }
+    if total_cols == 0 || zoom <= 0.0 {
+        return;
+    }
 
     let ideal_lod = tile_cache::select_lod(zoom);
     let ratio = tile_cache::lod_ratio(ideal_lod);
@@ -1271,11 +1466,18 @@ pub fn draw_tile_debug_overlay(
     let vis_end_lod = vis_end * ratio;
 
     let first_tile = (vis_start_lod / tile_cache::TILE_COLS as f64).floor() as usize;
-    let last_tile = ((vis_end_lod - 0.001).max(0.0) / tile_cache::TILE_COLS as f64).floor() as usize;
+    let last_tile =
+        ((vis_end_lod - 0.001).max(0.0) / tile_cache::TILE_COLS as f64).floor() as usize;
     let stats = match kind {
-        DebugTileKind::Flow { .. } => tile_cache::flow_debug_stats(file_idx, ideal_lod, first_tile, last_tile),
-        DebugTileKind::Resonators { .. } => tile_cache::resonator_debug_stats(file_idx, ideal_lod, first_tile, last_tile),
-        DebugTileKind::Magnitude { .. } => tile_cache::magnitude_debug_stats(file_idx, ideal_lod, first_tile, last_tile),
+        DebugTileKind::Flow { .. } => {
+            tile_cache::flow_debug_stats(file_idx, ideal_lod, first_tile, last_tile)
+        }
+        DebugTileKind::Resonators { .. } => {
+            tile_cache::resonator_debug_stats(file_idx, ideal_lod, first_tile, last_tile)
+        }
+        DebugTileKind::Magnitude { .. } => {
+            tile_cache::magnitude_debug_stats(file_idx, ideal_lod, first_tile, last_tile)
+        }
     };
 
     ctx.save();
@@ -1290,60 +1492,72 @@ pub fn draw_tile_debug_overlay(
         // Determine which LOD is actually rendered for this tile
         let has_tile = |fi, lod, ti| match kind {
             DebugTileKind::Flow { .. } => tile_cache::get_flow_tile(fi, lod, ti).is_some(),
-            DebugTileKind::Resonators { .. } => tile_cache::get_resonator_tile(fi, lod, ti).is_some(),
+            DebugTileKind::Resonators { .. } => {
+                tile_cache::get_resonator_tile(fi, lod, ti).is_some()
+            }
             DebugTileKind::Magnitude { .. } => tile_cache::get_tile(fi, lod, ti).is_some(),
         };
-        let (displayed_lod, displayed_tile, lod_label, color) = if has_tile(file_idx, ideal_lod, tile_idx) {
-            let label = format!("L{ideal_lod}");
-            let c = match ideal_lod {
-                5 => "#f6f",
-                4 => "#0ff",
-                3 => "#0f0",
-                2 => "#48f",
-                1 => "#ff0",
-                0 => "#fa0",
-                _ => "#fff",
+        let (displayed_lod, displayed_tile, lod_label, color) =
+            if has_tile(file_idx, ideal_lod, tile_idx) {
+                let label = format!("L{ideal_lod}");
+                let c = match ideal_lod {
+                    5 => "#f6f",
+                    4 => "#0ff",
+                    3 => "#0f0",
+                    2 => "#48f",
+                    1 => "#ff0",
+                    0 => "#fa0",
+                    _ => "#fff",
+                };
+                (ideal_lod, tile_idx, label, c)
+            } else if match kind {
+                DebugTileKind::Flow { .. } => {
+                    tile_cache::flow_tile_active(file_idx, ideal_lod, tile_idx)
+                }
+                DebugTileKind::Resonators { .. } => {
+                    tile_cache::resonator_tile_active(file_idx, ideal_lod, tile_idx)
+                }
+                DebugTileKind::Magnitude { .. } => {
+                    tile_cache::magnitude_tile_active(file_idx, ideal_lod, tile_idx)
+                }
+            } {
+                (ideal_lod, tile_idx, "..".to_string(), "#fa0")
+            } else {
+                // Check fallback LODs
+                let mut found = None;
+                for fb_lod in (0..ideal_lod).rev() {
+                    let (fb_tile, _, _) =
+                        tile_cache::fallback_tile_info(ideal_lod, tile_idx, fb_lod);
+                    if has_tile(file_idx, fb_lod, fb_tile) {
+                        found = Some((fb_lod, fb_tile));
+                        break;
+                    }
+                }
+                match found {
+                    Some((l, ft)) => {
+                        let label = format!("L{l}fb");
+                        let c = match l {
+                            0 => "#fa0",
+                            1 => "#ff0",
+                            2 => "#48f",
+                            3 => "#0f0",
+                            4 => "#0ff",
+                            _ => "#f6f",
+                        };
+                        (l, ft, label, c)
+                    }
+                    None => (255, 0, "--".to_string(), "#f44"),
+                }
             };
-            (ideal_lod, tile_idx, label, c)
-        } else if match kind {
-            DebugTileKind::Flow { .. } => tile_cache::flow_tile_active(file_idx, ideal_lod, tile_idx),
-            DebugTileKind::Resonators { .. } => tile_cache::resonator_tile_active(file_idx, ideal_lod, tile_idx),
-            DebugTileKind::Magnitude { .. } => tile_cache::magnitude_tile_active(file_idx, ideal_lod, tile_idx),
-        } {
-            (ideal_lod, tile_idx, "..".to_string(), "#fa0")
-        } else {
-            // Check fallback LODs
-            let mut found = None;
-            for fb_lod in (0..ideal_lod).rev() {
-                let (fb_tile, _, _) = tile_cache::fallback_tile_info(ideal_lod, tile_idx, fb_lod);
-                if has_tile(file_idx, fb_lod, fb_tile) {
-                    found = Some((fb_lod, fb_tile));
-                    break;
-                }
-            }
-            match found {
-                Some((l, ft)) => {
-                    let label = format!("L{l}fb");
-                    let c = match l {
-                        0 => "#fa0",
-                        1 => "#ff0",
-                        2 => "#48f",
-                        3 => "#0f0",
-                        4 => "#0ff",
-                        _ => "#f6f",
-                    };
-                    (l, ft, label, c)
-                }
-                None => (255, 0, "--".to_string(), "#f44"),
-            }
-        };
 
         // Tile destination rectangle on canvas
         let tile_x_start = (tile_lod1_start - vis_start) * zoom;
         let tile_x_end = (tile_lod1_end - vis_start) * zoom;
         let dx = tile_x_start.max(0.0);
         let dw = (tile_x_end.min(cw) - dx).max(0.0);
-        if dw <= 0.0 { continue; }
+        if dw <= 0.0 {
+            continue;
+        }
 
         // Draw border
         ctx.set_stroke_style_str(color);
@@ -1356,19 +1570,24 @@ pub fn draw_tile_debug_overlay(
             let res = format!("fft={} hop={}", actual_fft, cfg.hop_size);
             // Get tile texture dimensions from the matching cache.
             let tex = match kind {
-                DebugTileKind::Flow { .. } => tile_cache::borrow_flow_tile(
-                    file_idx, displayed_lod, displayed_tile,
-                    |t| format!("{}x{}px", t.rendered.width, t.rendered.height),
-                ),
+                DebugTileKind::Flow { .. } => {
+                    tile_cache::borrow_flow_tile(file_idx, displayed_lod, displayed_tile, |t| {
+                        format!("{}x{}px", t.rendered.width, t.rendered.height)
+                    })
+                }
                 DebugTileKind::Resonators { .. } => tile_cache::borrow_resonator_tile(
-                    file_idx, displayed_lod, displayed_tile,
+                    file_idx,
+                    displayed_lod,
+                    displayed_tile,
                     |t| format!("{}x{}px", t.rendered.width, t.rendered.height),
                 ),
-                DebugTileKind::Magnitude { .. } => tile_cache::borrow_tile(
-                    file_idx, displayed_lod, displayed_tile,
-                    |t| format!("{}x{}px", t.rendered.width, t.rendered.height),
-                ),
-            }.unwrap_or_else(|| "?".to_string());
+                DebugTileKind::Magnitude { .. } => {
+                    tile_cache::borrow_tile(file_idx, displayed_lod, displayed_tile, |t| {
+                        format!("{}x{}px", t.rendered.width, t.rendered.height)
+                    })
+                }
+            }
+            .unwrap_or_else(|| "?".to_string());
             (res, tex)
         } else {
             ("no tile".to_string(), String::new())
@@ -1413,12 +1632,20 @@ pub fn draw_tile_debug_overlay(
     } else {
         "OK"
     };
-    let panel_lines = [format!("{src_tag} z={zoom:.1} LOD{ideal_lod} fft={actual_fft} hop={ideal_hop}"),
-        format!("visible c:{} f:{} m:{}", stats.visible_cached, stats.visible_in_flight, stats.visible_missing),
-        format!("cache {} / {} tiles", stats.total_cached, stats.total_in_flight),
+    let panel_lines = [
+        format!("{src_tag} z={zoom:.1} LOD{ideal_lod} fft={actual_fft} hop={ideal_hop}"),
+        format!(
+            "visible c:{} f:{} m:{}",
+            stats.visible_cached, stats.visible_in_flight, stats.visible_missing
+        ),
+        format!(
+            "cache {} / {} tiles",
+            stats.total_cached, stats.total_in_flight
+        ),
         format!("mem {used_mb:.1} / {max_mb:.0} MB"),
         format!("headroom {headroom_mb:.1} MB  {fullness_pct:.0}%  {pressure}"),
-        format!("range T{first_tile}..T{last_tile}")];
+        format!("range T{first_tile}..T{last_tile}"),
+    ];
     let label_w = 248.0;
     let label_h = 14.0 * panel_lines.len() as f64 + 6.0;
     let panel_x = cw - label_w - 6.0;
@@ -1488,7 +1715,9 @@ pub fn draw_annotations(
             (Some(fh), Some(fl)) => {
                 let y0 = freq_to_y(fh, min_freq, max_freq, canvas_height).max(0.0);
                 let y1 = freq_to_y(fl, min_freq, max_freq, canvas_height).min(canvas_height);
-                if y1 <= y0 { continue; }
+                if y1 <= y0 {
+                    continue;
+                }
                 (y0, y1)
             }
             _ => (0.0, canvas_height),
@@ -1539,10 +1768,17 @@ pub fn draw_annotations(
         // Resize handles for selected annotations (only when annotations have focus and not locked)
         if is_selected && annotations_focused && !sel.is_locked() {
             let handles = crate::canvas::hit_test::get_annotation_handle_positions(
-                sel.time_start, sel.time_end,
-                sel.freq_low, sel.freq_high,
-                scroll_offset, time_resolution, zoom, canvas_width,
-                min_freq, max_freq, canvas_height,
+                sel.time_start,
+                sel.time_end,
+                sel.freq_low,
+                sel.freq_high,
+                scroll_offset,
+                time_resolution,
+                zoom,
+                canvas_width,
+                min_freq,
+                max_freq,
+                canvas_height,
             );
 
             for (pos, hx, hy) in &handles {
@@ -1551,8 +1787,16 @@ pub fn draw_annotations(
                     .is_some_and(|(hid, hp)| **hid == annotation.id && *hp == *pos);
 
                 let size = if is_hovered {
-                    if is_mobile { 8.0 } else { 4.0 }
-                } else if is_mobile { 6.0 } else { 3.0 };
+                    if is_mobile {
+                        8.0
+                    } else {
+                        4.0
+                    }
+                } else if is_mobile {
+                    6.0
+                } else {
+                    3.0
+                };
 
                 let fill = if is_hovered {
                     "rgba(255, 220, 100, 1.0)"
@@ -1583,19 +1827,19 @@ impl TimeMarkerStyle {
     fn stroke(self) -> &'static str {
         match self {
             Self::FileEmbedded => "rgba(120, 200, 220, 0.72)",
-            Self::Annotation   => "rgba(255, 210, 90, 0.85)",
+            Self::Annotation => "rgba(255, 210, 90, 0.85)",
         }
     }
     fn label_bg(self) -> &'static str {
         match self {
             Self::FileEmbedded => "rgba(20, 45, 55, 0.78)",
-            Self::Annotation   => "rgba(60, 45, 10, 0.85)",
+            Self::Annotation => "rgba(60, 45, 10, 0.85)",
         }
     }
     fn label_fg(self) -> &'static str {
         match self {
             Self::FileEmbedded => "rgba(200, 235, 245, 0.95)",
-            Self::Annotation   => "rgba(255, 230, 160, 0.95)",
+            Self::Annotation => "rgba(255, 230, 160, 0.95)",
         }
     }
 }
@@ -1614,9 +1858,13 @@ pub fn draw_time_marker_lines(
     canvas_width: f64,
     canvas_height: f64,
 ) {
-    if markers.is_empty() || canvas_width <= 0.0 || canvas_height <= 0.0 { return; }
+    if markers.is_empty() || canvas_width <= 0.0 || canvas_height <= 0.0 {
+        return;
+    }
     let visible_time = (canvas_width / zoom) * time_resolution;
-    if visible_time <= 0.0 { return; }
+    if visible_time <= 0.0 {
+        return;
+    }
     let start_time = scroll_offset;
     let end_time = start_time + visible_time;
     let px_per_sec = canvas_width / visible_time;
@@ -1632,7 +1880,9 @@ pub fn draw_time_marker_lines(
     ctx.set_font("11px system-ui, -apple-system, sans-serif");
 
     for (time, label) in markers {
-        if *time < start_time || *time > end_time { continue; }
+        if *time < start_time || *time > end_time {
+            continue;
+        }
         let x = (time - start_time) * px_per_sec;
 
         ctx.begin_path();

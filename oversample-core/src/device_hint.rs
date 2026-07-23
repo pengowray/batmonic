@@ -84,7 +84,9 @@ pub fn infer_device_hints(
         // 12-bit-ADC + DSP firmware. We surface the hint with all those
         // candidates so metadata-comparison can resolve. The label
         // accurately reflects the ambiguity.
-        let broader_candidates: Vec<String> = PIPISTRELLE_FAMILY.iter().map(|s| s.to_string())
+        let broader_candidates: Vec<String> = PIPISTRELLE_FAMILY
+            .iter()
+            .map(|s| s.to_string())
             .chain([
                 "AudioMoth (with custom HPF cutoff)".to_string(),
                 "Pettersson D1000 / D1000X / D500x".to_string(),
@@ -110,7 +112,8 @@ pub fn infer_device_hints(
                         the 12-bit range [0, 4095]. This signature is shared by \
                         Pipistrelle's exact firmware and by other 12-bit-ADC + \
                         DSP firmware in the same family; metadata comparison usually \
-                        resolves which one this file actually is.".into(),
+                        resolves which one this file actually is."
+                        .into(),
                 });
             }
             PipistrelleVerdict::Possible => {
@@ -124,7 +127,8 @@ pub fn infer_device_hints(
                     detail: "Pipistrelle inverse-filter residual is in a range \
                         that's consistent with the Pipistrelle / AudioMoth / \
                         D1000X family of 12-bit firmware, but not strong enough \
-                        to be conclusive.".into(),
+                        to be conclusive."
+                        .into(),
                 });
             }
             _ => {}
@@ -137,10 +141,16 @@ pub fn infer_device_hints(
         match am.verdict {
             AudioMothVerdict::Match => {
                 hints.push(DeviceHint {
-                    label: am.best.as_ref().map(|b| format!(
+                    label: am
+                        .best
+                        .as_ref()
+                        .map(|b| {
+                            format!(
                         "12-bit ADC + low-frequency HPF firmware (fitted {} Hz cutoff, G = {:.0})",
                         b.cutoff_hz, b.gain_total,
-                    )).unwrap_or_else(|| "12-bit ADC + low-frequency HPF firmware".into()),
+                    )
+                        })
+                        .unwrap_or_else(|| "12-bit ADC + low-frequency HPF firmware".into()),
                     confidence: HintConfidence::Strong,
                     candidates: vec![
                         "AudioMoth (default 8 or 48 Hz DC blocker)".into(),
@@ -152,7 +162,8 @@ pub fn infer_device_hints(
                         sampleMultiplier × Butterworth_design_gain. The signature is \
                         shared by AudioMoth's open-source firmware and at least some \
                         Wildlife Acoustics Song Meter firmware versions that follow a \
-                        similar 12-bit-ADC + low-Hz-HPF design.".into(),
+                        similar 12-bit-ADC + low-Hz-HPF design."
+                        .into(),
                 });
             }
             AudioMothVerdict::Possible => {
@@ -176,7 +187,11 @@ pub fn infer_device_hints(
 
     // 2. LSB-based hints (zero-padding signatures).
     if !is_float {
-        if let LsbVerdict::ZeroPaddedNBit { padding_bits, effective_bits } = lsb.verdict {
+        if let LsbVerdict::ZeroPaddedNBit {
+            padding_bits,
+            effective_bits,
+        } = lsb.verdict
+        {
             let (label, candidates, detail) = match padding_bits {
                 4 => (
                     format!(
@@ -192,7 +207,8 @@ pub fn infer_device_hints(
                     ],
                     "Every sample is a multiple of 16, so the low 4 bits are \
                      literally always zero. The recorder's ADC is 12-bit; the \
-                     extra 4 bits are unused.".to_string(),
+                     extra 4 bits are unused."
+                        .to_string(),
                 ),
                 1 => (
                     format!(
@@ -206,18 +222,23 @@ pub fn infer_device_hints(
                     ],
                     "Every sample is even, so the LSB is always zero. This is \
                      the Pettersson u384's documented behaviour, but other \
-                     1-bit-shift designs would look the same.".to_string(),
+                     1-bit-shift designs would look the same."
+                        .to_string(),
                 ),
                 n => (
                     format!(
                         "{}-bit effective depth ({} bit{} zero-padded)",
-                        effective_bits, n, if n == 1 { "" } else { "s" },
+                        effective_bits,
+                        n,
+                        if n == 1 { "" } else { "s" },
                     ),
                     vec!["Recorder with N-bit ADC \u{2192} larger container".into()],
                     format!(
                         "Samples are all multiples of {}; the low {} bit{} \
                          literally always zero.",
-                        1u32 << n, n, if n == 1 { "" } else { "s" },
+                        1u32 << n,
+                        n,
+                        if n == 1 { "" } else { "s" },
                     ),
                 ),
             };
@@ -227,7 +248,11 @@ pub fn infer_device_hints(
                 candidates,
                 detail,
             });
-        } else if let LsbVerdict::QuietSectionZeroPadded { effective_bits_in_quiet, padding_bits } = lsb.verdict {
+        } else if let LsbVerdict::QuietSectionZeroPadded {
+            effective_bits_in_quiet,
+            padding_bits,
+        } = lsb.verdict
+        {
             hints.push(DeviceHint {
                 label: format!(
                     "Noise-gated quiet sections (low {} bits zero when silent; full \
@@ -250,7 +275,10 @@ pub fn infer_device_hints(
                     padding_bits, bits_per_sample, effective_bits_in_quiet,
                 ),
             });
-        } else if let LsbVerdict::DspPaddedLowBitDepth { effective_bits_guess } = lsb.verdict {
+        } else if let LsbVerdict::DspPaddedLowBitDepth {
+            effective_bits_guess,
+        } = lsb.verdict
+        {
             hints.push(DeviceHint {
                 label: format!(
                     "~{}-bit ADC with on-device DSP (filter residue in LSBs)",
@@ -265,7 +293,8 @@ pub fn infer_device_hints(
                 detail: "Low bits show statistical structure (chi\u{00B2} test, \
                     autocorrelation) inconsistent with analog noise but consistent \
                     with deterministic fixed-point filter residue \u{2014} suggests \
-                    a lower-bit-depth ADC followed by on-device DSP.".into(),
+                    a lower-bit-depth ADC followed by on-device DSP."
+                    .into(),
             });
         }
     }
@@ -273,12 +302,19 @@ pub fn infer_device_hints(
     // 3. Effective-Nyquist hint — catches files claimed at high sample
     // rate but actually band-limited (upsampled, or aggressive AAF).
     if let Some(n) = nyq {
-        if let EffectiveNyquistVerdict::BandLimited { effective_hz, ratio, claimed_nyquist_hz } = n.verdict {
+        if let EffectiveNyquistVerdict::BandLimited {
+            effective_hz,
+            ratio,
+            claimed_nyquist_hz,
+        } = n.verdict
+        {
             hints.push(DeviceHint {
                 label: format!(
                     "Effective bandwidth \u{2248} {:.0} kHz \u{2014} only {:.0}% of the \
                      claimed {:.0} kHz Nyquist",
-                    effective_hz / 1000.0, ratio * 100.0, claimed_nyquist_hz / 1000.0,
+                    effective_hz / 1000.0,
+                    ratio * 100.0,
+                    claimed_nyquist_hz / 1000.0,
                 ),
                 confidence: HintConfidence::Likely,
                 candidates: vec![
@@ -301,10 +337,12 @@ pub fn infer_device_hints(
     if !is_float {
         if let Some(vc) = &bit.value_coverage {
             let ceiled = vc.resolution_bits.ceil() as u16;
-            let is_notable = (bits_per_sample == 16 && ceiled <= 12)
-                || (bits_per_sample == 24 && ceiled <= 16);
+            let is_notable =
+                (bits_per_sample == 16 && ceiled <= 12) || (bits_per_sample == 24 && ceiled <= 16);
             // Only emit if no zero-pad hint already covered this case.
-            let already_covered = hints.iter().any(|h| h.label.contains("zero-padded") || h.label.contains("zero-pad"));
+            let already_covered = hints
+                .iter()
+                .any(|h| h.label.contains("zero-padded") || h.label.contains("zero-pad"));
             if is_notable && !already_covered {
                 hints.push(DeviceHint {
                     label: format!(
@@ -321,8 +359,7 @@ pub fn infer_device_hints(
                          {} possible at {}-bit. This is consistent with the \
                          signal genuinely being ~{}-bit at some stage of the \
                          capture pipeline.",
-                        vc.unique_count, vc.value_space,
-                        bits_per_sample, ceiled,
+                        vc.unique_count, vc.value_space, bits_per_sample, ceiled,
                     ),
                 });
             }
@@ -369,7 +406,10 @@ pub enum MetadataMatch {
     /// A claim was found, but the analysis didn't produce any device hints.
     ClaimNoAnalysis { claim: String },
     /// Claim and at least one hint candidate share a recognisable substring.
-    Match { claim: String, matched_candidate: String },
+    Match {
+        claim: String,
+        matched_candidate: String,
+    },
     /// Claim is present and conflicts with all hint candidates.
     Mismatch { claim: String, hint_summary: String },
 }
@@ -381,10 +421,16 @@ pub fn extract_device_claim(
     guano: Option<&[(String, String)]>,
 ) -> Option<String> {
     if let Some(g) = guano {
-        let make = g.iter().find(|(k, _)| k.eq_ignore_ascii_case("Make"))
-            .map(|(_, v)| v.trim()).unwrap_or("");
-        let model = g.iter().find(|(k, _)| k.eq_ignore_ascii_case("Model"))
-            .map(|(_, v)| v.trim()).unwrap_or("");
+        let make = g
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Make"))
+            .map(|(_, v)| v.trim())
+            .unwrap_or("");
+        let model = g
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Model"))
+            .map(|(_, v)| v.trim())
+            .unwrap_or("");
         let combined = match (make.is_empty(), model.is_empty()) {
             (false, false) => format!("{} {}", make, model),
             (true, false) => model.to_string(),
@@ -396,10 +442,16 @@ pub fn extract_device_claim(
         }
     }
     if let Some(xc) = xc_metadata {
-        let dvc = xc.iter().find(|(k, _)| k == "dvc")
-            .map(|(_, v)| v.trim()).unwrap_or("");
-        let mic = xc.iter().find(|(k, _)| k == "mic")
-            .map(|(_, v)| v.trim()).unwrap_or("");
+        let dvc = xc
+            .iter()
+            .find(|(k, _)| k == "dvc")
+            .map(|(_, v)| v.trim())
+            .unwrap_or("");
+        let mic = xc
+            .iter()
+            .find(|(k, _)| k == "mic")
+            .map(|(_, v)| v.trim())
+            .unwrap_or("");
         if !dvc.is_empty() && !mic.is_empty() && !mic_subsumed_by_dvc(dvc, mic) {
             return Some(format!("{} ({})", dvc, mic));
         } else if !dvc.is_empty() {
@@ -451,7 +503,8 @@ pub fn compare_to_metadata(
     // contradict the metadata, they just describe characteristics of the
     // file that *could* belong to the claimed device too. Surface them
     // as "no comparison" rather than "mismatch".
-    let strong_hints: Vec<&DeviceHint> = hints.iter()
+    let strong_hints: Vec<&DeviceHint> = hints
+        .iter()
         .filter(|h| h.confidence == HintConfidence::Strong)
         .collect();
     if strong_hints.is_empty() {
@@ -462,7 +515,10 @@ pub fn compare_to_metadata(
         .map(|h| h.label.clone())
         .collect::<Vec<_>>()
         .join("; ");
-    MetadataMatch::Mismatch { claim, hint_summary }
+    MetadataMatch::Mismatch {
+        claim,
+        hint_summary,
+    }
 }
 
 fn matches_candidate(claim_l: &str, claim_keywords: &[&str], candidate: &str) -> bool {
@@ -483,7 +539,10 @@ fn matches_candidate(claim_l: &str, claim_keywords: &[&str], candidate: &str) ->
     }
     for kw in claim_keywords {
         // Word-level match
-        if cand_l.split(|c: char| !c.is_alphanumeric()).any(|w| w == *kw) {
+        if cand_l
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|w| w == *kw)
+        {
             return true;
         }
         // Substring-of-a-word match (handles "moth" matching "audiomoth")
@@ -495,11 +554,29 @@ fn matches_candidate(claim_l: &str, claim_keywords: &[&str], candidate: &str) ->
 }
 
 fn is_noise_word(s: &str) -> bool {
-    matches!(s,
-        "the" | "and" | "with" | "for" | "from" | "any" | "all" |
-        "wav" | "wave" | "ultrasound" | "ultrasonic" |
-        "microphone" | "mic" | "recorder" | "detector" | "device" |
-        "built" | "internal" | "ext" | "version" | "ver"
+    matches!(
+        s,
+        "the"
+            | "and"
+            | "with"
+            | "for"
+            | "from"
+            | "any"
+            | "all"
+            | "wav"
+            | "wave"
+            | "ultrasound"
+            | "ultrasonic"
+            | "microphone"
+            | "mic"
+            | "recorder"
+            | "detector"
+            | "device"
+            | "built"
+            | "internal"
+            | "ext"
+            | "version"
+            | "ver"
     )
 }
 
@@ -509,8 +586,12 @@ mod tests {
 
     fn claim(make: &str, model: &str) -> Vec<(String, String)> {
         let mut v = Vec::new();
-        if !make.is_empty() { v.push(("Make".into(), make.into())); }
-        if !model.is_empty() { v.push(("Model".into(), model.into())); }
+        if !make.is_empty() {
+            v.push(("Make".into(), make.into()));
+        }
+        if !model.is_empty() {
+            v.push(("Model".into(), model.into()));
+        }
         v
     }
 
@@ -526,7 +607,10 @@ mod tests {
 
     #[test]
     fn extract_falls_back_to_xc() {
-        let x = vec![("dvc".into(), "Pettersson D500x".into()), ("mic".into(), "Advanced electret".into())];
+        let x = vec![
+            ("dvc".into(), "Pettersson D500x".into()),
+            ("mic".into(), "Advanced electret".into()),
+        ];
         assert_eq!(
             extract_device_claim(Some(&x), None).as_deref(),
             Some("Pettersson D500x (Advanced electret)"),

@@ -32,18 +32,31 @@ pub struct ScheduleDecision {
 /// * `next_time` — the running schedule cursor (end of the last scheduled buffer).
 /// * `max_lookahead` — max seconds `next_time` may lead `current_time` before the
 ///   lead is treated as a backlog (see [`DEFAULT_MAX_LOOKAHEAD_SECS`]).
-pub fn plan_live_schedule(current_time: f64, next_time: f64, max_lookahead: f64) -> ScheduleDecision {
+pub fn plan_live_schedule(
+    current_time: f64,
+    next_time: f64,
+    max_lookahead: f64,
+) -> ScheduleDecision {
     if next_time < current_time {
         // Underrun: the cursor fell behind real time (queue drained or the clock
         // jumped forward after a resume). Resume from now; nothing to drop.
-        ScheduleDecision { start: current_time, dropped_backlog: false }
+        ScheduleDecision {
+            start: current_time,
+            dropped_backlog: false,
+        }
     } else if next_time - current_time > max_lookahead {
         // Backlog: too much audio queued ahead (burst replay after throttling).
         // Snap to now and tell the caller to drop the stale scheduled tail.
-        ScheduleDecision { start: current_time, dropped_backlog: true }
+        ScheduleDecision {
+            start: current_time,
+            dropped_backlog: true,
+        }
     } else {
         // Steady state: continue seamlessly from the cursor.
-        ScheduleDecision { start: next_time, dropped_backlog: false }
+        ScheduleDecision {
+            start: next_time,
+            dropped_backlog: false,
+        }
     }
 }
 

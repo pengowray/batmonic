@@ -1,23 +1,78 @@
-use super::types::{BookEntryDef, BatBookManifest, BatBookRegion, Commonness};
 use super::species;
+use super::types::{BatBookManifest, BatBookRegion, BookEntryDef, Commonness};
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Global book — family-level entries
 // ══════════════════════════════════════════════════════════════════════════════
 
 const GLOBAL_BOOK: &[BookEntryDef] = &[
-    BookEntryDef { species: &species::RHINOLOPHIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::HIPPOSIDERIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::VESPERTILIONIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::MOLOSSIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::EMBALLONURIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::PHYLLOSTOMIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::MORMOOPIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::MINIOPTERIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::NYCTERIDAE, commonness: None, description: None, name: None },
-    BookEntryDef { species: &species::MEGADERMATIDAE, commonness: None, description: None, name: None },
+    BookEntryDef {
+        species: &species::RHINOLOPHIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::HIPPOSIDERIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::VESPERTILIONIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::MOLOSSIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::EMBALLONURIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::PHYLLOSTOMIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::MORMOOPIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::MINIOPTERIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::NYCTERIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
+    BookEntryDef {
+        species: &species::MEGADERMATIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
     // Non-echolocating (will be sorted to end by get_manifest)
-    BookEntryDef { species: &species::PTEROPODIDAE, commonness: None, description: None, name: None },
+    BookEntryDef {
+        species: &species::PTEROPODIDAE,
+        commonness: None,
+        description: None,
+        name: None,
+    },
 ];
 
 // ══════════════════════════════════════════════════════════════════════════════

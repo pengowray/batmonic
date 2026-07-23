@@ -7,7 +7,9 @@ use leptos::prelude::*;
 use crate::audio::export;
 use crate::audio::video_export;
 use crate::audio::webcodecs_bindings as wc;
-use crate::state::{AppState, AudioCodecOption, ExportFormat, VideoCodec, VideoResolution, VideoViewMode};
+use crate::state::{
+    AppState, AudioCodecOption, ExportFormat, VideoCodec, VideoResolution, VideoViewMode,
+};
 
 /// Collapsible export section component.
 /// Expects `AppState` in context and the batm handler closures as props.
@@ -46,28 +48,30 @@ pub fn ExportSection(
         };
         match export::get_export_info(&state) {
             Some(info) => {
-                let mode_suffix = info.mode_label
+                let mode_suffix = info
+                    .mode_label
                     .map(|m| format!(" ({m})"))
                     .unwrap_or_default();
-                format!("Export {} {} to {ext}{mode_suffix}", info.count, info.source_label)
+                format!(
+                    "Export {} {} to {ext}{mode_suffix}",
+                    info.count, info.source_label
+                )
             }
             None => format!("Export to {ext}"),
         }
     };
 
     let export_disabled = move || {
-        export::get_export_info(&state).is_none()
-            || state.export.video_progress().get().is_some()
+        export::get_export_info(&state).is_none() || state.export.video_progress().get().is_some()
     };
 
-    let on_export_click = move |_: web_sys::MouseEvent| {
-        match state.export.format().get_untracked() {
-            ExportFormat::Wav => {
-                export::export_selected(&state);
-            }
-            ExportFormat::Mp4 => {
-                video_export::start_export(&state);
-            }
+    let on_export_click = move |_: web_sys::MouseEvent| match state.export.format().get_untracked()
+    {
+        ExportFormat::Wav => {
+            export::export_selected(&state);
+        }
+        ExportFormat::Mp4 => {
+            video_export::start_export(&state);
         }
     };
 

@@ -1,41 +1,43 @@
-pub(crate) mod file_groups;
-pub(crate) mod file_badges;
-pub(crate) mod files_panel;
 mod config_panel;
 mod export_section;
+pub(crate) mod file_badges;
+pub(crate) mod file_groups;
+pub(crate) mod files_panel;
 mod project_panel;
 pub(crate) use project_panel::save_project_async;
-pub mod settings_panel;
 pub mod analysis;
-pub mod metadata_panel;
 pub mod harmonics;
-pub mod psd_panel;
-pub mod pulse_panel;
 mod loading;
-pub(crate) mod streaming_load;
-mod suggestions;
+pub mod metadata_panel;
 pub mod mic_chooser;
 pub mod privacy_settings;
+pub mod psd_panel;
+pub mod pulse_panel;
+pub mod settings_panel;
+pub(crate) mod streaming_load;
+mod suggestions;
 
 use crate::state::store_fields::*;
+use crate::state::AppState;
+use js_sys;
 use leptos::prelude::*;
+use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use js_sys;
-use std::{cell::RefCell, rc::Rc};
-use crate::state::AppState;
 
-use files_panel::FilesPanel;
-use config_panel::ConfigPanel;
-use project_panel::ProjectPanel;
 use crate::state::LeftSidebarTab;
-pub(crate) use settings_panel::{SelectionPanel, run_resonator_bench};
 pub(crate) use analysis::AnalysisPanel as SidebarAnalysisPanel;
-pub(crate) use metadata_panel::MetadataPanel;
+use config_panel::ConfigPanel;
+use files_panel::FilesPanel;
 pub(crate) use harmonics::HarmonicsPanel;
+pub(crate) use loading::{
+    fetch_bytes, fetch_demo_index, fetch_text, load_named_bytes, load_native_file, load_single_demo,
+};
+pub(crate) use metadata_panel::MetadataPanel;
+use project_panel::ProjectPanel;
 pub(crate) use psd_panel::PsdPanel;
 pub(crate) use pulse_panel::PulsePanel;
-pub(crate) use loading::{load_named_bytes, load_native_file, fetch_demo_index, load_single_demo, fetch_bytes, fetch_text};
+pub(crate) use settings_panel::{run_resonator_bench, SelectionPanel};
 
 fn copy_to_clipboard(text: &str) {
     if let Some(window) = web_sys::window() {
@@ -57,11 +59,12 @@ pub fn FileSidebar() -> impl IntoView {
         let body = doc.body().unwrap();
         let _ = body.class_list().add_1("sidebar-resizing");
 
-        let on_move = Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
-            let dx = ev.client_x() as f64 - start_x;
-            let new_width = (start_width + dx).clamp(140.0, 500.0);
-            state.panels.left_width().set(new_width);
-        });
+        let on_move =
+            Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |ev: web_sys::MouseEvent| {
+                let dx = ev.client_x() as f64 - start_x;
+                let new_width = (start_width + dx).clamp(140.0, 500.0);
+                state.panels.left_width().set(new_width);
+            });
         let on_move_slot: Rc<RefCell<Option<Closure<dyn FnMut(web_sys::MouseEvent)>>>> =
             Rc::new(RefCell::new(Some(on_move)));
         let on_up_slot: Rc<RefCell<Option<Closure<dyn FnMut(web_sys::MouseEvent)>>>> =
@@ -80,18 +83,21 @@ pub fn FileSidebar() -> impl IntoView {
         let on_move_slot_for_up = Rc::clone(&on_move_slot);
         let on_up_slot_for_up = Rc::clone(&on_up_slot);
         let on_move_fn_for_up = on_move_fn.clone();
-        let on_up = Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |_: web_sys::MouseEvent| {
-            if let Some(body) = doc_for_up.body() {
-                let _ = body.class_list().remove_1("sidebar-resizing");
-            }
-            let _ = doc_for_up.remove_event_listener_with_callback("mousemove", &on_move_fn_for_up);
-            if let Some(on_up) = on_up_slot_for_up.borrow().as_ref() {
-                let on_up_fn = on_up.as_ref().unchecked_ref::<js_sys::Function>();
-                let _ = doc_for_up.remove_event_listener_with_callback_and_bool("mouseup", on_up_fn, true);
-            }
-            on_move_slot_for_up.borrow_mut().take();
-            on_up_slot_for_up.borrow_mut().take();
-        });
+        let on_up =
+            Closure::<dyn FnMut(web_sys::MouseEvent)>::new(move |_: web_sys::MouseEvent| {
+                if let Some(body) = doc_for_up.body() {
+                    let _ = body.class_list().remove_1("sidebar-resizing");
+                }
+                let _ =
+                    doc_for_up.remove_event_listener_with_callback("mousemove", &on_move_fn_for_up);
+                if let Some(on_up) = on_up_slot_for_up.borrow().as_ref() {
+                    let on_up_fn = on_up.as_ref().unchecked_ref::<js_sys::Function>();
+                    let _ = doc_for_up
+                        .remove_event_listener_with_callback_and_bool("mouseup", on_up_fn, true);
+                }
+                on_move_slot_for_up.borrow_mut().take();
+                on_up_slot_for_up.borrow_mut().take();
+            });
 
         let on_up_fn = on_up.as_ref().unchecked_ref::<js_sys::Function>().clone();
         *on_up_slot.borrow_mut() = Some(on_up);

@@ -1,9 +1,9 @@
+use crate::dsp::harmonics;
 use crate::state::store_fields::*;
+use crate::state::AppState;
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-use crate::state::AppState;
-use crate::dsp::harmonics;
 
 #[component]
 pub(crate) fn HarmonicsPanel() -> impl IntoView {
@@ -12,9 +12,8 @@ pub(crate) fn HarmonicsPanel() -> impl IntoView {
     let harmonics = Memo::new(move |_| {
         let files = state.library.files().get();
         let idx = state.library.current_index().get();
-        idx.and_then(|i| files.get(i).cloned()).map(|file| {
-            harmonics::analyze_harmonics(&file.audio, &file.spectrogram)
-        })
+        idx.and_then(|i| files.get(i).cloned())
+            .map(|file| harmonics::analyze_harmonics(&file.audio, &file.spectrogram))
     });
 
     view! {
@@ -428,7 +427,9 @@ fn FluxTimelineChart(
                     continue;
                 }
                 let window_end = (t + 1 + look_ahead).min(flux_data.len());
-                let has_onset = flux_data[t + 1..window_end].iter().any(|&v| v > onset_threshold);
+                let has_onset = flux_data[t + 1..window_end]
+                    .iter()
+                    .any(|&v| v > onset_threshold);
                 if has_onset {
                     let x = t as f64 / n as f64 * w as f64;
                     let y = chart_h - (f / peak) as f64 * chart_h + 2.0;

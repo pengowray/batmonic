@@ -1,18 +1,17 @@
+use crate::annotations::{
+    now_iso8601, Annotation, AnnotationId, AnnotationKind, AnnotationSet, Group, Region,
+};
+use crate::audio::playback::effective_selection;
+use crate::audio::source::{ChannelView, DEFAULT_ANALYSIS_WINDOW_SECS};
+use crate::dsp::psd::{self, PsdResult};
 use crate::state::store_fields::*;
+use crate::state::{AppState, RightSidebarTab};
 use leptos::prelude::*;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
-use crate::audio::source::{ChannelView, DEFAULT_ANALYSIS_WINDOW_SECS};
-use crate::audio::playback::effective_selection;
-use crate::state::{AppState, RightSidebarTab};
-use crate::dsp::psd::{self, PsdResult};
-use crate::annotations::{
-    Annotation, AnnotationKind, AnnotationSet, Group, Region,
-    now_iso8601, AnnotationId,
-};
-use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PsdFreqRangeMode {
@@ -122,7 +121,9 @@ pub(crate) fn PsdPanel() -> impl IntoView {
         let file_idx = state.library.current_index().get_untracked();
         let selection = state.interaction.selection().get_untracked();
         if let (Some(psd), Some(idx)) = (result, file_idx) {
-            if psd.peaks.is_empty() { return; }
+            if psd.peaks.is_empty() {
+                return;
+            }
             let time_start;
             let time_end;
             if let Some(sel) = selection {
@@ -148,7 +149,9 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                 modified_at: now_iso8601(),
                 notes: Some(format!(
                     "NFFT={}, {} frames, {} peaks",
-                    psd.nfft, psd.frame_count, psd.peaks.len()
+                    psd.nfft,
+                    psd.frame_count,
+                    psd.peaks.len()
                 )),
                 parent_id: None,
                 sort_order: None,
@@ -166,7 +169,11 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                             time_end,
                             freq_low: Some(flo),
                             freq_high: Some(fhi),
-                            label: Some(format!("Selection {:.1}\u{2013}{:.1} kHz", flo / 1000.0, fhi / 1000.0)),
+                            label: Some(format!(
+                                "Selection {:.1}\u{2013}{:.1} kHz",
+                                flo / 1000.0,
+                                fhi / 1000.0
+                            )),
                             color: Some("#ffcc33".to_string()),
                             locked: None,
                         }),
@@ -194,7 +201,12 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                         time_end,
                         freq_low: Some((peak.freq_hz - peak_half_bw).max(0.0)),
                         freq_high: Some(peak.freq_hz + peak_half_bw),
-                        label: Some(format!("F{} {:.1} kHz ({:.1} dB)", i + 1, peak.freq_hz / 1000.0, peak.power_db)),
+                        label: Some(format!(
+                            "F{} {:.1} kHz ({:.1} dB)",
+                            i + 1,
+                            peak.freq_hz / 1000.0,
+                            peak.power_db
+                        )),
                         color: Some(color.clone()),
                         locked: None,
                     }),
@@ -237,7 +249,11 @@ pub(crate) fn PsdPanel() -> impl IntoView {
                             time_end,
                             freq_low: Some(lo),
                             freq_high: Some(hi),
-                            label: Some(format!("F{} -10 dB: {:.1} kHz", i + 1, (hi - lo) / 1000.0)),
+                            label: Some(format!(
+                                "F{} -10 dB: {:.1} kHz",
+                                i + 1,
+                                (hi - lo) / 1000.0
+                            )),
                             color: Some("#aaaa44".to_string()),
                             locked: None,
                         }),
@@ -255,16 +271,28 @@ pub(crate) fn PsdPanel() -> impl IntoView {
             if let Some(file_id) = state.file_id_at(idx) {
                 state.annotations.store().update(|store| {
                     let set = store.entry_or_insert_with(file_id, || {
-                        state.library.files().with_untracked(|files| {
-                            files.get(idx).map(|f| {
-                                let id = f.identity.clone().unwrap_or_else(|| {
-                                    crate::file_identity::identity_layer1(&f.name, f.audio.metadata.file_size as u64)
-                                });
-                                AnnotationSet::new_with_metadata(id, &f.audio, f.cached_peak_db, f.cached_full_peak_db)
+                        state
+                            .library
+                            .files()
+                            .with_untracked(|files| {
+                                files.get(idx).map(|f| {
+                                    let id = f.identity.clone().unwrap_or_else(|| {
+                                        crate::file_identity::identity_layer1(
+                                            &f.name,
+                                            f.audio.metadata.file_size as u64,
+                                        )
+                                    });
+                                    AnnotationSet::new_with_metadata(
+                                        id,
+                                        &f.audio,
+                                        f.cached_peak_db,
+                                        f.cached_full_peak_db,
+                                    )
+                                })
                             })
-                        }).unwrap_or_else(|| {
-                            AnnotationSet::new(crate::file_identity::identity_layer1("", 0))
-                        })
+                            .unwrap_or_else(|| {
+                                AnnotationSet::new(crate::file_identity::identity_layer1("", 0))
+                            })
                     });
                     for ann in annotations {
                         set.annotations.push(ann);
@@ -599,7 +627,8 @@ fn draw_psd_canvas(
     peak_freq_range: Option<(f64, f64)>,
     log_scale: bool,
 ) {
-    let parent_width = canvas.parent_element()
+    let parent_width = canvas
+        .parent_element()
         .map(|p| p.client_width() as u32)
         .unwrap_or(250);
     let w = parent_width.max(150);
@@ -640,12 +669,16 @@ fn draw_psd_canvas(
     let db_max = power_db.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let db_min = (db_max - 80.0).max(-200.0);
     let db_range = db_max - db_min;
-    if db_range <= 0.0 { return; }
+    if db_range <= 0.0 {
+        return;
+    }
 
     let min_log_freq = 100.0f64;
     let freq_to_x = |freq: f64| -> f64 {
         if log_scale {
-            if freq <= 0.0 { return margin_left; }
+            if freq <= 0.0 {
+                return margin_left;
+            }
             let f = freq.max(min_log_freq);
             let log_min = min_log_freq.log10();
             let log_max = nyquist.log10();
@@ -712,7 +745,9 @@ fn draw_psd_canvas(
 
     for &freq in &freq_ticks {
         let x = freq_to_x(freq);
-        if x < margin_left || x > w as f64 - margin_right { continue; }
+        if x < margin_left || x > w as f64 - margin_right {
+            continue;
+        }
 
         let is_major = if log_scale {
             freq == 100.0 || freq == 1000.0 || freq == 10000.0 || freq == 100000.0
@@ -754,7 +789,8 @@ fn draw_psd_canvas(
         ctx.set_stroke_style_str("rgba(255,200,50,0.4)");
         ctx.set_line_width(1.0);
         let _ = ctx.set_line_dash(&JsValue::from(js_sys::Array::of2(
-            &JsValue::from(2.0), &JsValue::from(2.0),
+            &JsValue::from(2.0),
+            &JsValue::from(2.0),
         )));
         ctx.begin_path();
         ctx.move_to(x_lo, margin_top);
@@ -788,7 +824,9 @@ fn draw_psd_canvas(
     let mut started = false;
     for (i, &pdb) in power_db.iter().enumerate().take(n_bins) {
         let freq = i as f64 * freq_res;
-        if log_scale && freq < min_log_freq { continue; }
+        if log_scale && freq < min_log_freq {
+            continue;
+        }
         let x = freq_to_x(freq);
         let y = db_to_y(pdb);
         if !started {
@@ -857,16 +895,34 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
         let canvas = canvas.clone();
 
         // Draw immediately
-        draw_psd_canvas(&canvas, &power_db, freq_res, sample_rate, &peaks, peak_freq_range, log_scale);
+        draw_psd_canvas(
+            &canvas,
+            &power_db,
+            freq_res,
+            sample_rate,
+            &peaks,
+            peak_freq_range,
+            log_scale,
+        );
 
         // Set up ResizeObserver to redraw when the container resizes
         // (handles sidebar open animation, window resize, etc.)
         let power_db2 = power_db.clone();
         let peaks2 = peaks.clone();
         let canvas2 = canvas.clone();
-        let cb = wasm_bindgen::closure::Closure::<dyn Fn(js_sys::Array)>::new(move |_entries: js_sys::Array| {
-            draw_psd_canvas(&canvas2, &power_db2, freq_res, sample_rate, &peaks2, peak_freq_range, log_scale);
-        });
+        let cb = wasm_bindgen::closure::Closure::<dyn Fn(js_sys::Array)>::new(
+            move |_entries: js_sys::Array| {
+                draw_psd_canvas(
+                    &canvas2,
+                    &power_db2,
+                    freq_res,
+                    sample_rate,
+                    &peaks2,
+                    peak_freq_range,
+                    log_scale,
+                );
+            },
+        );
         if let Ok(observer) = web_sys::ResizeObserver::new(cb.as_ref().unchecked_ref()) {
             if let Some(parent) = canvas.parent_element() {
                 observer.observe(&parent);
@@ -874,11 +930,8 @@ fn PsdChart(psd: PsdResult, log_scale: bool) -> impl IntoView {
             // Store observer on the canvas element to prevent GC and tie its
             // lifetime to the DOM node. When the component unmounts and the
             // canvas is removed, the observer becomes inert.
-            let _ = js_sys::Reflect::set(
-                &canvas,
-                &JsValue::from_str("__psd_resize_obs"),
-                &observer,
-            );
+            let _ =
+                js_sys::Reflect::set(&canvas, &JsValue::from_str("__psd_resize_obs"), &observer);
         }
         cb.forget();
     });
@@ -907,7 +960,9 @@ fn start_psd_compute(
     let files = state.library.files().get_untracked();
     let idx = state.library.current_index().get_untracked();
     let file = idx.and_then(|i| files.get(i).cloned());
-    let Some(file) = file else { return; };
+    let Some(file) = file else {
+        return;
+    };
 
     // Don't clear psd_result to None here — setting it synchronously inside
     // the Effect cascade tears down the peak-table DOM (and its event-handler
@@ -920,7 +975,9 @@ fn start_psd_compute(
     // yield, so the panel can be disposed (right-sidebar tab switch) before we
     // get here; reading a disposed signal would panic. The rest of this fn is
     // synchronous, so this single guard protects the later local reads too.
-    let Some(generation) = compute_gen.try_get_untracked() else { return; };
+    let Some(generation) = compute_gen.try_get_untracked() else {
+        return;
+    };
 
     let sample_rate = file.audio.sample_rate;
     let total = file.audio.source.total_samples() as usize;
@@ -964,7 +1021,8 @@ fn start_psd_compute(
         let bands = state.notch.bands().get_untracked();
         let harm_supp = state.notch.harmonic_suppression().get_untracked();
         if !bands.is_empty() {
-            samples = crate::dsp::notch::apply_notch_filters(&samples, sample_rate, &bands, harm_supp);
+            samples =
+                crate::dsp::notch::apply_notch_filters(&samples, sample_rate, &bands, harm_supp);
         }
     }
 
@@ -972,7 +1030,12 @@ fn start_psd_compute(
         if let Some(nf) = state.noise_reduce.floor().get_untracked() {
             let strength = state.noise_reduce.strength().get_untracked();
             samples = crate::dsp::spectral_sub::apply_spectral_subtraction(
-                &samples, sample_rate, &nf, strength, 0.01, 0.0,
+                &samples,
+                sample_rate,
+                &nf,
+                strength,
+                0.01,
+                0.0,
             );
         }
     }
@@ -986,8 +1049,15 @@ fn start_psd_compute(
         let db_above = state.filter.db_above().get_untracked();
         let band_mode = state.filter.band_mode().get_untracked();
         samples = crate::dsp::filters::apply_eq_filter(
-            &samples, sample_rate, freq_low, freq_high,
-            db_below, db_selected, db_harmonics, db_above, band_mode,
+            &samples,
+            sample_rate,
+            freq_low,
+            freq_high,
+            db_below,
+            db_selected,
+            db_harmonics,
+            db_above,
+            band_mode,
         );
     }
 
@@ -1005,22 +1075,31 @@ fn start_psd_compute(
                 if state.viewmode.hfr_enabled().get_untracked() {
                     let lo = state.filter.freq_low().get_untracked();
                     let hi = state.filter.freq_high().get_untracked();
-                    if lo < hi { Some((lo, hi)) } else { None }
+                    if lo < hi {
+                        Some((lo, hi))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
             }
             PsdFreqRangeMode::Auto => {
                 // Try selection first, then BandFF
-                let sel_range = effective_selection(&state).and_then(|s| match (s.freq_low, s.freq_high) {
-                    (Some(lo), Some(hi)) if lo < hi => Some((lo, hi)),
-                    _ => None,
-                });
+                let sel_range =
+                    effective_selection(&state).and_then(|s| match (s.freq_low, s.freq_high) {
+                        (Some(lo), Some(hi)) if lo < hi => Some((lo, hi)),
+                        _ => None,
+                    });
                 sel_range.or_else(|| {
                     if state.viewmode.hfr_enabled().get_untracked() {
                         let lo = state.filter.freq_low().get_untracked();
                         let hi = state.filter.freq_high().get_untracked();
-                        if lo < hi { Some((lo, hi)) } else { None }
+                        if lo < hi {
+                            Some((lo, hi))
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
@@ -1033,13 +1112,17 @@ fn start_psd_compute(
 
     spawn_local(async move {
         let result = psd::compute_psd_async(
-            &samples, sample_rate, nfft, peak_freq_range,
+            &samples,
+            sample_rate,
+            nfft,
+            peak_freq_range,
             crate::canvas::tile_cache::yield_to_browser,
             // `try_get_untracked`: this is polled mid-await across many frames; if
             // the panel is disposed (tab switch) treat it as cancelled rather
             // than panicking on the disposed signal.
             &move || compute_gen.try_get_untracked() != Some(generation),
-        ).await;
+        )
+        .await;
         if compute_gen.try_get_untracked() != Some(generation) {
             return;
         }
@@ -1056,10 +1139,7 @@ async fn yield_to_browser() {
         let cb = wasm_bindgen::closure::Closure::once_into_js(move || {
             let _ = resolve.call0(&JsValue::NULL);
         });
-        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
-            cb.unchecked_ref(),
-            0,
-        );
+        let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), 0);
     });
     let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
 }

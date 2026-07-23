@@ -190,9 +190,18 @@ mod tests {
     #[test]
     fn test_pitch_shift_bypass() {
         let input: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
-        assert_eq!(pitch_shift_realtime(&input, PitchFactor::from_signed(0.0)), input);
-        assert_eq!(pitch_shift_realtime(&input, PitchFactor::from_signed(1.0)), input);
-        assert_eq!(pitch_shift_realtime(&input, PitchFactor::from_signed(-1.0)), input);
+        assert_eq!(
+            pitch_shift_realtime(&input, PitchFactor::from_signed(0.0)),
+            input
+        );
+        assert_eq!(
+            pitch_shift_realtime(&input, PitchFactor::from_signed(1.0)),
+            input
+        );
+        assert_eq!(
+            pitch_shift_realtime(&input, PitchFactor::from_signed(-1.0)),
+            input
+        );
     }
 
     #[test]

@@ -68,7 +68,10 @@ fn headerless_mp3_streaming_estimate_diverges_from_true_length() {
     // Parsing the WHOLE file is accurate — the format itself is fine; only the
     // truncated prefix parse is the problem.
     let full = prefix_estimate(&bytes, bytes.len());
-    assert_eq!(full, real, "full-file parse should match the decoded length");
+    assert_eq!(
+        full, real,
+        "full-file parse should match the decoded length"
+    );
 
     // Parsing only the 64 KB the streaming loader sees is materially wrong.
     let est = prefix_estimate(&bytes, STREAMING_HEADER_BYTES);

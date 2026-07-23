@@ -26,8 +26,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 use crate::components::mode_button::{format_factor_value, format_freq_khz, output_freq};
-use crate::dsp::pitch_shift::PitchFactor;
 use crate::components::popup::{Align, PopupPanel, Side};
+use crate::dsp::pitch_shift::PitchFactor;
 use crate::state::{AppState, LayerPanel, OutputSnap, PlaybackMode};
 
 /// Top of the gutter scale (Hz). Bottom is always 0. Larger than typical
@@ -157,7 +157,10 @@ fn toggle_auto(state: &AppState, mode: PlaybackMode) {
 }
 
 fn band(state: &AppState) -> (f64, f64) {
-    (state.filter.band_ff_freq_lo().get(), state.filter.band_ff_freq_hi().get())
+    (
+        state.filter.band_ff_freq_lo().get(),
+        state.filter.band_ff_freq_hi().get(),
+    )
 }
 
 /// Whether this mode supports a compound scale + shift mapping.
@@ -191,7 +194,9 @@ pub(crate) fn effective_ps_shift(stored: f64, band_lo: f64, factor: f64) -> f64 
 /// there's no meaningful range to draw (e.g. BandFF is empty).
 fn current_output_range(state: &AppState, mode: PlaybackMode) -> Option<(f64, f64)> {
     let (in_lo, in_hi) = band(state);
-    if in_hi <= in_lo { return None; }
+    if in_hi <= in_lo {
+        return None;
+    }
     let style = style_for(mode);
     match style {
         Style::Passthrough => Some((in_lo, in_hi)),
@@ -202,7 +207,9 @@ fn current_output_range(state: &AppState, mode: PlaybackMode) -> Option<(f64, f6
             // output band never folds below zero.
             let shift = if supports_shift(mode) {
                 effective_ps_shift(state.transform.ps_shift_hz().get(), in_lo, f)
-            } else { 0.0 };
+            } else {
+                0.0
+            };
             let a = (output_freq(in_lo, f) - shift).abs();
             let b = (output_freq(in_hi, f) - shift).abs();
             Some(if a < b { (a, b) } else { (b, a) })
@@ -218,7 +225,11 @@ fn current_output_range(state: &AppState, mode: PlaybackMode) -> Option<(f64, f6
 
 fn divide_shorthand(f: f64) -> String {
     let s = format_factor_value(f);
-    if s.starts_with('\u{00f7}') { s } else { format!("\u{00f7}{s}") }
+    if s.starts_with('\u{00f7}') {
+        s
+    } else {
+        format!("\u{00f7}{s}")
+    }
 }
 
 /// Short mapping label for the toolbar button left side.
@@ -226,7 +237,9 @@ fn mapping_shorthand(state: &AppState, mode: PlaybackMode) -> String {
     match style_for(mode) {
         Style::Passthrough => "1:1".into(),
         Style::Divide => {
-            let Some(f) = factor_value(state, mode) else { return "\u{2014}".into(); };
+            let Some(f) = factor_value(state, mode) else {
+                return "\u{2014}".into();
+            };
             let div = divide_shorthand(f);
             if supports_shift(mode) {
                 let shift = state.transform.ps_shift_hz().get();
@@ -260,7 +273,11 @@ fn snap_factor(raw: f64, snap: OutputSnap) -> f64 {
             .min_by(|a, b| (a - abs).abs().partial_cmp(&(b - abs).abs()).unwrap())
             .unwrap_or(8.0),
     };
-    if raw < 0.0 { -snapped_abs } else { snapped_abs }
+    if raw < 0.0 {
+        -snapped_abs
+    } else {
+        snapped_abs
+    }
 }
 
 fn snap_carrier(raw_hz: f64, snap: OutputSnap) -> f64 {
@@ -280,7 +297,9 @@ fn snap_carrier(raw_hz: f64, snap: OutputSnap) -> f64 {
 pub fn OutputRangeCombo() -> impl IntoView {
     let state = expect_context::<AppState>();
 
-    let is_open = Signal::derive(move || state.panels.layer_panel_open().get() == Some(LayerPanel::OutputRange));
+    let is_open = Signal::derive(move || {
+        state.panels.layer_panel_open().get() == Some(LayerPanel::OutputRange)
+    });
     let no_file = move || {
         state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
     };
@@ -289,7 +308,9 @@ pub fn OutputRangeCombo() -> impl IntoView {
     let anchor_ref = NodeRef::<leptos::html::Div>::new();
 
     let on_click = move |_: web_sys::MouseEvent| {
-        if no_file() { return; }
+        if no_file() {
+            return;
+        }
         toggle_panel(&state, LayerPanel::OutputRange);
     };
 
@@ -300,7 +321,9 @@ pub fn OutputRangeCombo() -> impl IntoView {
         } else {
             cls.push_str(" no-annotation active");
         }
-        if is_open.get() { cls.push_str(" open"); }
+        if is_open.get() {
+            cls.push_str(" open");
+        }
         cls
     };
 
@@ -587,7 +610,11 @@ fn BandSummary() -> impl IntoView {
 /// Which input frequency the drag pins to the cursor's output Hz.
 /// Lo / Hi anchor a single endpoint; Center moves the whole band.
 #[derive(Copy, Clone)]
-enum DragAnchor { Lo, Hi, Center }
+enum DragAnchor {
+    Lo,
+    Hi,
+    Center,
+}
 
 #[component]
 fn SnapPicker() -> impl IntoView {
@@ -653,7 +680,9 @@ fn OutputGutter() -> impl IntoView {
                     //   factor = anchor / (target + shift)
                     let stored_shift = if supports_shift(mode) {
                         state.transform.ps_shift_hz().get_untracked()
-                    } else { 0.0 };
+                    } else {
+                        0.0
+                    };
                     let band_lo = state.filter.band_ff_freq_lo().get_untracked();
                     let current_f = factor_value_untracked(&state, mode).unwrap_or(0.0);
                     let shift = effective_ps_shift(stored_shift, band_lo, current_f);
@@ -673,13 +702,17 @@ fn OutputGutter() -> impl IntoView {
     let start_drag = move |ev: web_sys::PointerEvent, which: DragAnchor| {
         ev.prevent_default();
         ev.stop_propagation();
-        let Some(el) = gutter_ref.get_untracked() else { return; };
+        let Some(el) = gutter_ref.get_untracked() else {
+            return;
+        };
         let rect = el.get_bounding_client_rect();
         let height = rect.height().max(1.0);
         let top = rect.top();
 
         let (in_lo, in_hi) = band(&state);
-        if in_hi <= in_lo { return; }
+        if in_hi <= in_lo {
+            return;
+        }
         let anchor = match which {
             DragAnchor::Lo => in_lo,
             DragAnchor::Hi => in_hi,
@@ -699,30 +732,31 @@ fn OutputGutter() -> impl IntoView {
         let up_slot: Rc<RefCell<Option<Closure<dyn FnMut(web_sys::PointerEvent)>>>> =
             Rc::new(RefCell::new(None));
 
-        let move_cb = Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |e: web_sys::PointerEvent| {
-            pin_input_to(hz_from_client_y(e.client_y() as f64), anchor);
-        });
+        let move_cb =
+            Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |e: web_sys::PointerEvent| {
+                pin_input_to(hz_from_client_y(e.client_y() as f64), anchor);
+            });
         let win_clone = win.clone();
         let move_slot_clone = Rc::clone(&move_slot);
         let up_slot_clone = Rc::clone(&up_slot);
-        let up_cb = Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |_: web_sys::PointerEvent| {
-            if let Some(m) = move_slot_clone.borrow_mut().take() {
-                let _ = win_clone.remove_event_listener_with_callback(
-                    "pointermove", m.as_ref().unchecked_ref(),
-                );
-            }
-            if let Some(u) = up_slot_clone.borrow_mut().take() {
-                let _ = win_clone.remove_event_listener_with_callback(
-                    "pointerup", u.as_ref().unchecked_ref(),
-                );
-            }
-        });
-        let _ = win.add_event_listener_with_callback(
-            "pointermove", move_cb.as_ref().unchecked_ref(),
-        );
-        let _ = win.add_event_listener_with_callback(
-            "pointerup", up_cb.as_ref().unchecked_ref(),
-        );
+        let up_cb =
+            Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |_: web_sys::PointerEvent| {
+                if let Some(m) = move_slot_clone.borrow_mut().take() {
+                    let _ = win_clone.remove_event_listener_with_callback(
+                        "pointermove",
+                        m.as_ref().unchecked_ref(),
+                    );
+                }
+                if let Some(u) = up_slot_clone.borrow_mut().take() {
+                    let _ = win_clone.remove_event_listener_with_callback(
+                        "pointerup",
+                        u.as_ref().unchecked_ref(),
+                    );
+                }
+            });
+        let _ =
+            win.add_event_listener_with_callback("pointermove", move_cb.as_ref().unchecked_ref());
+        let _ = win.add_event_listener_with_callback("pointerup", up_cb.as_ref().unchecked_ref());
         *move_slot.borrow_mut() = Some(move_cb);
         *up_slot.borrow_mut() = Some(up_cb);
     };

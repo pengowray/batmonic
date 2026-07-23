@@ -10,7 +10,9 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-use crate::audio::export::{build_export_params, get_selected_regions, process_region, save_export_bytes};
+use crate::audio::export::{
+    build_export_params, get_selected_regions, process_region, save_export_bytes,
+};
 use crate::audio::webcodecs_bindings as wc;
 use crate::canvas::spectrogram_renderer::{self, ColormapMode, SpectDisplaySettings, TileSource};
 use crate::state::{AppState, AudioCodecOption, PlaybackMode, VideoCodec, VideoViewMode};
@@ -59,7 +61,10 @@ pub fn start_export(state: &AppState) {
     leptos::task::spawn_local(async move {
         state.export.video_cancel().set(false);
         state.export.video_progress().set(Some(0.0));
-        state.export.video_status().set(Some("Preparing...".to_string()));
+        state
+            .export
+            .video_status()
+            .set(Some("Preparing...".to_string()));
 
         match export_video_impl(&state).await {
             Ok(()) => {
@@ -75,12 +80,18 @@ pub fn start_export(state: &AppState) {
                 let msg = format!("{:?}", e);
                 log::error!("Video export failed: {msg}");
                 state.export.video_progress().set(None);
-                state.export.video_status().set(Some(format!("Export failed: {msg}")));
+                state
+                    .export
+                    .video_status()
+                    .set(Some(format!("Export failed: {msg}")));
                 // Clear error after 10 seconds
                 let state2 = state;
                 leptos::task::spawn_local(async move {
                     sleep_ms(10_000).await;
-                    if state2.export.video_status().get_untracked()
+                    if state2
+                        .export
+                        .video_status()
+                        .get_untracked()
                         .as_ref()
                         .map(|s| s.starts_with("Export failed"))
                         .unwrap_or(false)
@@ -97,7 +108,9 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     log::info!("Video export: starting...");
 
     // Gather file info
-    let file = state.current_file().ok_or_else(|| JsValue::from_str("No file loaded"))?;
+    let file = state
+        .current_file()
+        .ok_or_else(|| JsValue::from_str("No file loaded"))?;
     let file_idx = state.library.current_index().get_untracked().unwrap();
     let sample_rate = file.audio.sample_rate;
     let source = &file.audio.source;
@@ -123,7 +136,11 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
 
     // Video resolution
     let resolution = state.export.video_resolution().get_untracked();
-    let canvas_w_hint = state.viewmode.spectrogram_canvas_width().get_untracked().max(320.0) as u32;
+    let canvas_w_hint = state
+        .viewmode
+        .spectrogram_canvas_width()
+        .get_untracked()
+        .max(320.0) as u32;
     let canvas_h_hint = 400u32; // reasonable default for spectrogram height
     let (vid_w, vid_h) = resolution.dimensions(canvas_w_hint, canvas_h_hint);
     // Ensure even dimensions (required by most codecs)
@@ -137,13 +154,18 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     };
 
     log::info!("Video export: {vid_w}x{vid_h} codec={codec_str}");
-    log::info!("Video export: has_video_encoder={}, has_audio_encoder={}, has_mp4_muxer={}",
-        wc::has_video_encoder(), wc::has_audio_encoder(), wc::has_mp4_muxer());
+    log::info!(
+        "Video export: has_video_encoder={}, has_audio_encoder={}, has_mp4_muxer={}",
+        wc::has_video_encoder(),
+        wc::has_audio_encoder(),
+        wc::has_mp4_muxer()
+    );
 
     // Check codec support
     if !wc::is_video_config_supported(codec_str, vid_w, vid_h).await {
         return Err(JsValue::from_str(&format!(
-            "Video codec {} not supported at {}x{}", codec_str, vid_w, vid_h
+            "Video codec {} not supported at {}x{}",
+            codec_str, vid_w, vid_h
         )));
     }
     log::info!("Video export: codec supported");
@@ -187,11 +209,19 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     let display_auto_gain = state.display.auto_gain().get_untracked();
     let total_cols = {
         let tc = file.spectrogram.total_columns;
-        if tc > 0 { tc } else { file.spectrogram.columns.len() }
+        if tc > 0 {
+            tc
+        } else {
+            file.spectrogram.columns.len()
+        }
     };
     let ref_db = if display_auto_gain && total_cols > 0 {
         let max_mag = crate::canvas::spectral_store::get_max_magnitude(file_idx);
-        if max_mag > 0.0 { 20.0 * max_mag.log10() } else { fixed_ref_db }
+        if max_mag > 0.0 {
+            20.0 * max_mag.log10()
+        } else {
+            fixed_ref_db
+        }
     } else {
         fixed_ref_db
     };
@@ -224,13 +254,24 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     };
 
     // ── Process audio ────────────────────────────────────────────────────────
-    state.export.video_status().set(Some("Processing audio...".to_string()));
+    state
+        .export
+        .video_status()
+        .set(Some("Processing audio...".to_string()));
     yield_now().await;
 
-    let region = if !regions.is_empty() { Some(&regions[0].1) } else { None };
+    let region = if !regions.is_empty() {
+        Some(&regions[0].1)
+    } else {
+        None
+    };
     let audio_params = build_export_params(state, region, use_region_focus, sample_rate);
     let audio_samples = process_region(
-        source.as_ref(), sample_rate, start_time, end_time, &audio_params,
+        source.as_ref(),
+        sample_rate,
+        start_time,
+        end_time,
+        &audio_params,
     );
 
     // Output sample rate (TE mode changes it)
@@ -251,13 +292,13 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     let canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
     canvas.set_width(vid_w);
     canvas.set_height(vid_h);
-    let ctx: CanvasRenderingContext2d = canvas
-        .get_context("2d")?
-        .unwrap()
-        .dyn_into()?;
+    let ctx: CanvasRenderingContext2d = canvas.get_context("2d")?.unwrap().dyn_into()?;
 
     // ── Set up encoders and muxer ────────────────────────────────────────────
-    state.export.video_status().set(Some("Setting up encoders...".to_string()));
+    state
+        .export
+        .video_status()
+        .set(Some("Setting up encoders...".to_string()));
     yield_now().await;
 
     // Resolve audio codec: (webcodecs_codec_str, muxer_codec_str) or None
@@ -269,24 +310,30 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
         }
         AudioCodecOption::Aac => {
             if !wc::has_audio_encoder() {
-                return Err(JsValue::from_str("AudioEncoder API not available in this browser"));
+                return Err(JsValue::from_str(
+                    "AudioEncoder API not available in this browser",
+                ));
             }
             log::info!("Video export: checking AAC support at {}Hz...", final_rate);
             if !wc::is_audio_config_supported(wc::AAC_WEBCODECS_CODEC, final_rate, 1).await {
                 return Err(JsValue::from_str(&format!(
-                    "AAC audio not supported at {}Hz in this browser", final_rate
+                    "AAC audio not supported at {}Hz in this browser",
+                    final_rate
                 )));
             }
             Some((wc::AAC_WEBCODECS_CODEC, wc::AAC_MUXER_CODEC))
         }
         AudioCodecOption::Opus => {
             if !wc::has_audio_encoder() {
-                return Err(JsValue::from_str("AudioEncoder API not available in this browser"));
+                return Err(JsValue::from_str(
+                    "AudioEncoder API not available in this browser",
+                ));
             }
             log::info!("Video export: checking Opus support at {}Hz...", final_rate);
             if !wc::is_audio_config_supported(wc::OPUS_WEBCODECS_CODEC, final_rate, 1).await {
                 return Err(JsValue::from_str(&format!(
-                    "Opus audio not supported at {}Hz in this browser", final_rate
+                    "Opus audio not supported at {}Hz in this browser",
+                    final_rate
                 )));
             }
             Some((wc::OPUS_WEBCODECS_CODEC, wc::OPUS_MUXER_CODEC))
@@ -298,7 +345,10 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
                 ));
             }
             // Try AAC first, then Opus
-            log::info!("Video export: auto-detecting audio codec at {}Hz...", final_rate);
+            log::info!(
+                "Video export: auto-detecting audio codec at {}Hz...",
+                final_rate
+            );
             if wc::is_audio_config_supported(wc::AAC_WEBCODECS_CODEC, final_rate, 1).await {
                 log::info!("Video export: using AAC");
                 Some((wc::AAC_WEBCODECS_CODEC, wc::AAC_MUXER_CODEC))
@@ -314,7 +364,10 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     };
     log::info!("Video export: creating muxer target...");
     let target = wc::create_array_buffer_target()?;
-    log::info!("Video export: creating muxer (audio={:?})...", resolved_audio.map(|a| a.1));
+    log::info!(
+        "Video export: creating muxer (audio={:?})...",
+        resolved_audio.map(|a| a.1)
+    );
     let muxer = wc::create_muxer(
         &target,
         codec_str,
@@ -343,7 +396,12 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     let video_encoder = wc::create_video_encoder(&on_video_chunk, &on_video_error)?;
     log::info!("Video export: configuring video encoder...");
     wc::configure_video_encoder(
-        &video_encoder, codec_str, vid_w, vid_h, DEFAULT_VIDEO_BITRATE, FPS,
+        &video_encoder,
+        codec_str,
+        vid_w,
+        vid_h,
+        DEFAULT_VIDEO_BITRATE,
+        FPS,
     )?;
     log::info!("Video export: video encoder configured");
 
@@ -376,10 +434,17 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
 
     // ── Encode audio ─────────────────────────────────────────────────────────
     if let Some(ref enc) = audio_encoder {
-        state.export.video_status().set(Some("Encoding audio...".to_string()));
+        state
+            .export
+            .video_status()
+            .set(Some("Encoding audio...".to_string()));
         yield_now().await;
 
-        log::info!("Video export: encoding {} audio samples at {}Hz...", final_samples.len(), final_rate);
+        log::info!(
+            "Video export: encoding {} audio samples at {}Hz...",
+            final_samples.len(),
+            final_rate
+        );
 
         // Feed audio in chunks of 1024 samples (AAC frame size)
         let chunk_size = 1024usize;
@@ -407,8 +472,13 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
 
     // ── Encode video frames ──────────────────────────────────────────────────
     let total_frames = (audio_duration * FPS).ceil() as u32;
-    log::info!("Video export: encoding {total_frames} video frames ({audio_duration:.2}s at {FPS}fps)...");
-    state.export.video_status().set(Some("Encoding video...".to_string()));
+    log::info!(
+        "Video export: encoding {total_frames} video frames ({audio_duration:.2}s at {FPS}fps)..."
+    );
+    state
+        .export
+        .video_status()
+        .set(Some("Encoding video...".to_string()));
 
     let view_mode = state.export.video_view_mode().get_untracked();
     let export_duration = render.end_time - render.start_time;
@@ -434,8 +504,8 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
             let bg_canvas: HtmlCanvasElement = document.create_element("canvas")?.dyn_into()?;
             bg_canvas.set_width(vid_w);
             bg_canvas.set_height(vid_h);
-            let bg_ctx: CanvasRenderingContext2d = bg_canvas
-                .get_context("2d")?.unwrap().dyn_into()?;
+            let bg_ctx: CanvasRenderingContext2d =
+                bg_canvas.get_context("2d")?.unwrap().dyn_into()?;
             render_frame(&bg_ctx, &render, scroll_col, zoom, visible_time, scroll);
 
             log::info!("Video export: static playhead mode, {total_frames} frames");
@@ -472,9 +542,10 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
                 let progress = (frame_idx + 1) as f64 / total_frames as f64;
                 state.export.video_progress().set(Some(progress));
                 if frame_idx % 5 == 0 {
-                    state.export.video_status().set(Some(
-                        format!("Encoding video... {}%", (progress * 100.0) as u32)
-                    ));
+                    state.export.video_status().set(Some(format!(
+                        "Encoding video... {}%",
+                        (progress * 100.0) as u32
+                    )));
                     yield_now().await;
                 }
             }
@@ -510,7 +581,8 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
                 render_frame(&ctx, &render, scroll_col, zoom, visible_time, scroll);
 
                 // Draw playhead line
-                let playhead_x = ((render.start_time + spect_t - scroll) / visible_time) * vid_w as f64;
+                let playhead_x =
+                    ((render.start_time + spect_t - scroll) / visible_time) * vid_w as f64;
                 if playhead_x >= 0.0 && playhead_x <= vid_w as f64 {
                     ctx.set_stroke_style_str("#ffffff");
                     ctx.set_line_width(2.0);
@@ -529,9 +601,10 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
                 let progress = (frame_idx + 1) as f64 / total_frames as f64;
                 state.export.video_progress().set(Some(progress));
                 if frame_idx % 5 == 0 {
-                    state.export.video_status().set(Some(
-                        format!("Encoding video... {}%", (progress * 100.0) as u32)
-                    ));
+                    state.export.video_status().set(Some(format!(
+                        "Encoding video... {}%",
+                        (progress * 100.0) as u32
+                    )));
                     yield_now().await;
                 }
             }
@@ -548,7 +621,10 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
     }
 
     // Flush video encoder
-    state.export.video_status().set(Some("Finalizing...".to_string()));
+    state
+        .export
+        .video_status()
+        .set(Some("Finalizing...".to_string()));
     yield_now().await;
     wc::flush_encoder(&video_encoder).await?;
     wc::close_encoder(&video_encoder)?;
@@ -564,14 +640,22 @@ async fn export_video_impl(state: &AppState) -> Result<(), JsValue> {
 
     // Build filename
     let file = state.current_file().unwrap();
-    let base_name = file.name
-        .trim_end_matches(".wav").trim_end_matches(".WAV")
-        .trim_end_matches(".w4v").trim_end_matches(".W4V")
-        .trim_end_matches(".flac").trim_end_matches(".FLAC")
-        .trim_end_matches(".ogg").trim_end_matches(".OGG")
-        .trim_end_matches(".mp3").trim_end_matches(".MP3")
-        .trim_end_matches(".m4a").trim_end_matches(".M4A")
-        .trim_end_matches(".m4b").trim_end_matches(".M4B");
+    let base_name = file
+        .name
+        .trim_end_matches(".wav")
+        .trim_end_matches(".WAV")
+        .trim_end_matches(".w4v")
+        .trim_end_matches(".W4V")
+        .trim_end_matches(".flac")
+        .trim_end_matches(".FLAC")
+        .trim_end_matches(".ogg")
+        .trim_end_matches(".OGG")
+        .trim_end_matches(".mp3")
+        .trim_end_matches(".MP3")
+        .trim_end_matches(".m4a")
+        .trim_end_matches(".M4A")
+        .trim_end_matches(".m4b")
+        .trim_end_matches(".M4B");
     let filename = format!("{base_name}.mp4");
 
     save_export_bytes(state, mp4_bytes, filename, true);
@@ -677,4 +761,3 @@ fn normalize_audio_rate(samples: &[f32], rate: u32) -> (Vec<f32>, u32) {
 
     (out, target_rate)
 }
-

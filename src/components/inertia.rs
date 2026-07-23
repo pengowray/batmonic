@@ -159,7 +159,9 @@ pub fn start_inertia(
         // (Waveform/Spectrogram) is disposed mid-flick (e.g. a MainView switch),
         // which disposes this StoredValue. A panicking `get_value()` would then
         // crash; bail instead.
-        let Some(g) = generation.try_get_value() else { return };
+        let Some(g) = generation.try_get_value() else {
+            return;
+        };
         if g != my_gen {
             return;
         }
@@ -195,13 +197,10 @@ pub fn start_inertia(
         }
 
         // Request next frame
-        let _ = window.request_animation_frame(
-            cb_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref(),
-        );
+        let _ = window
+            .request_animation_frame(cb_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref());
     }));
 
     // Kick off the first frame
-    let _ = window.request_animation_frame(
-        cb.borrow().as_ref().unwrap().as_ref().unchecked_ref(),
-    );
+    let _ = window.request_animation_frame(cb.borrow().as_ref().unwrap().as_ref().unchecked_ref());
 }

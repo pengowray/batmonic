@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only OR MIT OR Apache-2.0
-use crate::canvas::colors::{
-    magnitude_to_greyscale, magnitude_to_db, flow_rgb,
-};
+use crate::canvas::colors::{flow_rgb, magnitude_to_db, magnitude_to_greyscale};
 use crate::canvas::spectrogram_renderer::PreRendered;
 use crate::types::SpectrogramData;
 
@@ -34,7 +32,8 @@ pub fn compute_flow_data(data: &SpectrogramData, algo: FlowAlgo) -> FlowData {
         !data.is_store_backed(),
         "compute_flow_data: store-backed spectrogram ({} cols resident, {} total) — \
          `columns` is not the full set; use the tiled path instead",
-        data.columns_in_memory(), data.total_columns,
+        data.columns_in_memory(),
+        data.total_columns,
     );
     if data.columns.is_empty() {
         return FlowData {
@@ -72,8 +71,12 @@ pub fn compute_flow_data(data: &SpectrogramData, algo: FlowAlgo) -> FlowData {
             let shift = match prev {
                 None => 0.0,
                 Some(prev_mags) => match algo {
-                    FlowAlgo::Centroid => compute_centroid_shift(prev_mags, &col.magnitudes, bin_idx, h),
-                    FlowAlgo::Gradient => compute_gradient_shift(prev_mags, &col.magnitudes, bin_idx, h),
+                    FlowAlgo::Centroid => {
+                        compute_centroid_shift(prev_mags, &col.magnitudes, bin_idx, h)
+                    }
+                    FlowAlgo::Gradient => {
+                        compute_gradient_shift(prev_mags, &col.magnitudes, bin_idx, h)
+                    }
                     FlowAlgo::Optical => compute_flow_shift(prev_mags, &col.magnitudes, bin_idx, h),
                     FlowAlgo::PhaseCoherence | FlowAlgo::Phase => 0.0, // these use their own compute paths
                 },
@@ -86,7 +89,12 @@ pub fn compute_flow_data(data: &SpectrogramData, algo: FlowAlgo) -> FlowData {
         }
     }
 
-    FlowData { width, height, greys, shifts }
+    FlowData {
+        width,
+        height,
+        greys,
+        shifts,
+    }
 }
 
 /// Composite flow data into RGBA pixels (cheap).
@@ -101,7 +109,15 @@ pub fn composite_flow(
     let mut pixels = vec![0u8; total * 4];
 
     for i in 0..total {
-        let [r, g, b] = flow_rgb(md.greys[i], md.shifts[i], intensity_gate, flow_gate, opacity, 3.0, 1.0);
+        let [r, g, b] = flow_rgb(
+            md.greys[i],
+            md.shifts[i],
+            intensity_gate,
+            flow_gate,
+            opacity,
+            3.0,
+            1.0,
+        );
         let pi = i * 4;
         pixels[pi] = r;
         pixels[pi + 1] = g;
@@ -203,7 +219,11 @@ fn compute_flow_shift(prev: &[f32], curr: &[f32], bin: usize, h: usize) -> f32 {
             (lo..hi)
                 .map(|i| {
                     let j = (i as isize + d) as usize;
-                    if j < h { curr[i] * prev[j] } else { 0.0 }
+                    if j < h {
+                        curr[i] * prev[j]
+                    } else {
+                        0.0
+                    }
                 })
                 .sum::<f32>()
         };
@@ -212,7 +232,11 @@ fn compute_flow_shift(prev: &[f32], curr: &[f32], bin: usize, h: usize) -> f32 {
             (lo..hi)
                 .map(|i| {
                     let j = (i as isize + d) as usize;
-                    if j < h { curr[i] * prev[j] } else { 0.0 }
+                    if j < h {
+                        curr[i] * prev[j]
+                    } else {
+                        0.0
+                    }
                 })
                 .sum::<f32>()
         };
@@ -239,7 +263,13 @@ pub fn pre_render_flow_columns(
     algo: FlowAlgo,
 ) -> PreRendered {
     if columns.is_empty() {
-        return PreRendered { width: 0, height: 0, pixels: Vec::new(), db_data: Vec::new(), flow_shifts: Vec::new() };
+        return PreRendered {
+            width: 0,
+            height: 0,
+            pixels: Vec::new(),
+            db_data: Vec::new(),
+            flow_shifts: Vec::new(),
+        };
     }
 
     let width = columns.len() as u32;
@@ -276,5 +306,11 @@ pub fn pre_render_flow_columns(
         }
     }
 
-    PreRendered { width, height, pixels: Vec::new(), db_data, flow_shifts: shifts }
+    PreRendered {
+        width,
+        height,
+        pixels: Vec::new(),
+        db_data,
+        flow_shifts: shifts,
+    }
 }
