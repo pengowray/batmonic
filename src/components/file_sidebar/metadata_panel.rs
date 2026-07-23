@@ -608,7 +608,8 @@ fn date_section(f: &crate::state::LoadedFile, view_mode: MetadataView) -> impl I
         }
     }
 
-    // 3. Xeno-canto recording date (+ time) and upload date.
+    // 3. Recording date (+ time) and upload date from the external source the
+    // file came from — Xeno-Canto, Wikimedia Commons, …
     if let Some(xc) = &f.xc_metadata {
         let get = |key: &str| {
             xc.iter()
@@ -616,9 +617,13 @@ fn date_section(f: &crate::state::LoadedFile, view_mode: MetadataView) -> impl I
                 .map(|(_, v)| v.clone())
                 .filter(|v| !v.trim().is_empty())
         };
+        let date_label = format!(
+            "{} date",
+            f.source_label.as_deref().unwrap_or("Xeno-canto")
+        );
         match (get("Date"), get("Time")) {
-            (Some(d), Some(t)) => rows.push(("Xeno-canto date".to_string(), format!("{d}T{t}"))),
-            (Some(d), None) => rows.push(("Xeno-canto date".to_string(), d)),
+            (Some(d), Some(t)) => rows.push((date_label, format!("{d}T{t}"))),
+            (Some(d), None) => rows.push((date_label, d)),
             _ => {}
         }
         if let Some(u) = get("Uploaded").or_else(|| get("Upload date")) {
@@ -941,6 +946,8 @@ pub(crate) fn MetadataPanel() -> impl IntoView {
                             ("0 B".to_string(), "File size".to_string())
                         };
                         let xc_fields: Vec<_> = f.xc_metadata.clone().unwrap_or_default();
+                        let source_label = f.source_label.clone()
+                            .unwrap_or_else(|| "Xeno-canto".to_string());
                         let has_xc = !xc_fields.is_empty();
                         let guano_fields: Vec<_> = meta.guano.as_ref()
                             .map(|g| g.fields.clone())
@@ -966,7 +973,7 @@ pub(crate) fn MetadataPanel() -> impl IntoView {
                                 }).collect();
                                 view! {
                                     <div class="setting-group">
-                                        <div class="setting-group-title setting-group-title-major">"Xeno-canto"</div>
+                                        <div class="setting-group-title setting-group-title-major">{source_label}</div>
                                         {items}
                                     </div>
                                 }.into_any()

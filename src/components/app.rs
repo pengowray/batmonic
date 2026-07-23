@@ -22,6 +22,7 @@ use crate::components::hearing_bar::HearingBar;
 use crate::components::view_bar::ViewBar;
 use crate::components::play_controls::{ToastDisplay, BookmarkPopup};
 use crate::components::bottom_toolbar::BottomToolbar;
+use crate::components::wiki_browser::WikiBrowser;
 use crate::components::xc_browser::XcBrowser;
 use crate::components::zc_chart::ZcDotChart;
 use crate::components::chromagram_view::ChromagramView;
@@ -32,6 +33,33 @@ use crate::components::annotation_label_editor::AnnotationLabelEditor;
 use crate::components::overflow_menu::CanvasOverflowMenus;
 use crate::viewport;
 use crate::web_util::sleep_ms;
+
+/// Recognise the Wikimedia forms of the URL hash: `#commons:File:Foo.wav`,
+/// `#wiki:<any wikimedia url>`, or a bare `#File:Foo.wav`. Returns the
+/// percent-decoded target for `wikimedia::load_from_input`.
+fn wikimedia_hash_target(hash: &str) -> Option<String> {
+    const PREFIXES: &[&str] = &["commons:", "wiki:", "wikipedia:"];
+    // `get` rather than slicing: the hash is arbitrary user text and a byte
+    // index landing mid-character would panic.
+    let rest = PREFIXES
+        .iter()
+        .find(|p| hash.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p)))
+        .map(|p| &hash[p.len()..])
+        .filter(|rest| !rest.is_empty())
+        .or_else(|| {
+            hash.get(..5)
+                .is_some_and(|h| h.eq_ignore_ascii_case("File:"))
+                .then_some(hash)
+                .filter(|h| h.len() > 5)
+        })?;
+    // A URL carries its own percent-encoding that `parse_input` handles; only
+    // bare titles need decoding here.
+    Some(if rest.starts_with("http://") || rest.starts_with("https://") {
+        rest.to_string()
+    } else {
+        crate::wikimedia::decode_component(rest)
+    })
+}
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -108,6 +136,12 @@ pub fn App() -> impl IntoView {
                         }
                     }
                     state.loading_done(load_id);
+                });
+            } else if let Some(target) = wikimedia_hash_target(trimmed) {
+                // Wikimedia deep links: `#commons:File:Foo.wav`, `#wiki:<url>`,
+                // or a bare `#File:Foo.wav`.
+                wasm_bindgen_futures::spawn_local(async move {
+                    crate::wikimedia::load_from_input(state, &target).await;
                 });
             }
         }
@@ -968,6 +1002,10 @@ pub fn App() -> impl IntoView {
                 state_kb.dialogs.xc_browser_open().set(false);
                 return;
             }
+            if state_kb.dialogs.wiki_browser_open().get_untracked() {
+                state_kb.dialogs.wiki_browser_open().set(false);
+                return;
+            }
             if state_kb.mic.listening().get_untracked() || state_kb.mic.recording().get_untracked() {
                 microphone::stop_all(&state_kb);
             }
@@ -1329,6 +1367,7 @@ pub fn App() -> impl IntoView {
             <MainArea />
             <RightSidebar />
             {move || state.dialogs.xc_browser_open().get().then(|| view! { <XcBrowser /> })}
+            {move || state.dialogs.wiki_browser_open().get().then(|| view! { <WikiBrowser /> })}
             {cfg!(debug_assertions).then(|| view! {
                 <div class="debug-build-banner"
                     title="This is an unoptimised WASM build. It runs slower and can hit spurious panics that don't happen in release builds. Rebuild with `trunk serve --release`."

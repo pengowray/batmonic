@@ -35,7 +35,7 @@ pub(crate) use metadata_panel::MetadataPanel;
 pub(crate) use harmonics::HarmonicsPanel;
 pub(crate) use psd_panel::PsdPanel;
 pub(crate) use pulse_panel::PulsePanel;
-pub(crate) use loading::{load_named_bytes, load_native_file, fetch_demo_index, load_single_demo};
+pub(crate) use loading::{load_named_bytes, load_native_file, fetch_demo_index, load_single_demo, fetch_bytes, fetch_text};
 
 fn copy_to_clipboard(text: &str) {
     if let Some(window) = web_sys::window() {

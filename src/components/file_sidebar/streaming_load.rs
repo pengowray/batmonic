@@ -121,6 +121,7 @@ pub(super) fn push_streaming_file(state: AppState, f: NewStreamingFile) -> usize
                 preview: Some(preview),
                 overview_image: None,
                 xc_metadata: None,
+                source_label: None,
                 xc_hashes: None,
                 is_demo: false,
                 is_recording: false,

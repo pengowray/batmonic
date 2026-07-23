@@ -7166,3 +7166,59 @@ button.canvas-overflow-action-btn.disabled {
 .output-gutter:hover .output-gutter-band {
     background: rgba(140, 200, 255, 0.26);
 }
+
+/* ── Wikimedia Commons import ───────────────────────────────────────── */
+
+.wiki-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid #2a2a3a;
+}
+
+.wiki-row:hover {
+    background: #262636;
+}
+
+.wiki-row-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.wiki-row-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Declared time expansion factor (P14424) — corrected on load. */
+.wiki-te-badge {
+    flex: none;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #3a5f3a;
+    color: #b6e5b6;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.wiki-row-detail {
+    color: #888;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.wiki-row-link {
+    color: #7aa7d8;
+    font-size: 11px;
+    text-decoration: none;
+}
+
+.wiki-row-link:hover {
+    text-decoration: underline;
+}

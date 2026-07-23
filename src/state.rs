@@ -269,7 +269,13 @@ pub struct LoadedFile {
     /// Higher-resolution overview image computed after full spectrogram is ready.
     /// Falls back to `preview` when not yet available.
     pub overview_image: Option<PreviewImage>,
+    /// Label/value metadata from whichever external source this file came
+    /// from - Xeno-Canto originally, now Wikimedia Commons too. Keys are
+    /// human-readable labels ("Species", "License", ...) and are matched by
+    /// name by the metadata panel, device hinting, and bat-book auto-resolve.
     pub xc_metadata: Option<Vec<(String, String)>>,
+    /// Heading `xc_metadata` is shown under. `None` means Xeno-Canto.
+    pub source_label: Option<String>,
     /// Hash data from XC sidecar (for verification against computed identity).
     pub xc_hashes: Option<SidecarHashes>,
     /// Loaded from the bat-demo-sounds archive (not directly from XC or user's disk).
@@ -1986,6 +1992,7 @@ pub struct DialogsState {
     /// Persisted: notification rationale already surfaced.
     pub notif_perm_asked: bool,
     pub xc_browser_open: bool,
+    pub wiki_browser_open: bool,
 }
 
 /// Loaded-file library + load queue.
@@ -2413,6 +2420,7 @@ impl AppState {
                     false,
                 ),
                 xc_browser_open: false,
+                wiki_browser_open: false,
             }),
             is_tauri: detect_tauri(),
             is_mobile_platform: detect_mobile_ua(),

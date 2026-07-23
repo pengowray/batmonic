@@ -765,6 +765,13 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                         state.dialogs.xc_browser_open().set(true);
                                     }>"Explore XC"</button>
                                 })}
+                                <button
+                                    class="upload-btn add-files-btn xc-btn"
+                                    title="Load a WAV or other recording from Wikimedia Commons or Wikipedia, correcting any declared time expansion factor"
+                                    on:click=move |_| {
+                                        state.dialogs.wiki_browser_open().set(true);
+                                    }
+                                >"From Wikipedia"</button>
                             </div>
                             // Demo picker (inline, when triggered)
                             {move || demo_picker_open.get().then(|| {

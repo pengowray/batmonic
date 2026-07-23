@@ -1,7 +1,12 @@
 use crate::audio::guano::GuanoMetadata;
-use crate::audio::source::AudioSource;
+use crate::audio::source::{AudioSource, InMemorySource};
 use crate::audio::zc::ZcData;
 use std::sync::Arc;
+
+/// Ceiling on the rate a time-expansion correction may produce. A 384 kHz
+/// recording expanded 10x lands at 3.84 MHz, so the limit only rejects
+/// factors that are clearly bad metadata rather than an unusual detector.
+pub const MAX_CORRECTED_SAMPLE_RATE: f64 = 10_000_000.0;
 
 #[derive(Clone, Debug, Default)]
 pub struct FileMetadata {
@@ -40,6 +45,43 @@ pub struct AudioData {
     pub channels: u32,
     pub duration_secs: f64,
     pub metadata: FileMetadata,
+}
+
+impl AudioData {
+    /// Reinterpret a recording that was stored time-expanded — a 10x bat
+    /// detector file, say — at the rate the original event happened at.
+    /// Frequencies scale up by `factor` and the duration shrinks by it; the
+    /// samples themselves are untouched, only the rate they're read at
+    /// changes.
+    ///
+    /// Returns `false` and leaves `self` alone when `factor` isn't a usable
+    /// expansion: non-finite, zero or negative, exactly 1, or large enough to
+    /// push the corrected rate past [`MAX_CORRECTED_SAMPLE_RATE`].
+    pub fn apply_time_expansion(&mut self, factor: f64) -> bool {
+        if !factor.is_finite() || factor <= 0.0 || (factor - 1.0).abs() < 1e-9 {
+            return false;
+        }
+        let corrected = (self.sample_rate as f64 * factor).round();
+        if !(1.0..=MAX_CORRECTED_SAMPLE_RATE).contains(&corrected) {
+            return false;
+        }
+        let corrected = corrected as u32;
+        self.sample_rate = corrected;
+        self.duration_secs /= factor;
+        // Keep the source's own rate in step. Only an in-memory source can be
+        // rebuilt this cheaply (everything in it is behind an Arc), and it is
+        // the only kind that reaches this path — corrections are applied right
+        // after a full decode, never to a streaming source.
+        if let Some(mem) = self.source.as_any().downcast_ref::<InMemorySource>() {
+            self.source = Arc::new(InMemorySource {
+                samples: mem.samples.clone(),
+                raw_samples: mem.raw_samples.clone(),
+                sample_rate: corrected,
+                channels: mem.channels,
+            });
+        }
+        true
+    }
 }
 
 impl std::fmt::Debug for AudioData {
@@ -180,4 +222,65 @@ pub enum FlowColorScheme {
     TealOrange,
     PurpleGreen,
     Spectral,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_audio(sample_rate: u32) -> AudioData {
+        let samples = Arc::new(vec![0.0f32; sample_rate as usize]);
+        AudioData {
+            samples: samples.clone(),
+            source: Arc::new(InMemorySource {
+                samples,
+                raw_samples: None,
+                sample_rate,
+                channels: 1,
+            }),
+            sample_rate,
+            channels: 1,
+            duration_secs: 1.0,
+            metadata: FileMetadata::default(),
+        }
+    }
+
+    #[test]
+    fn time_expansion_scales_rate_and_duration() {
+        let mut audio = dummy_audio(44_100);
+        assert!(audio.apply_time_expansion(10.0));
+        assert_eq!(audio.sample_rate, 441_000);
+        assert_eq!(audio.source.sample_rate(), 441_000);
+        assert!((audio.duration_secs - 0.1).abs() < 1e-9);
+        // Samples are reinterpreted, never resampled.
+        assert_eq!(audio.samples.len(), 44_100);
+    }
+
+    #[test]
+    fn time_expansion_rejects_useless_factors() {
+        for factor in [f64::NAN, f64::INFINITY, 0.0, -10.0, 1.0] {
+            let mut audio = dummy_audio(44_100);
+            assert!(!audio.apply_time_expansion(factor), "factor {factor} should be rejected");
+            assert_eq!(audio.sample_rate, 44_100);
+            assert_eq!(audio.duration_secs, 1.0);
+        }
+    }
+
+    #[test]
+    fn time_expansion_rejects_absurd_corrected_rate() {
+        let mut audio = dummy_audio(384_000);
+        assert!(!audio.apply_time_expansion(1000.0));
+        assert_eq!(audio.sample_rate, 384_000);
+        // Just under the ceiling still applies.
+        assert!(audio.apply_time_expansion(10.0));
+        assert_eq!(audio.sample_rate, 3_840_000);
+    }
+
+    #[test]
+    fn time_expansion_below_one_compresses() {
+        let mut audio = dummy_audio(48_000);
+        assert!(audio.apply_time_expansion(0.5));
+        assert_eq!(audio.sample_rate, 24_000);
+        assert!((audio.duration_secs - 2.0).abs() < 1e-9);
+    }
 }

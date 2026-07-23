@@ -109,14 +109,31 @@ pub(super) async fn read_and_load_file(file: File, state: AppState, load_id: u64
         return Err(msg);
     }
     let bytes = read_file_bytes(&file).await?;
-    let result = load_named_bytes(name, &bytes, None, None, state, load_id, false).await;
+    let result = load_named_bytes(name, &bytes, None, None, None, None, state, load_id, false).await;
     if result.is_ok() {
         finalize_loaded_file(state, last_modified_ms);
     }
     result
 }
 
-pub(crate) async fn load_named_bytes(name: String, bytes: &[u8], xc_metadata: Option<Vec<(String, String)>>, xc_hashes: Option<crate::state::SidecarHashes>, state: AppState, load_id: u64, is_demo: bool) -> Result<(), String> {
+/// Decode `bytes` and add them to the library as a new file.
+///
+/// `xc_metadata` is the generic external-source label/value bag shown in the
+/// metadata panel (Xeno-Canto, Wikimedia Commons, ...) and `source_label` is
+/// the heading it appears under; `None` means Xeno-Canto, the original source.
+/// `time_expansion` reinterprets the decoded samples at their true rate for
+/// recordings stored time-expanded (see `AudioData::apply_time_expansion`).
+pub(crate) async fn load_named_bytes(
+    name: String,
+    bytes: &[u8],
+    xc_metadata: Option<Vec<(String, String)>>,
+    xc_hashes: Option<crate::state::SidecarHashes>,
+    time_expansion: Option<f64>,
+    source_label: Option<String>,
+    state: AppState,
+    load_id: u64,
+    is_demo: bool,
+) -> Result<(), String> {
     let mut wav_markers = crate::audio::loader::parse_wav_markers(bytes);
     let is_m4a = crate::audio::loader::is_m4a(bytes);
     // For M4A, prefer the browser's AudioContext decoder: it handles every AAC
@@ -157,6 +174,16 @@ pub(crate) async fn load_named_bytes(name: String, bytes: &[u8], xc_metadata: Op
             }
         }
     }
+    // Correct the rate before anything derived from it - preview, silence
+    // scan, spectrogram geometry - is computed below.
+    if let Some(te) = time_expansion {
+        if audio.apply_time_expansion(te) {
+            log::info!("{name}: time expansion {te}x applied, true rate {} Hz", audio.sample_rate);
+        } else {
+            log::warn!("{name}: ignoring unusable time expansion factor {te}");
+        }
+    }
+
     log::info!(
         "Loaded {}: {} samples, {} Hz, {:.2}s",
         name,
@@ -224,6 +251,7 @@ pub(crate) async fn load_named_bytes(name: String, bytes: &[u8], xc_metadata: Op
                 preview: Some(preview),
                 overview_image: None,
                 xc_metadata,
+                source_label,
                 xc_hashes,
                 is_demo,
                 is_recording: false,
@@ -379,7 +407,7 @@ async fn fetch_demo_text(url: &str) -> Result<String, String> {
     }
 }
 
-pub(super) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
+pub(crate) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
     let window = web_sys::window().ok_or("No window")?;
     let resp_value = JsFuture::from(window.fetch_with_str(url))
         .await
@@ -397,7 +425,7 @@ pub(super) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
     Ok(uint8.to_vec())
 }
 
-async fn fetch_text(url: &str) -> Result<String, String> {
+pub(crate) async fn fetch_text(url: &str) -> Result<String, String> {
     let window = web_sys::window().ok_or("No window")?;
     let resp_value = JsFuture::from(window.fetch_with_str(url))
         .await
@@ -640,7 +668,7 @@ pub(crate) async fn load_single_demo(entry: &DemoEntry, state: AppState, load_id
     );
     log::info!("Fetching demo: {}", entry.filename);
     let bytes = fetch_demo_bytes(&audio_url).await?;
-    load_named_bytes(entry.filename.clone(), &bytes, xc_metadata, xc_hashes, state, load_id, true).await
+    load_named_bytes(entry.filename.clone(), &bytes, xc_metadata, xc_hashes, None, None, state, load_id, true).await
 }
 
 async fn read_file_bytes(file: &File) -> Result<Vec<u8>, String> {
@@ -703,7 +731,7 @@ pub(crate) async fn load_native_file(path: String, state: AppState, load_id: u64
     let bytes = uint8.to_vec();
 
     // Decode and add to state using existing pipeline
-    load_named_bytes(name.clone(), &bytes, None, None, state, load_id, false).await?;
+    load_named_bytes(name.clone(), &bytes, None, None, None, None, state, load_id, false).await?;
 
     // The file was just added — set the native path on identity
     let file_index = state.library.files().get_untracked().len().saturating_sub(1);

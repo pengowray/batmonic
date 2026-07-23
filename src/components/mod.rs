@@ -25,6 +25,7 @@ pub mod bottom_toolbar;
 pub mod freq_range_button;
 pub mod axis_drag;
 pub mod gutter;
+pub mod wiki_browser;
 pub mod xc_browser;
 pub mod zc_chart;
 pub mod chromagram_view;

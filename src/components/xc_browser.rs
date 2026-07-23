@@ -540,6 +540,8 @@ pub fn XcBrowser() -> impl IntoView {
                     &bytes,
                     Some(cached.metadata),
                     cached.hashes,
+                    None,
+                    None,
                     state,
                     load_id,
                     false,

@@ -18,6 +18,7 @@ pub mod settings;
 pub mod test_hook;
 pub mod timeline;
 pub mod viewport;
+pub mod wikimedia;
 pub mod web_util;
 
 use leptos::prelude::*;
