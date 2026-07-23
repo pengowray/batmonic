@@ -1,0 +1,10 @@
+# Revisions to skip when running `git blame`.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub honours this file automatically.)
+#
+# Only add commits that provably change no behaviour.
+
+# style: cargo fmt --all
+48a922d9d43eda60d1b9cad1168708ed7806c0df
