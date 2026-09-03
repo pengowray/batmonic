@@ -745,7 +745,7 @@ impl MainView {
         match self {
             Self::Spectrogram => "Spectrogram",
             Self::Waveform => "Waveform",
-            Self::ZcChart => "ZC Chart",
+            Self::ZcChart => "Dot plot",
             Self::Flow => "Flow",
             Self::Chromagram => "Chromagram",
             Self::Resonators => "Resonators",
@@ -756,7 +756,7 @@ impl MainView {
         match self {
             Self::Spectrogram => "Spec",
             Self::Waveform => "Wave",
-            Self::ZcChart => "ZC",
+            Self::ZcChart => "Dots",
             Self::Flow => "Flow",
             Self::Chromagram => "Chroma",
             Self::Resonators => "Reson",
