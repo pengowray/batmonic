@@ -1,6 +1,7 @@
 //! Collapsible export section: WAV / MP4 export with format radio buttons,
 //! video settings, progress bar, and .batm import/export.
 
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use leptos::prelude::*;
 
@@ -90,7 +91,7 @@ pub fn ExportSection(
                 } else {
                     "export-toggle-arrow"
                 }>
-                    {"\u{25B6}"}
+                    <Icon kind=Icon::ChevronRight />
                 </span>
                 " Export"
             </div>

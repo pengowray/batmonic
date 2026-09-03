@@ -17,6 +17,7 @@ pub mod settings_panel;
 pub(crate) mod streaming_load;
 mod suggestions;
 
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use crate::state::AppState;
 use js_sys;
@@ -173,7 +174,7 @@ pub fn FileSidebar() -> impl IntoView {
                         "Settings"
                     }
                 >
-                    {"\u{2699}"}
+                    <Icon kind=Icon::Settings />
                 </button>
             </div>
             {move || {

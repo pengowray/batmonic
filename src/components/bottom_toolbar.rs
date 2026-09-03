@@ -18,6 +18,7 @@
 use crate::audio::source::ChannelView;
 use crate::audio::{microphone, playback};
 use crate::components::combo_button::ComboButton;
+use crate::components::icons::Icon;
 use crate::components::listen_button::ListenButton;
 use crate::components::mode_button::ModeBucket;
 use crate::state::store_fields::*;
@@ -114,7 +115,9 @@ pub fn BottomToolbar() -> impl IntoView {
         }
     });
 
-    let play_left_value = Signal::derive(move || "\u{25B6}".to_string()); // ▶
+    // Icon-only face; the mode label (if any) sits above it as the category.
+    let play_left_value = Signal::derive(move || String::new());
+    let play_left_icon = Signal::derive(move || Some(Icon::Play));
 
     // Mode label shown on the Play button face (e.g. "HET", "TE"). Shown
     // for every selected mode so the main button and the per-mode extras
@@ -498,7 +501,7 @@ pub fn BottomToolbar() -> impl IntoView {
                         >
                             <span class="combo-btn-text">
                                 <span class="layer-btn-category">{label}</span>
-                                <span class="layer-btn-value">{"\u{25B6}"}</span>
+                                <span class="layer-btn-value"><Icon kind=Icon::Play /></span>
                             </span>
                         </button>
                     }
@@ -519,6 +522,7 @@ pub fn BottomToolbar() -> impl IntoView {
                     left_label=""
                     left_label_dyn=play_mode_label
                     left_value=play_left_value
+                    left_icon=play_left_icon
                     left_click=play_left_click
                     left_class=play_left_class
                     right_value=play_empty

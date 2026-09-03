@@ -1,3 +1,4 @@
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use crate::state::{AppState, OverviewView};
 use crate::types::PreviewImage;
@@ -812,8 +813,8 @@ pub fn OverviewToolbar() -> impl IntoView {
         OverviewView::Waveform => "Waveform",
     };
     let target_icon = move || match target() {
-        OverviewView::Spectrogram => "\u{25A6}", // ▦ grid — spectrogram
-        OverviewView::Waveform => "\u{223F}",    // ∿ sine — waveform
+        OverviewView::Spectrogram => view! { <Icon kind=Icon::Grid /> },
+        OverviewView::Waveform => view! { <Icon kind=Icon::Wave /> },
     };
 
     let toggle = move |_: MouseEvent| {

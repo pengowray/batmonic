@@ -1,4 +1,5 @@
 use crate::annotations::AudioFileMetadata;
+use crate::components::icons::Icon;
 use crate::format_time::format_duration_compact;
 use crate::opfs;
 use crate::project::BatProject;
@@ -282,7 +283,7 @@ fn NoProjectView() -> impl IntoView {
                                         }}
                                         <button class="project-list-item-delete" on:click=on_delete
                                             title="Delete this project"
-                                        >{"\u{1F5D1}"}</button>
+                                        ><Icon kind=Icon::Trash /></button>
                                     </div>
                                 </div>
                             }

@@ -1,6 +1,7 @@
 use crate::bat_book::auto_resolve;
 use crate::bat_book::data::get_manifest;
 use crate::bat_book::types::{BatBookEntry, BatBookMode, BatBookRegion};
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use crate::state::AppState;
 use leptos::prelude::*;
@@ -162,7 +163,7 @@ pub fn BatBookStrip() -> impl IntoView {
                         on:click=on_config
                         title="Choose region"
                     >
-                        "\u{2699}"
+                        <Icon kind=Icon::Settings />
                     </button>
                     <Show when=move || region_menu_open.get()>
                         // Invisible full-screen backdrop to catch outside clicks

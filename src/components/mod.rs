@@ -15,6 +15,7 @@ pub mod freq_range_button;
 pub mod gutter;
 pub mod hearing_bar;
 pub mod hfr_button;
+pub mod icons;
 pub mod inertia;
 pub mod listen_button;
 pub mod modal;

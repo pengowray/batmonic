@@ -6,6 +6,7 @@
 // Kept deliberately flexible — flex-wrap + a `.bar-spacer` separator lets
 // new toggles be added on either end without breaking narrow layouts.
 
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use leptos::prelude::*;
 
@@ -120,8 +121,8 @@ fn ToolCombo() -> impl IntoView {
             >
                 <span class="layer-btn-category">"\u{00A0}"</span>
                 <span class="layer-btn-value tool-combo-icon">{move || match state.interaction.canvas_tool().get() {
-                    CanvasTool::Hand => "\u{270B}",      // ✋ open hand = pan
-                    CanvasTool::Selection => "\u{2B1A}", // ⬚ dashed box = marquee select
+                    CanvasTool::Hand => view! { <Icon kind=Icon::Hand /> },
+                    CanvasTool::Selection => view! { <Icon kind=Icon::Select /> },
                 }}</span>
             </button>
             <Show when=move || is_open()>
@@ -133,14 +134,14 @@ fn ToolCombo() -> impl IntoView {
                             state.interaction.canvas_tool().set(CanvasTool::Hand);
                             state.panels.layer_panel_open().set(None);
                         }
-                    >"\u{270B}\u{00A0}\u{00A0}Hand (pan)"</button>
+                    ><Icon kind=Icon::Hand />"\u{00A0}\u{00A0}Hand (pan)"</button>
                     <button
                         class=move || layer_opt_class(state.interaction.canvas_tool().get() == CanvasTool::Selection)
                         on:click=move |_| {
                             state.interaction.canvas_tool().set(CanvasTool::Selection);
                             state.panels.layer_panel_open().set(None);
                         }
-                    >"\u{2B1A}\u{00A0}\u{00A0}Selection"</button>
+                    ><Icon kind=Icon::Select />"\u{00A0}\u{00A0}Selection"</button>
                 </div>
             </Show>
         </div>

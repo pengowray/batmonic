@@ -1,4 +1,5 @@
 use super::file_groups::{SequenceInfo, TrackInfo};
+use crate::components::icons::Icon;
 use crate::format_time::format_duration_compact;
 use leptos::prelude::*;
 
@@ -208,7 +209,7 @@ pub fn FileBadgeRow(
                         e.stop_propagation();
                         if let Some(cb) = &on_dl { cb.run(()); }
                     }
-                >"\u{1F4BE}"</button>
+                ><Icon kind=Icon::Download /></button>
             }
         })}
 

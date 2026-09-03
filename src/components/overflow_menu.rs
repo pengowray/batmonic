@@ -4,6 +4,7 @@ use crate::annotations::{
 };
 use crate::canvas::spectrogram_renderer::freq_to_y;
 use crate::components::file_sidebar::settings_panel::{delete_annotation, toggle_annotation_lock};
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use crate::state::{ActiveFocus, AppState, Selection};
 use leptos::prelude::*;
@@ -11,8 +12,8 @@ use leptos::prelude::*;
 // Icons for the expand/contract freq buttons.
 // Expand = "remove frequency bounds" (treat as full range).
 // Contract = "snap frequency to current view/focus".
-const ICON_EXPAND: &str = "\u{26F6}"; // ⛶ square four corners — full range / remove bounds
-const ICON_CONTRACT: &str = "\u{25AD}"; // ▭ white rectangle — snap to current view
+const ICON_EXPAND: Icon = Icon::Fullscreen;
+const ICON_CONTRACT: Icon = Icon::Window;
 
 /// Creates an annotation from the current transient selection and enters label-edit mode.
 pub fn annotate_selection(state: &AppState) {
@@ -353,7 +354,7 @@ fn FreqRow(
                     title="Full frequency range (remove bounds)"
                     on:click=move |_| { if !expand_disabled.get_untracked() { on_expand.run(()); } }
                 >
-                    {ICON_EXPAND}
+                    <Icon kind=ICON_EXPAND />
                 </button>
                 <button
                     class="canvas-overflow-action-btn"
@@ -368,7 +369,7 @@ fn FreqRow(
                     }
                     on:click=move |_| { if !contract_disabled.get_untracked() { on_contract.run(()); } }
                 >
-                    {ICON_CONTRACT}
+                    <Icon kind=ICON_CONTRACT />
                 </button>
             </div>
         </div>

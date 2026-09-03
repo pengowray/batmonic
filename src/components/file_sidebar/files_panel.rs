@@ -3,6 +3,7 @@ use super::file_groups;
 use crate::audio::playback;
 use crate::audio::streaming_source;
 use crate::canvas::tile_cache;
+use crate::components::icons::Icon;
 use crate::format_time::format_duration_compact;
 use crate::state::store_fields::*;
 use crate::state::{AppState, FileSortMode, LoadedFile};
@@ -961,7 +962,7 @@ fn SortBar(sort_mode: FileSortMode) -> impl IntoView {
                 title=move || if show_previews.get() { "Hide previews" } else { "Show previews" }
                 on:click=on_toggle_previews
             >
-                "\u{1F5BC}\u{FE0E}"
+                <Icon kind=Icon::Image />
             </button>
         </div>
     }

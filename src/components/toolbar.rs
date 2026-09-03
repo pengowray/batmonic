@@ -3,6 +3,7 @@ use crate::components::file_sidebar::file_badges::{
     get_xc_field, parse_cc_license, FileBadgeData, FileBadgeRow,
 };
 use crate::components::file_sidebar::file_groups;
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use crate::state::{
     AppState, MicAcquisitionState, PlaybackMode, RecordReadyState, RightSidebarTab,
@@ -344,7 +345,7 @@ pub fn Toolbar() -> impl IntoView {
                     }
                 }
                 title=move || if state.panels.left_collapsed().get() { "Show sidebar" } else { "Hide sidebar" }
-            >{"\u{25E7}"}</button>
+            ><Icon kind=Icon::SidebarLeft /></button>
 
             // Center: brand + filename (row 1) + badges (row 2)
             <div class="toolbar-title-center">
@@ -384,12 +385,12 @@ pub fn Toolbar() -> impl IntoView {
                                 let hfr_on = state.viewmode.focus_stack().get().hfr_enabled();
                                 let frequency_shifted = hfr_on && !muted && mode != PlaybackMode::Normal;
                                 if frequency_shifted {
-                                    Some("\u{1F3A4}\u{1F987}".to_string())
+                                    Some(view! { <Icon kind=Icon::Mic /><Icon kind=Icon::Bat /> }.into_any())
                                 } else {
-                                    Some("\u{1F3A4}".to_string())
+                                    Some(view! { <Icon kind=Icon::Mic /> }.into_any())
                                 }
                             } else if playing && !recording {
-                                Some("\u{25B6}\u{FE0F}".to_string())
+                                Some(view! { <Icon kind=Icon::Play /> }.into_any())
                             } else {
                                 None
                             }
@@ -449,9 +450,9 @@ pub fn Toolbar() -> impl IntoView {
                             // Unsaved badge + download button (toolbar-specific)
                             {unsaved.then(|| {
                                 let (btn_label, btn_title) = if is_tauri {
-                                    ("\u{1F4BE} Save", "Save recording")
+                                    ("Save", "Save recording")
                                 } else {
-                                    ("\u{1F4BE} Download", "Download WAV")
+                                    ("Download", "Download WAV")
                                 };
                                 view! {
                                     <span class="toolbar-unsaved-badge">"* File unsaved"</span>
@@ -459,7 +460,7 @@ pub fn Toolbar() -> impl IntoView {
                                         class="toolbar-download-btn"
                                         title=btn_title
                                         on:click=on_toolbar_download
-                                    >{btn_label}</button>
+                                    ><Icon kind=Icon::Download />" "{btn_label}</button>
                                 }
                             })}
 
@@ -558,7 +559,7 @@ pub fn Toolbar() -> impl IntoView {
                                 on:click=move |_| state.undo_annotations()
                                 disabled=move || !state.can_undo()
                             >
-                                <span class="toolbar-overflow-icon">{"\u{21B6}"}</span>
+                                <span class="toolbar-overflow-icon"><Icon kind=Icon::Undo /></span>
                                 "Undo"
                             </button>
                             <button
@@ -566,7 +567,7 @@ pub fn Toolbar() -> impl IntoView {
                                 on:click=move |_| state.redo_annotations()
                                 disabled=move || !state.can_redo()
                             >
-                                <span class="toolbar-overflow-icon">{"\u{21B7}"}</span>
+                                <span class="toolbar-overflow-icon"><Icon kind=Icon::Redo /></span>
                                 "Redo"
                             </button>
                             <div class="toolbar-overflow-separator"></div>
@@ -586,7 +587,7 @@ pub fn Toolbar() -> impl IntoView {
                                 }
                                 disabled=move || state.viewmode.nav_index().get() == 0
                             >
-                                <span class="toolbar-overflow-icon">"←"</span>
+                                <span class="toolbar-overflow-icon"><Icon kind=Icon::ArrowLeft /></span>
                                 "Back"
                             </button>
                             <button
@@ -609,7 +610,7 @@ pub fn Toolbar() -> impl IntoView {
                                     idx + 1 >= len
                                 }
                             >
-                                <span class="toolbar-overflow-icon">"→"</span>
+                                <span class="toolbar-overflow-icon"><Icon kind=Icon::ArrowRight /></span>
                                 "Forward"
                             </button>
                         </div>
@@ -629,7 +630,7 @@ pub fn Toolbar() -> impl IntoView {
                         }
                     }
                     title=move || if state.panels.right_collapsed().get() { "Show info panel" } else { "Hide info panel" }
-                >{"\u{25E8}"}</button>
+                ><Icon kind=Icon::SidebarRight /></button>
             </div>
 
             // CC License modal

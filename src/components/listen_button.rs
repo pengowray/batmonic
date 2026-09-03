@@ -11,6 +11,7 @@
 
 use crate::audio::microphone;
 use crate::components::combo_button::ComboButton;
+use crate::components::icons::Icon;
 use crate::state::store_fields::*;
 use crate::state::{
     AppState, LayerPanel, MicAcquisitionState, MicStrategy, PlaybackMode, RecordReadyState,
@@ -63,19 +64,36 @@ pub fn ListenButton() -> impl IntoView {
 
     let listen_left_value = Signal::derive(move || {
         if state.mic.record_ready_state().get() == RecordReadyState::AwaitingConfirmation {
-            "\u{23F8} Rec ready\u{2026}".to_string()
+            "Rec ready\u{2026}".to_string()
         } else if state.mic.acquisition_state().get() == MicAcquisitionState::Acquiring {
             "Readying\u{2026}".to_string()
         } else if state.mic.listening().get() && state.mic.mute_output().get() {
             if state.mic.acquisition_state().get() == MicAcquisitionState::Ready {
-                "\u{23F8} Muted".to_string()
+                "Muted".to_string()
             } else {
                 "Readying\u{2026}".to_string()
             }
         } else {
             // Button label is stable — USB mic detection is communicated via
             // the toast + file-panel chip + green LED on the Mic button.
-            "\u{1F3A4} Listen".to_string()
+            "Listen".to_string()
+        }
+    });
+    // Icon beside the label: pause while parked/muted, mic otherwise.
+    let listen_left_icon = Signal::derive(move || {
+        let rec_ready =
+            state.mic.record_ready_state().get() == RecordReadyState::AwaitingConfirmation;
+        let muted_ready = state.mic.listening().get()
+            && state.mic.mute_output().get()
+            && state.mic.acquisition_state().get() == MicAcquisitionState::Ready;
+        if rec_ready || muted_ready {
+            Some(Icon::Pause)
+        } else if state.mic.acquisition_state().get() == MicAcquisitionState::Acquiring
+            || (state.mic.listening().get() && state.mic.mute_output().get())
+        {
+            None
+        } else {
+            Some(Icon::Mic)
         }
     });
     // Right-button is a generic "more options" affordance — the listen
@@ -100,6 +118,7 @@ pub fn ListenButton() -> impl IntoView {
         <ComboButton
             left_label="Mic"
             left_value=listen_left_value
+            left_icon=listen_left_icon
             left_click=listen_left_click
             left_class=listen_left_class
             right_value=listen_right_value

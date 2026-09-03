@@ -9,6 +9,7 @@ use crate::components::chromagram_view::ChromagramView;
 use crate::components::file_sidebar::FileSidebar;
 use crate::components::file_sidebar::{fetch_demo_index, load_single_demo};
 use crate::components::hearing_bar::HearingBar;
+use crate::components::icons::Icon;
 use crate::components::overflow_menu::CanvasOverflowMenus;
 use crate::components::overview::{OverviewPanel, OverviewToolbar};
 use crate::components::play_controls::{BookmarkPopup, ToastDisplay};
@@ -1761,10 +1762,11 @@ fn MainArea() -> impl IntoView {
                         {move || state.panels.show_status_bar().get().then(|| view! { <AnalysisPanel /> })}
                     }.into_any()
                 } else {
+                    // Mobile: show the very icon the sidebar toggle uses.
                     let empty_msg = if state.status.is_mobile().get() {
-                        "Tap \u{2630} to load audio files"
+                        view! { "Tap " <Icon kind=Icon::SidebarLeft /> " to load audio files" }.into_any()
                     } else {
-                        "Drop WAV, FLAC or MP3 files into the sidebar"
+                        view! { "Drop WAV, FLAC or MP3 files into the sidebar" }.into_any()
                     };
                     view! {
                         <div class="empty-state">

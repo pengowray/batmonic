@@ -2,6 +2,7 @@ use crate::state::store_fields::*;
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 
+use crate::components::icons::Icon;
 use crate::components::popup::{Align, PopupPanel, Side};
 use crate::state::AppState;
 
@@ -20,6 +21,11 @@ pub fn ComboButton(
     /// Value text on the left button (e.g. "ON"/"OFF"); empty string hides it
     #[prop(into)]
     left_value: Signal<String>,
+    /// Optional icon drawn before `left_value` on the left button. Counts
+    /// as a value for layout purposes, so an icon-only button (Play) keeps
+    /// its category label above it.
+    #[prop(optional, into)]
+    left_icon: Option<Signal<Option<Icon>>>,
     /// Called when the left button is clicked
     left_click: Callback<web_sys::MouseEvent>,
     /// CSS class for the left button (reactive, for active/open states)
@@ -197,8 +203,9 @@ pub fn ComboButton(
                 <span class="combo-btn-text combo-btn-text-left">
                     <span class="layer-btn-category fit-text" data-fit-max="9" data-fit-min="7">{move || {
                         let value = left_value.get();
+                        let has_icon = left_icon.is_some_and(|s| s.get().is_some());
                         let label = left_label_dyn.map(|s| s.get()).unwrap_or_else(|| left_label.to_string());
-                        if value.is_empty() || label.is_empty() {
+                        if (value.is_empty() && !has_icon) || label.is_empty() {
                             "\u{00A0}".to_string()
                         } else {
                             label
@@ -206,11 +213,18 @@ pub fn ComboButton(
                     }}</span>
                     <span class="layer-btn-value fit-text" data-fit-max="13" data-fit-min="9">{move || {
                         let value = left_value.get();
-                        if !value.is_empty() {
+                        let icon = left_icon.and_then(|s| s.get());
+                        let text = if !value.is_empty() || icon.is_some() {
                             value
                         } else {
                             let label = left_label_dyn.map(|s| s.get()).unwrap_or_else(|| left_label.to_string());
                             if !label.is_empty() { label } else { "\u{00A0}".to_string() }
+                        };
+                        let gap = (icon.is_some() && !text.is_empty()).then_some("\u{00A0}");
+                        view! {
+                            {icon.map(|kind| view! { <Icon kind=kind /> })}
+                            {gap}
+                            {text}
                         }
                     }}</span>
                 </span>

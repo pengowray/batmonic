@@ -3424,9 +3424,9 @@ body.sidebar-resizing {
    with the .inaudible-warning class. */
 .inaudible-warning .combo-btn-left .layer-btn-value,
 .layer-btn.play-mode-extra.inaudible-warning .layer-btn-value {
-    text-decoration: underline wavy rgba(240, 160, 60, 0.9);
-    text-underline-offset: 2px;
-    text-decoration-thickness: 1.5px;
+    /* border, not text-decoration: the play glyph is an inline SVG */
+    border-bottom: 2px dotted rgba(240, 160, 60, 0.9);
+    padding-bottom: 1px;
 }
 
 /* Multi-selected (but not the live mode) — the bucket appears in the
@@ -6667,7 +6667,7 @@ button.toolbar-overflow-btn {
 
 .export-toggle-arrow {
     display: inline-block;
-    font-size: 8px;
+    font-size: 11px;
     transition: transform 0.15s ease;
 }
 .export-toggle-arrow.open {
@@ -7233,4 +7233,11 @@ button.canvas-overflow-action-btn.disabled {
 
 .wiki-row-link:hover {
     text-decoration: underline;
+}
+
+/* Inline stroke-SVG icons (src/components/icons.rs). Sized by font-size. */
+.icon {
+    display: inline-block;
+    vertical-align: -0.15em;
+    flex: none;
 }
