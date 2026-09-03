@@ -1568,6 +1568,18 @@ body.sidebar-resizing {
     width: 100%;
 }
 
+.add-files-btn.primary-btn {
+    background: #2b3a6a;
+    border: 1px solid #3d4f8a;
+    color: #e6ecff;
+}
+
+.add-files-btn.primary-btn:hover {
+    background: #354a85;
+    border-color: #4a5fa0;
+    color: #fff;
+}
+
 .add-files-btn:hover {
     border-color: #666;
     color: #aaa;

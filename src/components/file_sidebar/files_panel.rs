@@ -763,7 +763,7 @@ pub(super) fn FilesPanel() -> impl IntoView {
                             // split into "empty state" vs "with files" panels
                             // with different sets of actions.
                             <div class="file-actions">
-                                <button class="upload-btn add-files-btn" on:click=on_upload_click>
+                                <button class="upload-btn add-files-btn primary-btn" on:click=on_upload_click>
                                     "+ Open files"
                                 </button>
                                 {(state.mic.strategy().get() != crate::state::MicStrategy::None).then(|| view! {
@@ -781,12 +781,12 @@ pub(super) fn FilesPanel() -> impl IntoView {
                                     {move || if demo_loading.get() { "Loading\u{2026}" } else { "Load demo" }}
                                 </button>
                                 {is_tauri.then(|| view! {
-                                    <button class="upload-btn add-files-btn xc-btn" on:click=move |_| {
+                                    <button class="upload-btn add-files-btn" on:click=move |_| {
                                         state.dialogs.xc_browser_open().set(true);
                                     }>"Explore XC"</button>
                                 })}
                                 <button
-                                    class="upload-btn add-files-btn xc-btn"
+                                    class="upload-btn add-files-btn"
                                     title="Load a WAV or other recording from Wikimedia Commons or Wikipedia, correcting any declared time expansion factor"
                                     on:click=move |_| {
                                         state.dialogs.wiki_browser_open().set(true);
