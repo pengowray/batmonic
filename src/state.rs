@@ -1991,6 +1991,8 @@ pub struct PanelsState {
     pub left_tab: LeftSidebarTab,
     /// Which floating layer panel is currently open.
     pub layer_panel_open: Option<LayerPanel>,
+    /// Mobile-only "Hear" bottom sheet (playback mode + band + level).
+    pub hear_sheet_open: bool,
     /// Whether the analysis/status bar is visible (persisted).
     pub show_status_bar: bool,
 }
@@ -2664,6 +2666,7 @@ impl AppState {
                 left_width: 220.0,
                 left_tab: LeftSidebarTab::default(),
                 layer_panel_open: None,
+                hear_sheet_open: false,
                 show_status_bar: crate::settings::get_bool(
                     crate::settings::keys::SHOW_STATUS_BAR,
                     false,

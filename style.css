@@ -7241,3 +7241,209 @@ button.canvas-overflow-action-btn.disabled {
     vertical-align: -0.15em;
     flex: none;
 }
+
+/* ── Hear chip + sheet (phone replacement for the Hearing Bar) ──────────
+   On narrow viewports the hearing bar collapses to one chip showing the
+   mode in effect; the sheet lists every mode with a full name and stacks
+   the band / output / bandpass / gain / NR / notch combos beneath it.
+   z-order: backdrop 44 < sheet 45 < .layer-panel 50, so popups opened
+   from rows inside the sheet still render above it. */
+.hear-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    min-height: 38px;
+    padding: 4px 12px 5px;
+    line-height: 1.15;
+}
+
+.hear-chip .layer-btn-value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 13px;
+    color: #ddd;
+}
+
+.hear-chip-abbr {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #999;
+    padding: 0 4px;
+    border: 1px solid #444;
+    border-radius: 3px;
+}
+
+.hear-chip.open {
+    border-color: #4a8;
+    color: #dff5ea;
+}
+
+.hear-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 44;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.hear-sheet-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.hear-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 72vh;
+    overflow-y: auto;
+    background: rgba(22, 22, 22, 0.98);
+    border: 1px solid #3a3a3a;
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.7);
+    padding: 0 8px calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 45;
+    transform: translateY(105%);
+    transition: transform 0.2s ease;
+}
+
+.hear-sheet.open {
+    transform: translateY(0);
+}
+
+.hear-sheet-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: #444;
+    margin: 10px auto 4px;
+}
+
+.hear-sheet-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 6px 2px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #eee;
+}
+
+.hear-sheet-hint {
+    font-size: 12px;
+    font-weight: 400;
+    color: #999;
+}
+
+.hear-sheet-sec {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #777;
+    text-transform: uppercase;
+    padding: 14px 6px 4px;
+}
+
+.hear-sheet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 48px;
+    padding: 2px 6px;
+}
+
+.hear-sheet-key {
+    font-size: 14px;
+    color: #ddd;
+}
+
+.hear-sheet-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hear-mode-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hear-mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 48px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #ddd;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+
+.hear-mode-row.sel {
+    background: #244f3b;
+}
+
+.hear-mode-row.multi-selected {
+    background: #1e2e26;
+}
+
+.hear-mode-row.disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.hear-mode-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.hear-mode-name {
+    font-size: 14px;
+}
+
+.hear-mode-row.sel .hear-mode-name {
+    color: #dff5ea;
+    font-weight: 600;
+}
+
+.hear-mode-desc {
+    font-size: 12px;
+    color: #888;
+}
+
+.hear-mode-row.sel .hear-mode-desc {
+    color: #9c9;
+}
+
+.hear-mode-abbr {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #999;
+    padding: 2px 6px;
+    border: 1px solid #444;
+    border-radius: 4px;
+}
+
+.hear-mode-row.sel .hear-mode-abbr {
+    color: #dff5ea;
+    border-color: #4a8;
+}

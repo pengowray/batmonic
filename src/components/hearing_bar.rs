@@ -57,7 +57,7 @@ fn layer_opt_class_simple(active: bool) -> &'static str {
 /// gain mode (Off / Manual / AutoPeak / Adaptive) plus a manual-boost dB
 /// slider that doubles as a quick override when in Auto modes.
 #[component]
-fn GainCombo() -> impl IntoView {
+pub(crate) fn GainCombo() -> impl IntoView {
     let state = expect_context::<AppState>();
 
     let is_open =
@@ -312,7 +312,7 @@ fn GainCombo() -> impl IntoView {
 /// the four `filter_db_*` band sliders, `filter_quality`, and
 /// `filter_band_mode` (3 vs 4 band split).
 #[component]
-fn BandpassCombo() -> impl IntoView {
+pub(crate) fn BandpassCombo() -> impl IntoView {
     let state = expect_context::<AppState>();
 
     let is_open =
@@ -596,7 +596,7 @@ fn BandpassCombo() -> impl IntoView {
 /// driven by classes on the cell itself (formerly applied to a wrapper
 /// around the old HfrButton's left half).
 #[component]
-fn BandHfrCell() -> impl IntoView {
+pub(crate) fn BandHfrCell() -> impl IntoView {
     let state = expect_context::<AppState>();
     let no_file = move || {
         state.library.current_index().get().is_none() && state.timeline.active().get().is_none()
@@ -655,8 +655,6 @@ fn pass_is_locked(state: AppState) -> bool {
 #[component]
 pub fn HearingBar() -> impl IntoView {
     let state = expect_context::<AppState>();
-    let bar_ref = NodeRef::<leptos::html::Div>::new();
-    let pan = crate::components::bar_pan::BarPan::new(bar_ref);
     let overline_class = Signal::derive(move || {
         let on = state.viewmode.hfr_enabled().get();
         let mut s = String::from("band-affected-row");
@@ -670,7 +668,26 @@ pub fn HearingBar() -> impl IntoView {
         }
         s
     });
-    view! {
+    // Phones: the bar becomes one "Hear" chip plus a bottom sheet that
+    // carries every control the bar has (see hear_sheet.rs). Both the
+    // chip and the sheet are always mounted so the sheet's
+    // ModeRadioGroup effects keep running.
+    let mobile = move || {
+        view! {
+            <div class="hearing-bar hearing-bar-mobile"
+                on:click=|ev: web_sys::MouseEvent| ev.stop_propagation()
+                on:touchstart=|ev: web_sys::TouchEvent| ev.stop_propagation()
+            >
+                <crate::components::hear_sheet::HearChip/>
+                <crate::components::hear_sheet::HearSheet/>
+            </div>
+        }
+        .into_any()
+    };
+    let desktop = move || {
+        let bar_ref = NodeRef::<leptos::html::Div>::new();
+        let pan = crate::components::bar_pan::BarPan::new(bar_ref);
+        view! {
         // stop_propagation guards against future plain <button> children
         // having their panel-open clicks eaten by .main's catch-all.
         // ComboButton children already handle this themselves.
@@ -685,6 +702,7 @@ pub fn HearingBar() -> impl IntoView {
             on:pointercancel=move |ev| pan.on_pointerup(ev)
             on:wheel=move |ev| pan.on_wheel(ev)
         >
+            <span class="bar-label">"HEAR"</span>
             // Band-affected group — overline border-top spans these four.
             <div class=move || overline_class.get()>
                 <BandHfrCell/>
@@ -702,5 +720,10 @@ pub fn HearingBar() -> impl IntoView {
                 <NotchCombo/>
             </div>
         </div>
+        }
+        .into_any()
+    };
+    view! {
+        {move || if state.status.is_mobile().get() { mobile() } else { desktop() }}
     }
 }

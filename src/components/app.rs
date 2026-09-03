@@ -1764,7 +1764,7 @@ fn MainArea() -> impl IntoView {
                 } else {
                     // Mobile: show the very icon the sidebar toggle uses.
                     let empty_msg = if state.status.is_mobile().get() {
-                        view! { "Tap " <Icon kind=Icon::SidebarLeft /> " to load audio files" }.into_any()
+                        view! { "Tap\u{a0}" <Icon kind=Icon::SidebarLeft /> "\u{a0}to load audio files" }.into_any()
                     } else {
                         view! { "Drop WAV, FLAC or MP3 files into the sidebar" }.into_any()
                     };

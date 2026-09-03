@@ -164,6 +164,28 @@ impl ModeBucket {
             ModeBucket::Zc => "ZC",
         }
     }
+    /// Full mode name, for surfaces with room for words (the phone sheet).
+    pub fn name(self) -> &'static str {
+        match self {
+            ModeBucket::Normal => "Direct",
+            ModeBucket::Het => "Heterodyne",
+            ModeBucket::Te => "Time expansion",
+            ModeBucket::Ps => "Pitch shift",
+            ModeBucket::Zc => "Zero crossing",
+        }
+    }
+    /// One-line consequence of picking this mode.
+    pub fn description(self) -> &'static str {
+        match self {
+            ModeBucket::Normal => "Unchanged. Calls above 20 kHz are inaudible",
+            ModeBucket::Het => "Mixes the band down to audible, like a handheld bat detector",
+            ModeBucket::Te => {
+                "Slows playback so calls drop into hearing range. Keeps call shape, takes longer"
+            }
+            ModeBucket::Ps => "Lowers pitch, keeps duration",
+            ModeBucket::Zc => "Synthesised tone at the strongest frequency",
+        }
+    }
     fn title(self) -> &'static str {
         match self {
             ModeBucket::Normal => "1:1 — Normal playback",
@@ -197,7 +219,7 @@ impl ModeBucket {
 /// Mode radio-button group on the Hearing Bar. Replaces the old `ModeButton`
 /// combo (a single button that hosted both the mode toggle and its settings).
 #[component]
-pub fn ModeRadioGroup() -> impl IntoView {
+pub fn ModeRadioGroup(#[prop(default = false)] list_layout: bool) -> impl IntoView {
     let state = expect_context::<AppState>();
 
     // ── Effect A: Ensure a default user range when HFR is first enabled ──
@@ -602,6 +624,72 @@ pub fn ModeRadioGroup() -> impl IntoView {
         }
     };
 
+    // Phone "Hear" sheet: one row per mode with the full name and a
+    // one-line consequence; the abbreviation chip ties it to the desktop
+    // radio group. Same select_bucket path, so HFR/ZC side effects hold.
+    let mode_row = move |bucket: ModeBucket| {
+        let class_sig = Signal::derive(move || {
+            let active = ModeBucket::from_mode(state.playback.mode().get());
+            let on = state.viewmode.hfr_enabled().get();
+            let is_active = if bucket == ModeBucket::Normal {
+                !on || active == ModeBucket::Normal
+            } else {
+                on && active == bucket
+            };
+            let mut s = String::from("hear-mode-row");
+            if is_active {
+                s.push_str(" sel");
+            } else if bucket_is_selected(bucket) {
+                s.push_str(" multi-selected");
+            }
+            if no_file() {
+                s.push_str(" disabled");
+            }
+            s
+        });
+        view! {
+            <button class=move || class_sig.get()
+                title=bucket.title()
+                on:click=move |ev: web_sys::MouseEvent| {
+                    let multi = ev.ctrl_key() || ev.meta_key();
+                    select_bucket(bucket, multi);
+                }
+            >
+                <span class="hear-mode-text">
+                    <span class="hear-mode-name">{bucket.name()}</span>
+                    <span class="hear-mode-desc">{bucket.description()}</span>
+                </span>
+                <span class="hear-mode-abbr">{bucket.label()}</span>
+            </button>
+        }
+    };
+
+    if list_layout {
+        return view! {
+            <div node_ref=row_ref class="hear-mode-list"
+                on:click=|ev: web_sys::MouseEvent| ev.stop_propagation()
+                on:touchstart=|ev: web_sys::TouchEvent| ev.stop_propagation()
+            >
+                {mode_row(ModeBucket::Normal)}
+                {mode_row(ModeBucket::Het)}
+                {mode_row(ModeBucket::Te)}
+                {mode_row(ModeBucket::Ps)}
+                {mode_row(ModeBucket::Zc)}
+
+                <PopupPanel
+                    is_open=settings_open
+                    anchor=row_ref
+                    preferred_side=Side::Above
+                    preferred_align=Align::Start
+                    extra_style="min-width: 220px;"
+                >
+                    <ModeSettingsBody/>
+                </PopupPanel>
+            </div>
+        }
+        .into_any();
+    }
+
     // Settings popup content is keyed off the current playback mode.
     view! {
         <div node_ref=row_ref class="mode-radio-group"
@@ -625,6 +713,7 @@ pub fn ModeRadioGroup() -> impl IntoView {
             </PopupPanel>
         </div>
     }
+    .into_any()
 }
 
 /// The body of the mode settings popup — switches content by current playback mode.

@@ -13,6 +13,7 @@ pub mod display_filter_button;
 pub mod file_sidebar;
 pub mod freq_range_button;
 pub mod gutter;
+pub mod hear_sheet;
 pub mod hearing_bar;
 pub mod hfr_button;
 pub mod icons;
