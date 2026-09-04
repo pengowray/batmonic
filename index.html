@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+    <title>Oversample</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png"/>
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png"/>
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"/>
+    <link rel="manifest" href="site.webmanifest"/>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <link rel="stylesheet" href="/style-c199e3247f9415d1.css" integrity="sha384-8r1DWwqGWXB3opkB6ejTdYL6nSYs+FcAwU2QSClwp2YOvmjeJFGpFU2V/QlgjHY7"/>
+    
+    <script src="mp4-muxer.js"></script>
+    <script>
+    // .fit-text — auto-shrink text to fit its container.
+    //
+    // Any element with class "fit-text" is observed; when its width or text
+    // content changes, the font-size is binary-searched between
+    // data-fit-min (default 9) and data-fit-max (default 13) until
+    // scrollWidth <= clientWidth. Falls back to the host's CSS-ellipsis if
+    // the text still overflows at the minimum size.
+    //
+    // Avoids the layout shift you get from filling chips with variable-length
+    // text (device names, mode labels, etc.) without resorting to a JS
+    // library — vanilla ResizeObserver + MutationObserver.
+    (function() {
+        if (typeof ResizeObserver === 'undefined') return;
+        var observed = new WeakSet();
+        function measure(el) {
+            if (!el.isConnected || el.clientWidth === 0) return;
+            var max = parseFloat(el.dataset.fitMax || '13');
+            var min = parseFloat(el.dataset.fitMin || '9');
+            el.style.fontSize = max + 'px';
+            if (el.scrollWidth <= el.clientWidth) return;
+            var lo = min, hi = max;
+            for (var i = 0; i < 6; i++) {
+                var mid = (lo + hi) / 2;
+                el.style.fontSize = mid + 'px';
+                if (el.scrollWidth <= el.clientWidth) lo = mid;
+                else hi = mid;
+            }
+            el.style.fontSize = lo + 'px';
+        }
+        var ro = new ResizeObserver(function(entries) {
+            for (var i = 0; i < entries.length; i++) measure(entries[i].target);
+        });
+        function attach(el) {
+            if (observed.has(el)) return;
+            observed.add(el);
+            ro.observe(el);
+            measure(el);
+        }
+        function scan(root) {
+            if (root.nodeType !== 1) return;
+            if (root.matches && root.matches('.fit-text')) attach(root);
+            if (root.querySelectorAll) {
+                var list = root.querySelectorAll('.fit-text');
+                for (var i = 0; i < list.length; i++) attach(list[i]);
+            }
+        }
+        var mo = new MutationObserver(function(muts) {
+            for (var i = 0; i < muts.length; i++) {
+                var m = muts[i];
+                if (m.type === 'characterData') {
+                    var t = m.target.parentElement && m.target.parentElement.closest('.fit-text');
+                    if (t) measure(t);
+                } else if (m.type === 'childList') {
+                    if (m.target.nodeType === 1) {
+                        var host = m.target.closest && m.target.closest('.fit-text');
+                        if (host) measure(host);
+                    }
+                    for (var j = 0; j < m.addedNodes.length; j++) scan(m.addedNodes[j]);
+                }
+            }
+        });
+        function init() {
+            scan(document.body);
+            mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+        }
+        if (document.readyState !== 'loading') init();
+        else document.addEventListener('DOMContentLoaded', init);
+        window.__fit_text = { attach: attach, measure: measure, scan: scan };
+    })();
+
+    // .lock-grow — high-water-mark width lock.
+    //
+    // Any element with class "lock-grow" remembers the widest natural
+    // size it has ever rendered at, and uses that as its min-width. The
+    // lock only grows: short labels never shrink the element after a
+    // longer label has been seen. We deliberately only set min-width
+    // (NOT max-width) — if a new render legitimately needs more width
+    // than the prior high-water mark, the element should grow to fit
+    // rather than visually clip its content. Setting max-width caused
+    // exactly that bug for combo buttons whose right halves wanted more
+    // room when their secondary caption (right_label) appeared.
+    //
+    // Applied to .combo-btn-left and .combo-btn-right inside the generic
+    // ComboButton, eliminating the "buttons jump around when state
+    // toggles" jitter.
+    (function() {
+        if (typeof ResizeObserver === 'undefined') return;
+        var locks = new WeakMap();
+        function update(el) {
+            if (!el.isConnected) return;
+            var state = locks.get(el);
+            if (!state) { state = { max: 0 }; locks.set(el, state); }
+            // Temporarily restore inner .fit-text spans to their MAX font
+            // before measuring — otherwise we'd read a natural width that's
+            // already been shrunk by fit-text, and our high-water mark
+            // would never reach the size that actually fits the unshrunk
+            // text. We restore the previous inline font-size afterwards;
+            // fit-text's own ResizeObserver will re-shrink if needed once
+            // the parent's lock changes.
+            var fits = el.querySelectorAll ? el.querySelectorAll('.fit-text') : [];
+            var prevFontSizes = [];
+            for (var i = 0; i < fits.length; i++) {
+                prevFontSizes.push(fits[i].style.fontSize);
+                var maxFont = parseFloat(fits[i].dataset.fitMax || '13');
+                fits[i].style.fontSize = maxFont + 'px';
+            }
+            // Temporarily release our width lock so we can read the
+            // natural width the browser would pick for the current
+            // content.
+            var prevMin = el.style.minWidth;
+            el.style.minWidth = '';
+            var natural = el.offsetWidth;
+            if (natural > state.max) state.max = natural;
+            if (state.max > 0) {
+                el.style.minWidth = state.max + 'px';
+            } else {
+                el.style.minWidth = prevMin;
+            }
+            // Restore fit-text font sizes. If the lock changed, fit-text's
+            // ResizeObserver will fire and re-measure on the next frame.
+            for (var k = 0; k < fits.length; k++) {
+                fits[k].style.fontSize = prevFontSizes[k];
+            }
+        }
+        function attach(el) {
+            if (locks.has(el)) return;
+            locks.set(el, { max: 0 });
+            requestAnimationFrame(function() { update(el); });
+        }
+        function scanLock(root) {
+            if (root.nodeType !== 1) return;
+            if (root.matches && root.matches('.lock-grow')) attach(root);
+            if (root.querySelectorAll) {
+                var list = root.querySelectorAll('.lock-grow');
+                for (var i = 0; i < list.length; i++) attach(list[i]);
+            }
+        }
+        // Coalesce updates within one frame to avoid repeated layout thrash
+        var pending = new Set();
+        var rafScheduled = false;
+        function schedule(el) {
+            pending.add(el);
+            if (rafScheduled) return;
+            rafScheduled = true;
+            requestAnimationFrame(function() {
+                rafScheduled = false;
+                pending.forEach(function(e) { update(e); });
+                pending.clear();
+            });
+        }
+        var mo = new MutationObserver(function(muts) {
+            for (var i = 0; i < muts.length; i++) {
+                var m = muts[i];
+                if (m.type === 'characterData') {
+                    var p = m.target.parentElement;
+                    var host = p && p.closest && p.closest('.lock-grow');
+                    if (host) schedule(host);
+                } else if (m.type === 'childList') {
+                    if (m.target.nodeType === 1) {
+                        var h = m.target.closest && m.target.closest('.lock-grow');
+                        if (h) schedule(h);
+                    }
+                    for (var j = 0; j < m.addedNodes.length; j++) scanLock(m.addedNodes[j]);
+                }
+            }
+        });
+        function initLock() {
+            scanLock(document.body);
+            mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+        }
+        if (document.readyState !== 'loading') initLock();
+        else document.addEventListener('DOMContentLoaded', initLock);
+        window.__lock_grow = { attach: attach, update: update };
+    })();
+    </script>
+<link rel="modulepreload" href="/oversample-97080e25189b9ed9.js" crossorigin="anonymous" integrity="sha384-F12npbK1p8ez6Wfm3qvrsmizvm7YgiObI9GdxjIM1xFYwjhYzBZsZDEKJ99szhVr"><link rel="preload" href="/oversample-97080e25189b9ed9_bg.wasm" crossorigin="anonymous" integrity="sha384-WU5Ste0v9Fxt9YdjlDi/Vl+ysiJDtuv/OaEKZqJfQkGkKuipJCRquds6eXYFix2b" as="fetch" type="application/wasm"></head>
+<body>
+<script type="module">
+import init, * as bindings from '/oversample-97080e25189b9ed9.js';
+const wasm = await init({ module_or_path: '/oversample-97080e25189b9ed9_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script></body>
+</html>

@@ -1,0 +1,7449 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    height: 100%;
+    height: 100dvh;
+    background: #1a1a1a;
+    color: #ccc;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+}
+
+.app {
+    display: grid;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+    grid-row: 2;
+    background: #111;
+    border-right: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+    max-height: 100%;
+}
+
+.sidebar.collapsed {
+    overflow: visible;
+    border-right: none;
+}
+
+.sidebar.collapsed .sidebar-tabs {
+    border-bottom: none;
+}
+
+.sidebar.collapsed .sidebar-tab-dropdown-wrap,
+.sidebar.collapsed .sidebar-header-label {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-panel {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-resize-handle {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-collapse-btn {
+    display: none;
+}
+
+.sidebar-collapse-btn {
+    flex: 0 0 32px !important;
+    font-size: 16px !important;
+    padding: 0 !important;
+    color: #777;
+    border-bottom: none !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sidebar-collapse-btn:hover {
+    color: #ddd !important;
+}
+
+.sidebar-settings-btn {
+    flex: 0 0 36px;
+    font-size: 16px;
+    padding: 0;
+    color: #777;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s;
+}
+
+.sidebar-settings-btn:hover {
+    color: #ddd;
+}
+
+.sidebar-settings-btn.active {
+    color: #fc8;
+    border-bottom-color: #fc8;
+}
+
+.sidebar.collapsed .sidebar-settings-btn {
+    display: none;
+}
+
+.setting-checkbox {
+    accent-color: #4a8;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+}
+
+.sidebar-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 20;
+}
+.sidebar-resize-handle.hidden {
+    display: none;
+}
+
+.sidebar-resize-handle:hover,
+body.sidebar-resizing .sidebar-resize-handle {
+    background: #4a8;
+}
+
+body.sidebar-resizing {
+    cursor: col-resize !important;
+    user-select: none;
+}
+
+/* Sidebar tabs */
+.sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+}
+
+.sidebar-tab {
+    flex: 1;
+    padding: 10px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #777;
+    background: #111;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.sidebar-tab:hover {
+    color: #bbb;
+}
+
+.sidebar-tab.active {
+    color: #eee;
+    border-bottom-color: #4a8;
+}
+
+/* Tab dropdown */
+.sidebar-tab-dropdown-wrap {
+    flex: 1;
+    position: relative;
+}
+
+.sidebar-tab-dropdown {
+    width: 100%;
+    padding: 10px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #eee;
+    background: #111;
+    border: none;
+    border-bottom: 2px solid #4a8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+}
+
+.sidebar-tab-dropdown:hover {
+    background: #1a1a1a;
+}
+
+.dropdown-arrow {
+    font-size: 9px;
+    color: #777;
+}
+
+.sidebar-tab-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-top: none;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-tab-option {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #999;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    border-left: 2px solid transparent;
+}
+
+.sidebar-tab-option:hover {
+    background: #222;
+    color: #ccc;
+}
+
+.sidebar-tab-option.active {
+    color: #eee;
+    border-left-color: #4a8;
+    background: #1f2f25;
+}
+
+/* Bit analysis grid */
+.bit-grid {
+    display: grid;
+    gap: 2px;
+    padding: 4px 12px;
+}
+
+.bit-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 2px;
+    border-radius: 3px;
+    font-size: 9px;
+    min-height: 34px;
+    cursor: default;
+}
+
+.bit-cell.used {
+    background: #1a3a25;
+    color: #8fc;
+}
+
+.bit-cell.used.caution {
+    background: #3a3a1a;
+    color: #fc8;
+}
+
+.bit-cell.used.always1 {
+    background: #1a2a3a;
+    color: #8cf;
+}
+
+.bit-cell.used.full {
+    background: #3a1a1a;
+    color: #f88;
+}
+
+.bit-cell.unused-expected {
+    background: #3a1a1a;
+    color: #f88;
+}
+
+.bit-cell.unused {
+    background: #1a1a1a;
+    color: #555;
+}
+
+.bit-cell.zero-padded {
+    background: #2a1212;
+    color: #c44;
+}
+
+.bit-label {
+    font-size: 8px;
+    opacity: 0.7;
+    font-weight: 600;
+}
+
+.bit-value {
+    font-size: 10px;
+    font-weight: 600;
+}
+
+
+.bit-warning {
+    padding: 2px 12px;
+    font-size: 10px;
+    color: #fc8;
+}
+
+.bit-warning-inline {
+    color: #fc8;
+}
+
+.bit-region-labels {
+    display: flex;
+    gap: 4px;
+    padding: 2px 12px 4px;
+    font-size: 9px;
+}
+
+.bit-region {
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-weight: 600;
+}
+
+.bit-region.sign {
+    color: #c8f;
+    background: #2a1a2a;
+}
+
+.bit-region.exponent {
+    color: #8cf;
+    background: #1a2a3a;
+}
+
+.bit-region.mantissa {
+    color: #8fc;
+    background: #1a3a25;
+}
+
+/* Analysis stats grid */
+.analysis-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px 12px;
+}
+
+.analysis-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #1a1a1a;
+    border-radius: 3px;
+    padding: 4px 8px;
+    min-width: 60px;
+    flex: 1;
+}
+
+.analysis-stat-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ccc;
+}
+
+.analysis-stat-label {
+    font-size: 9px;
+    color: #777;
+    margin-top: 1px;
+}
+
+.analysis-warning {
+    padding: 3px 12px 4px;
+    font-size: 10px;
+    color: #fc8;
+}
+
+.analysis-scope-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+}
+
+.analysis-scope-badge {
+    font-size: 10px;
+    color: #aaa;
+    background: #333;
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+
+.analysis-scope-badge.analysis-scope-full {
+    color: #8f8;
+    background: #243024;
+}
+
+.analysis-full-btn {
+    font-size: 10px;
+    color: #8cf;
+    background: none;
+    border: 1px solid #446;
+    border-radius: 3px;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+.analysis-full-btn:hover {
+    background: #223;
+    border-color: #668;
+}
+
+.privacy-settings-btn {
+    font-size: 13px;
+    padding: 4px 12px;
+}
+
+.bit-sign-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: #aaa;
+    padding: 6px 12px 2px;
+    text-align: left;
+}
+
+.bit-grid-mini {
+    padding: 2px 0;
+}
+
+.bit-grid-mini .bit-cell {
+    min-height: 24px;
+    padding: 2px 1px;
+}
+
+.bit-grid-mini .bit-label {
+    font-size: 7px;
+}
+
+.bit-grid-mini .bit-value {
+    font-size: 8px;
+}
+
+.bit-zero-row {
+    font-size: 10px;
+    color: #999;
+    text-align: center;
+    padding: 4px 0 2px;
+}
+
+.bit-depth-stat {
+    padding: 2px 12px;
+    font-size: 10px;
+    color: #bbb;
+}
+
+.bit-depth-stat.bit-depth-primary {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ddd;
+    padding-top: 4px;
+}
+
+/* wSNR recording quality */
+.wsnr-result {
+    padding: 4px 12px;
+}
+
+.wsnr-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.wsnr-grade {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    font-size: 20px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.wsnr-grade-a { background: #1a3a25; color: #6f6; }
+.wsnr-grade-b { background: #1a3a3a; color: #6cf; }
+.wsnr-grade-c { background: #3a3a1a; color: #fc6; }
+.wsnr-grade-d { background: #3a2a1a; color: #f96; }
+.wsnr-grade-e { background: #3a1a1a; color: #f66; }
+
+.wsnr-grade-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
+.wsnr-snr {
+    font-size: 14px;
+    font-weight: 600;
+    color: #ccc;
+}
+
+.wsnr-detail {
+    font-size: 11px;
+    color: #888;
+    padding: 1px 0;
+}
+
+.wsnr-comparison {
+    font-size: 11px;
+    color: #aaf;
+    padding: 4px 0 2px;
+    font-weight: 600;
+}
+
+.wsnr-warnings {
+    margin-top: 4px;
+}
+
+.wsnr-warning {
+    padding: 2px 0;
+    font-size: 10px;
+    color: #fc8;
+}
+
+/* PSD panel */
+.psd-controls-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.psd-nfft-select {
+    background: #222;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 11px;
+}
+
+.psd-filter-toggles {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 4px 12px;
+    font-size: 11px;
+}
+
+.psd-controls-sep {
+    width: 1px;
+    height: 14px;
+    background: #333;
+    margin: 0 2px;
+}
+
+.psd-btn-group {
+    display: inline-flex;
+    gap: 0;
+}
+
+.psd-btn-group .psd-btn {
+    border-radius: 0;
+}
+
+.psd-btn-group .psd-btn:first-child {
+    border-radius: 3px 0 0 3px;
+}
+
+.psd-btn-group .psd-btn:last-child {
+    border-radius: 0 3px 3px 0;
+}
+
+.psd-btn-group .psd-btn + .psd-btn {
+    margin-left: -1px;
+}
+
+.psd-btn {
+    font-size: 10px;
+    color: #999;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 1px 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    line-height: 1.5;
+}
+
+.psd-btn:hover {
+    background: #252525;
+    color: #ccc;
+}
+
+.psd-btn-active {
+    background: #2a3a4a;
+    color: #8cf;
+    border-color: #4a6a8a;
+}
+
+.psd-btn-active:hover {
+    background: #334a5a;
+}
+
+.psd-btn-disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
+.psd-btn-dimmed {
+    opacity: 0.6;
+}
+
+.psd-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 12px;
+    min-height: 22px;
+}
+
+.psd-status-text {
+    font-size: 11px;
+    color: #666;
+}
+
+.psd-chart-wrap {
+    padding: 4px 8px;
+}
+
+.psd-meta-text {
+    font-size: 10px;
+    color: #888;
+    padding: 2px 0;
+}
+
+.psd-peak-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+    margin: 4px 0;
+}
+
+.psd-peak-table th {
+    color: #888;
+    font-weight: 500;
+    text-align: right;
+    padding: 2px 4px;
+    border-bottom: 1px solid #333;
+    white-space: nowrap;
+}
+
+.psd-peak-table th:first-child {
+    width: 12px;
+    text-align: center;
+}
+
+.psd-peak-row {
+    cursor: default;
+}
+
+.psd-peak-row:hover {
+    background: #1a2a3a;
+}
+
+.psd-peak-idx {
+    text-align: center;
+    padding: 2px 2px;
+}
+
+.psd-peak-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.psd-peak-freq,
+.psd-peak-power {
+    text-align: right;
+    padding: 2px 4px;
+    color: #ccc;
+    font-variant-numeric: tabular-nums;
+}
+
+.psd-peak-bw {
+    text-align: right;
+    padding: 2px 4px;
+    color: #999;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Pulse detection panel */
+.pulse-list {
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 4px 0;
+}
+
+.pulse-item {
+    display: flex;
+    gap: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 11px;
+    color: #aaa;
+    border-left: 2px solid transparent;
+    align-items: baseline;
+}
+
+.pulse-item:hover {
+    background: #1a2a20;
+    color: #ccc;
+}
+
+.pulse-item.selected {
+    background: #1f2f25;
+    color: #eee;
+    border-left-color: #4a8;
+}
+
+.pulse-index {
+    color: #6a6;
+    font-weight: 600;
+    min-width: 28px;
+}
+
+.pulse-time {
+    min-width: 48px;
+}
+
+.pulse-dur {
+    min-width: 40px;
+    color: #888;
+}
+
+.pulse-freq {
+    min-width: 48px;
+    color: #8af;
+}
+
+.pulse-snr {
+    color: #888;
+    margin-left: auto;
+}
+
+/* Settings panel */
+.sidebar-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    min-height: 0;
+}
+
+.sidebar-panel-empty {
+    padding: 16px;
+    color: #555;
+    font-size: 13px;
+}
+
+.sidebar-btn {
+    display: block;
+    width: calc(100% - 32px);
+    margin: 6px 16px;
+    padding: 5px 10px;
+    background: #1a3a2a;
+    border: 1px solid #3a6a4a;
+    border-radius: 4px;
+    color: #ccc;
+    font-size: 12px;
+    cursor: pointer;
+}
+.sidebar-btn:hover {
+    background: #1a5a3a;
+    border-color: #4a8a5a;
+}
+
+/* Annotation tree */
+.annotation-tree {
+    max-height: 300px;
+    overflow-y: auto;
+}
+.annotation-tree-item {
+    display: flex;
+    align-items: center;
+    padding: 3px 8px;
+    cursor: pointer;
+    gap: 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    margin: 1px 2px;
+    transition: background 0.1s;
+    user-select: none;
+}
+.annotation-tree-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.annotation-tree-item.annotation-selected {
+    background: rgba(80, 160, 255, 0.12);
+    border-color: rgba(80, 160, 255, 0.3);
+}
+.annotation-tree-item.annotation-drop-target {
+    border-color: rgba(120, 200, 80, 0.6);
+    background: rgba(120, 200, 80, 0.08);
+}
+.annotation-tree-item.annotation-group-item {
+    font-weight: 600;
+}
+.annotation-tree-item[draggable="true"] {
+    cursor: grab;
+}
+.annotation-tree-item[draggable="true"]:active {
+    cursor: grabbing;
+    opacity: 0.6;
+}
+.annotation-collapse-toggle {
+    font-size: 9px;
+    color: #888;
+    width: 12px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.annotation-icon {
+    font-size: 10px;
+    color: #777;
+    width: 14px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.annotation-group-children {
+    /* Children are indented via padding-left on each item */
+}
+.wav-marker-item .annotation-time {
+    font-size: 11px;
+    color: #777;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+.annotation-toolbar-btn {
+    font-size: 11px;
+    padding: 2px 5px;
+    width: auto;
+    margin: 0;
+    background: transparent;
+    border-color: rgba(80, 140, 90, 0.3);
+    opacity: 0.7;
+}
+.annotation-toolbar-btn:hover {
+    opacity: 1;
+    background: rgba(26, 58, 42, 0.6);
+}
+.annotation-toolbar-btn:disabled {
+    opacity: 0.3;
+}
+
+.annotation-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 16px;
+    cursor: pointer;
+    gap: 4px;
+}
+.annotation-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+.annotation-label {
+    font-size: 12px;
+    color: #aaa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+.annotation-label.default {
+    font-style: italic;
+    color: #666;
+}
+.annotation-delete {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+.annotation-delete:hover {
+    color: #e44;
+}
+.annotation-edit {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+}
+.annotation-edit:hover {
+    color: #8cf;
+}
+.annotation-lock {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 2px;
+    line-height: 1;
+    transition: opacity 0.15s;
+}
+.annotation-lock.locked {
+    color: #e88;
+    opacity: 1.0;
+    filter: saturate(2) brightness(1.2);
+}
+.annotation-lock.unlocked {
+    color: #888;
+    opacity: 0.45;
+    filter: grayscale(1);
+}
+.annotation-lock.unlocked:hover {
+    opacity: 0.7;
+}
+.annotation-lock.locked:hover {
+    filter: saturate(2) brightness(1.4);
+}
+.annotation-label-input {
+    flex: 1;
+    background: #1a1a2e;
+    border: 1px solid #446;
+    color: #ddd;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    outline: none;
+    min-width: 0;
+}
+.annotation-label-input:focus {
+    border-color: #68f;
+}
+.annotation-edit-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+.annotation-tags-input {
+    font-size: 11px;
+}
+.annotation-tags {
+    display: inline-flex;
+    gap: 3px;
+    margin-left: 4px;
+    flex-shrink: 1;
+    overflow: hidden;
+}
+.annotation-tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 0 4px;
+    border-radius: 3px;
+    background: rgba(80, 160, 255, 0.15);
+    color: #8bf;
+    border: 1px solid rgba(80, 160, 255, 0.25);
+    white-space: nowrap;
+    line-height: 1.4;
+    cursor: pointer;
+}
+.annotation-tag:hover {
+    background: rgba(80, 160, 255, 0.3);
+    border-color: rgba(80, 160, 255, 0.5);
+}
+
+.setting-group {
+    padding: 4px 0;
+}
+
+.setting-group-title {
+    padding: 6px 16px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 16px;
+    gap: 8px;
+}
+
+.setting-label {
+    font-size: 13px;
+    color: #999;
+    flex-shrink: 0;
+    min-width: 70px;
+}
+
+.setting-hint {
+    font-size: 10px;
+    color: #666;
+    padding: 2px 12px 4px;
+    line-height: 1.4;
+}
+
+.setting-select {
+    background: #222;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 3px 6px;
+    font-size: 12px;
+    cursor: pointer;
+    min-width: 0;
+    flex: 1;
+    max-width: 100px;
+}
+
+.setting-select:hover {
+    border-color: #666;
+}
+
+.mic-info {
+    padding: 2px 16px 4px;
+}
+
+.mic-info-row {
+    display: flex;
+    align-items: center;
+    padding: 1px 0;
+    gap: 8px;
+    font-size: 11px;
+}
+
+.mic-info-label {
+    color: #666;
+    flex: 0 0 50px;
+}
+
+.mic-info-value {
+    color: #aaa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mic-info-refresh {
+    margin-top: 4px;
+    font-size: 11px;
+}
+.mic-mode-hint {
+    font-size: 10px;
+    color: #888;
+    padding: 2px 16px 0;
+}
+
+/* ── Mic Chooser Modal ─────────────────────────────────────────────────── */
+.mic-chooser-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 0 4px;
+    border-bottom: 1px solid #333;
+    margin-bottom: 4px;
+}
+.mic-chooser-device {
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 2px 0;
+    transition: background 0.1s;
+}
+.mic-chooser-device:hover {
+    background: #2a2a3e;
+}
+.mic-chooser-device.selected {
+    background: #1a2a3a;
+    border-left: 3px solid #4a9eff;
+}
+.mic-chooser-device-name {
+    font-size: 13px;
+    color: #e0e0e0;
+    font-weight: 500;
+}
+.mic-chooser-device-badge {
+    font-size: 10px;
+    color: #4a9eff;
+    margin-left: 8px;
+    font-weight: 400;
+}
+.mic-chooser-device-badge.sel {
+    color: #4a8;
+}
+.mic-chooser-device-badge.warn {
+    color: #fc8;
+}
+.mic-chooser-device-caps {
+    font-size: 11px;
+    color: #888;
+    margin-top: 2px;
+}
+
+/* ── Debug Log Panel ────────────────────────────────────────────────────── */
+.debug-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.debug-panel-toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+}
+.debug-panel-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px;
+    font-family: monospace;
+    font-size: 11px;
+    line-height: 1.4;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.debug-panel-empty {
+    color: #666;
+    padding: 12px;
+    text-align: center;
+}
+.debug-entry {
+    display: flex;
+    gap: 4px;
+    padding: 1px 0;
+    word-break: break-all;
+}
+.debug-time {
+    color: #666;
+    flex-shrink: 0;
+    min-width: 50px;
+}
+.debug-level-info { color: #888; flex-shrink: 0; }
+.debug-level-warn { color: #cc6; flex-shrink: 0; }
+.debug-level-error { color: #e66; flex-shrink: 0; }
+.debug-msg { color: #ccc; }
+
+.setting-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.setting-range {
+    flex: 1;
+    min-width: 0;
+}
+
+.setting-button {
+    font-size: 11px;
+    padding: 2px 8px;
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.setting-button:hover {
+    background: #444;
+}
+
+.setting-value {
+    font-size: 11px;
+    color: #888;
+    min-width: 42px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.setting-value.metadata-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1;
+}
+
+.metadata-row {
+    position: relative;
+}
+
+.copy-btn {
+    display: none;
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 3px;
+    color: #aaa;
+    font-size: 11px;
+    padding: 1px 4px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.copy-btn:hover {
+    background: #444;
+    color: #ddd;
+    border-color: #777;
+}
+
+.metadata-row:hover .copy-btn {
+    display: block;
+}
+
+.hash-calc-btn {
+    background: #333;
+    color: #aaa;
+    border: 1px solid #555;
+    border-radius: 3px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 11px;
+    font-family: inherit;
+}
+
+.hash-calc-btn:hover:not(:disabled) {
+    background: #444;
+    color: #ddd;
+    border-color: #777;
+}
+
+.hash-calc-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.hash-indicator {
+    display: none;
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 13px;
+    line-height: 1;
+}
+.hash-indicator.match {
+    display: block;
+    color: #4caf50;
+}
+.hash-indicator.mismatch {
+    display: block;
+    color: #e53935;
+}
+.metadata-row:hover .hash-indicator {
+    right: 28px;
+}
+.hash-from-ref {
+    opacity: 0.55;
+    font-style: italic;
+}
+.hash-note {
+    font-style: italic;
+    color: #ff9800;
+    font-size: 11px;
+}
+
+.copy-report-row {
+    display: flex;
+    justify-content: flex-end;
+    padding: 6px 12px 0;
+}
+
+.copy-report-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: #2a2a2a;
+    color: #888;
+    border: 1px solid #444;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.copy-report-btn:hover {
+    color: #ccc;
+    background: #333;
+    border-color: #666;
+}
+
+.metadata-source-badge {
+    font-size: 9px;
+    color: #666;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-left: 6px;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+}
+
+/* ── Info / Metadata panel ──────────────────────────────────────────────── */
+/* Major section headings (File, Xeno-canto, Guano metadata, File Identity,
+   Header metadata) — promoted to yellow so they stand out from sub-sections
+   like "BatGizmo App" inside GUANO. */
+.setting-group-title-major {
+    color: #e6c84a;
+    font-size: 12px;
+}
+/* GUANO sub-section headings (kept dim, like the original style). */
+.setting-group-title-sub {
+    color: #888;
+}
+
+/* Formatted/Original toggle at the top of the Info panel. */
+.metadata-view-toggle {
+    display: flex;
+    gap: 0;
+    padding: 8px 12px 4px;
+}
+.metadata-view-toggle .psd-btn {
+    flex: 1;
+    text-align: center;
+    border-radius: 0;
+}
+.metadata-view-toggle .psd-btn:first-child {
+    border-radius: 3px 0 0 3px;
+}
+.metadata-view-toggle .psd-btn:last-child {
+    border-radius: 0 3px 3px 0;
+}
+.metadata-view-toggle .psd-btn + .psd-btn {
+    margin-left: -1px;
+}
+
+/* Spacious row — key on its own line, value(s) below. Used everywhere
+   except the File summary section. */
+.metadata-row-spacious {
+    display: block;
+    padding: 6px 16px 8px;
+    position: relative;
+}
+.metadata-key-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 16px;
+}
+.metadata-key {
+    font-size: 11px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    flex: 1;
+    min-width: 0;
+}
+.metadata-value-block {
+    font-size: 13px;
+    color: #ddd;
+    word-break: break-word;
+    line-height: 1.35;
+    padding-top: 2px;
+    user-select: text;
+    -webkit-user-select: text;
+}
+.metadata-value-block.metadata-hash {
+    font-family: monospace;
+    font-size: 11px;
+    word-break: break-all;
+    color: #bbb;
+}
+.metadata-value-relative {
+    font-size: 11px;
+    color: #888;
+    font-style: italic;
+    padding-top: 1px;
+}
+/* A date value that can be clicked to toggle its "Local: ..." line. Subtle
+   dotted underline hints at the affordance without shouting. */
+.metadata-date-toggle {
+    cursor: pointer;
+    text-decoration: underline dotted rgba(255, 255, 255, 0.25);
+    text-underline-offset: 2px;
+}
+/* "Local: ..." line beneath a date when the original tz differs from
+   the user's local zone. Italic, slightly dimmer than the main value. */
+.metadata-value-local {
+    font-size: 12px;
+    color: #aaa;
+    font-style: italic;
+    padding-top: 1px;
+}
+/* Generic "secondary detail" line — used e.g. for the raw license URL
+   beneath a shortened "CC BY-NC-SA 4.0" label. */
+.metadata-value-subtle {
+    font-size: 11px;
+    color: #777;
+    word-break: break-all;
+    padding-top: 1px;
+}
+/* Fahrenheit conversion next to the primary °C value — dimmer so the
+   primary unit reads first. */
+.metadata-temp-f {
+    color: #888;
+}
+
+/* Copy button in spacious rows: sits inline next to the key, fades in
+   on row hover (matches the inline-row pattern). */
+.copy-btn-spacious {
+    display: none;
+    position: static;
+    transform: none;
+    flex-shrink: 0;
+}
+.metadata-row-spacious:hover .copy-btn-spacious {
+    display: inline-block;
+}
+
+/* Inline match/mismatch indicator in the key line. */
+.hash-indicator-inline {
+    font-size: 13px;
+    line-height: 1;
+    color: transparent;
+    flex-shrink: 0;
+}
+.hash-indicator-inline.match { color: #4caf50; }
+.hash-indicator-inline.mismatch { color: #e53935; }
+
+/* JSON expansion block (e.g. Wildlife Acoustics "Audio settings"). */
+.metadata-value-json {
+    padding-top: 4px;
+}
+.metadata-json-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border-left: 2px solid #444;
+    border-radius: 0 3px 3px 0;
+    font-family: monospace;
+    font-size: 11px;
+}
+.metadata-json-line {
+    display: flex;
+    gap: 0;
+    line-height: 1.4;
+}
+.metadata-json-key { color: #8cf; }
+.metadata-json-sep { color: #666; }
+.metadata-json-val { color: #ddd; word-break: break-word; }
+
+/* GPS world-map block — equirectangular projection, pin positioned by
+   percentage. The world-map.png asset is loaded from the site root. */
+.metadata-map-wrap {
+    position: relative;
+    margin-top: 6px;
+    border: 1px solid #333;
+    border-radius: 3px;
+    overflow: hidden;
+    background: #0a0a0a;
+    aspect-ratio: 2 / 1;
+}
+.metadata-map-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    /* Source PNG is white ocean / grey land; invert so it reads as
+       light land on dark ocean against the dark UI. */
+    filter: invert(0.9) brightness(0.7);
+}
+.metadata-map-pin {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: #ff4444;
+    border: 1.5px solid #fff;
+    box-shadow: 0 0 4px rgba(255, 68, 68, 0.8), 0 0 2px rgba(0, 0, 0, 0.8);
+    pointer-events: none;
+}
+.metadata-map-links {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-top: 4px;
+    font-size: 11px;
+}
+.metadata-map-links a {
+    color: #8cf;
+    text-decoration: none;
+}
+.metadata-map-links a:hover {
+    text-decoration: underline;
+}
+.metadata-map-link-sep {
+    color: #555;
+}
+
+.drop-zone {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.drop-zone.drag-over {
+    background: #1a2a1a;
+    outline: 2px dashed #4a8;
+    outline-offset: -4px;
+}
+
+.drop-hint {
+    padding: 24px 16px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.upload-btn {
+    padding: 6px 16px;
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-style: normal;
+}
+
+.upload-btn:hover {
+    background: #444;
+    color: #fff;
+}
+
+.add-files-btn {
+    background: transparent;
+    border: 1px dashed #444;
+    color: #777;
+    font-size: 12px;
+    padding: 4px 10px;
+    margin-top: 4px;
+    width: 100%;
+}
+
+.add-files-btn.primary-btn {
+    background: #2b3a6a;
+    border: 1px solid #3d4f8a;
+    color: #e6ecff;
+}
+
+.add-files-btn.primary-btn:hover {
+    background: #354a85;
+    border-color: #4a5fa0;
+    color: #fff;
+}
+
+.add-files-btn:hover {
+    border-color: #666;
+    color: #aaa;
+    background: #2a2a2a;
+}
+
+.file-sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-bottom: 1px solid #222;
+}
+
+.file-sort-label {
+    font-size: 11px;
+    color: #666;
+}
+
+.file-sort-select {
+    background: #222;
+    color: #aaa;
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 11px;
+    padding: 1px 4px;
+    cursor: pointer;
+    outline: none;
+}
+
+.file-sort-select:hover {
+    border-color: #666;
+    color: #ccc;
+}
+
+.file-sort-select:focus {
+    border-color: #557;
+}
+
+.file-preview-toggle {
+    margin-left: auto;
+    background: none;
+    border: 1px solid #444;
+    border-radius: 3px;
+    color: #888;
+    font-size: 13px;
+    padding: 0 4px;
+    cursor: pointer;
+    line-height: 1.4;
+    opacity: 0.7;
+}
+
+.file-preview-toggle:hover {
+    border-color: #666;
+    opacity: 1;
+}
+
+.file-preview-toggle.active {
+    color: #ccc;
+    opacity: 1;
+}
+
+.demo-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 4px;
+}
+
+.demo-item {
+    padding: 5px 10px;
+    background: #2a2a2a;
+    color: #ccc;
+    border: 1px solid #444;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.85em;
+    font-style: normal;
+}
+
+.demo-item:hover {
+    background: #3a3a3a;
+    color: #fff;
+    border-color: #666;
+}
+
+.bats-for-you {
+    margin: 12px 10px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 8px 8px 8px;
+    background: #1e1e22;
+    border: 1px solid #3a3a44;
+    border-radius: 6px;
+}
+
+.bats-for-you-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 2px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    color: #b0a088;
+    font-size: 0.82em;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.bats-for-you-header:hover {
+    color: #d0c0a0;
+}
+
+.bats-for-you-caret {
+    font-size: 0.9em;
+    width: 12px;
+    display: inline-block;
+    text-align: center;
+    opacity: 0.8;
+}
+
+.bats-for-you-title {
+    flex: 1;
+}
+
+.bats-for-you-refresh {
+    background: transparent;
+    color: #9a8a70;
+    border: 1px solid #4a4a50;
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 0.95em;
+    line-height: 1;
+}
+
+.bats-for-you-refresh:hover {
+    background: #2a2a2e;
+    color: #d0c0a0;
+    border-color: #6a6a70;
+}
+
+.bats-for-you-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.bats-for-you-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    width: 100%;
+}
+
+.bats-for-you-shuffle {
+    background: transparent;
+    color: #9a8a70;
+    border: 1px solid #4a4a50;
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78em;
+    letter-spacing: 0.03em;
+    text-align: center;
+}
+
+.bats-for-you-shuffle:hover {
+    background: #2a2a2e;
+    color: #d0c0a0;
+    border-color: #6a6a70;
+}
+
+.bats-for-you-empty {
+    grid-column: 1 / -1;
+    padding: 8px;
+    color: #777;
+    font-size: 0.8em;
+    text-align: center;
+    font-style: italic;
+}
+
+.bats-for-you-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+    gap: 2px;
+    padding: 6px 10px;
+    background: #26262a;
+    color: #ccc;
+    border: 1px solid #3a3a40;
+    border-left: 3px solid #8a7048;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+    min-width: 0;
+}
+
+.bats-for-you-card:hover {
+    background: #2e2e34;
+    border-color: #55555c;
+    color: #fff;
+}
+
+.bats-for-you-card:nth-child(3n+1) { border-left-color: #a88050; }
+.bats-for-you-card:nth-child(3n+2) { border-left-color: #5a9088; }
+.bats-for-you-card:nth-child(3n+3) { border-left-color: #9070a8; }
+
+.bats-for-you-card:nth-child(3n+1):hover { border-left-color: #d0a060; }
+.bats-for-you-card:nth-child(3n+2):hover { border-left-color: #78b8ac; }
+.bats-for-you-card:nth-child(3n+3):hover { border-left-color: #b090c8; }
+
+.bats-for-you-card-name {
+    font-size: 0.82em;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #e0d8c0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bats-for-you-card-species {
+    font-size: 0.72em;
+    font-style: italic;
+    color: #9a9080;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bats-for-you-card-details {
+    font-size: 0.7em;
+    color: #a89878;
+    line-height: 1.2;
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bats-for-you-card-placeholder {
+    color: #555;
+}
+
+.file-list {
+    list-style: none;
+}
+
+/* Empty state shown above the action footer when no files are loaded:
+   faded bat logo, headline, and a short hint. */
+.files-empty-state {
+    padding: 28px 16px 16px;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.files-empty-logo {
+    width: 96px;
+    height: 96px;
+    display: block;
+    margin: 0 auto 12px auto;
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.files-empty-title {
+    color: #ddd;
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.files-empty-sub {
+    color: #888;
+    font-size: 13px;
+}
+
+/* Stack the unified action buttons (Open files / New live recording / Load
+   demo / Explore XC). Visible in both empty and populated states. */
+.file-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px 4px;
+}
+
+.file-actions .add-files-btn {
+    margin-top: 0;
+}
+
+/* Mobile: bump padding so touch targets clear ~44px Apple HIG minimum. */
+.app.mobile .file-actions {
+    gap: 8px;
+    padding: 10px 12px 6px;
+}
+.app.mobile .file-actions .upload-btn,
+.app.mobile .file-actions .add-files-btn {
+    padding: 12px 14px;
+    font-size: 14px;
+    min-height: 44px;
+}
+
+.file-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #222;
+}
+
+.file-item:hover {
+    background: #222;
+}
+
+.file-item.active {
+    background: #1a3a5a;
+    color: #fff;
+}
+
+.file-item.selected {
+    background: #2a2a3a;
+    outline: 1px solid #5577aa;
+    outline-offset: -1px;
+}
+
+.file-item.active.selected {
+    background: #1a3a5a;
+    outline: 1px solid #6699cc;
+    outline-offset: -1px;
+}
+
+/* Timeline creation bar */
+.timeline-create-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: #1a2a3a;
+    border: 1px solid #335;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: #8ab;
+}
+
+.timeline-create-btn {
+    background: #2a5a8a;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.timeline-create-btn:hover {
+    background: #3a6a9a;
+}
+
+/* Timeline active banner */
+.timeline-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: #1a3a2a;
+    border: 1px solid #3a6a4a;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: #8cb8a0;
+}
+
+.timeline-banner-label {
+    flex: 1;
+}
+
+.timeline-exit-btn {
+    background: none;
+    border: none;
+    color: #8cb8a0;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.timeline-exit-btn:hover {
+    color: #f88;
+}
+
+/* Main area */
+.main {
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+    max-height: 100%;
+}
+
+.toolbar {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 6px 8px;
+    background: #181818;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+    /* Grid items default to min-width: auto (min-content). Without this,
+       a long filename forces the whole toolbar wider than the viewport,
+       pushing the right-side overflow button off-screen on mobile. */
+    min-width: 0;
+}
+
+/* Shared layout for every main chart host (spectrogram, chromagram,
+   waveform, ZC chart). Outer flex-column with [chart-row: stage + band
+   gutter] over [view-bottom-row: time gutter + corner]. Per-view sizing
+   modifiers live below and only override flex weight / heights / bg. */
+.spectrogram-container,
+.waveform-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.chart-row {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+}
+
+.chart-stage {
+    flex: 1 1 auto;
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+}
+
+.chart-stage > canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* Spectrogram + chromagram take three parts of the main flex. */
+.spectrogram-container {
+    flex: 3;
+    background: #000;
+}
+
+/* Waveform + ZC chart sit as a short sub-strip by default; the
+   .main-waveform-full wrapper lifts the height cap when they're the
+   primary view. */
+.waveform-container {
+    flex: 1;
+    min-height: 80px;
+    max-height: 170px;
+    background: #0a0a0a;
+    border-top: 1px solid #333;
+}
+
+.band-gutter {
+    /* Width = LABEL_COL_WIDTH (22) + two 20px fog cells = 62px of canvas,
+       plus ~2px visual breathing room. Must stay in sync with
+       gutter_renderer::BAND_GUTTER_WIDTH. */
+    flex: 0 0 64px;
+    position: relative;
+    /* Visible gap between the gutter and the wave canvas so the scale
+       distinction (frequency vs. amplitude) reads at a glance. */
+    margin-right: 3px;
+    background: #0d0d0d;
+    border-right: 2px solid #2a2a2a;
+    overflow: hidden;
+    touch-action: none;
+}
+
+.band-gutter canvas {
+    width: 100%;
+    /* Full-height canvas so the gutter's tick positions line up 1:1 with
+       the host view's y-axis — any header/footer reservation would offset
+       the mapping. */
+    height: 100%;
+    display: block;
+    /* Thick-cross `cell` cursor matches the spectrogram's y-axis so the
+       two surfaces read as one continuous frequency-selection control. */
+    cursor: cell;
+}
+
+/* Subtle top/bottom vignette — detaches the gutter visually from the
+   flat-black wave background so it reads as a distinct "strip". */
+.band-gutter::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to bottom,
+        rgba(0, 0, 0, 0.35) 0%,
+        rgba(0, 0, 0, 0) 12%,
+        rgba(0, 0, 0, 0) 88%,
+        rgba(0, 0, 0, 0.35) 100%);
+}
+
+/* Bottom-row layout shared by every gutter-equipped view: the time gutter
+   claims the remaining width beside the corner spacer that sits under the
+   band gutter. Keeps the time ticks aligned with the main canvas data
+   region and leaves a clean empty square in the corner. */
+.view-bottom-row {
+    flex: 0 0 24px;
+    /* Without min-height:0 + overflow:hidden, the inner <canvas>'s 150px
+       intrinsic height becomes the row's min-content floor and overrides
+       the 24px flex-basis, letting the gutter swallow the main view. */
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+}
+
+.view-bottom-corner {
+    /* Matches .band-gutter total occupation: flex-basis 64px (border-box,
+       so includes the 2px border) + 3px margin-left = 67px. Kept in sync
+       manually so the corner perfectly aligns with the column above. */
+    flex: 0 0 67px;
+    background: #0a0a0a;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.time-gutter {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+    background: #0a0a0a;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    touch-action: none;
+}
+
+.time-gutter canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: cell;
+}
+
+/* Mobile: widen the frequency gutter and deepen the time gutter so they
+   present fat-finger drag surfaces. Canvas content auto-adapts (the
+   renderer draws to the actual container size), so only the CSS flex
+   basis needs to grow. The bottom-corner spacer must track the band
+   gutter's total occupation (width + 3px margin) so the corner stays
+   aligned with the column above it. */
+.app.mobile .band-gutter {
+    flex: 0 0 84px;
+}
+.app.mobile .view-bottom-row {
+    flex: 0 0 40px;
+}
+.app.mobile .view-bottom-corner {
+    flex: 0 0 87px;
+}
+
+.band-gutter-tooltip {
+    position: absolute;
+    /* Float the tooltip to the right of the gutter (over the waveform) so
+       it doesn't spill outside the container now that the gutter is the
+       leftmost element. */
+    left: 100%;
+    margin-left: 4px;
+    transform: translateY(-50%);
+    padding: 2px 6px;
+    background: rgba(20, 20, 20, 0.92);
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 11px;
+    color: #eee;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* ── Playhead overlays (DOM-based for smooth animation) ──────────────── */
+
+.playhead-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    background: rgba(255, 80, 80, 0.9);
+    pointer-events: none;
+    will-change: transform;
+    z-index: 2;
+}
+
+.playhead-dot {
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 80, 80, 0.9);
+    pointer-events: none;
+    will-change: transform;
+    z-index: 2;
+    margin-left: -3px;
+}
+
+.analysis-panel {
+    padding: 8px 16px;
+    background: #181818;
+    border-top: 1px solid #333;
+    font-size: 13px;
+    color: #999;
+    flex-shrink: 0;
+    min-height: 32px;
+}
+
+.analysis-panel span {
+    margin-right: 20px;
+}
+
+/* ── Bottom toolbar ── */
+.bottom-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    padding-top: 0;
+    background: #1a1a1a;
+    border-top: 1px solid #333;
+    flex-shrink: 0;
+    overflow: visible;
+    position: relative;
+    z-index: 15;
+    flex-wrap: wrap;
+}
+
+/* When a combo dropdown is open, lift toolbar above .main-overlays (z-index: 20)
+   so the panel isn't hidden behind floating overlay buttons like Spec|View.
+   The .panel-open class is driven reactively from state.layer_panel_open — more
+   reliable than :has(), which browsers sometimes fail to re-invalidate when
+   descendant classes flip during rapid mode changes. */
+.bottom-toolbar.panel-open,
+.bottom-toolbar:has(.combo-btn-row.open) {
+    z-index: 25;
+}
+
+.bottom-toolbar-drag-handle {
+    width: 100%;
+    height: 10px;
+    cursor: ns-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    touch-action: none;
+}
+
+.bottom-toolbar-drag-grip {
+    width: 40px;
+    height: 3px;
+    border-radius: 2px;
+    background: #444;
+    transition: background 0.15s;
+}
+
+.bottom-toolbar-drag-handle:hover .bottom-toolbar-drag-grip,
+.bottom-toolbar-drag-handle:active .bottom-toolbar-drag-grip {
+    background: #777;
+}
+
+.bottom-toolbar-sep {
+    width: 1px;
+    height: 24px;
+    background: #333;
+    margin: 0 4px;
+    flex-shrink: 0;
+}
+
+/* Toolbar elements */
+.toolbar button {
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    padding: 4px 12px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.toolbar button:hover {
+    background: #444;
+}
+
+.toolbar button.active {
+    background: #1a5a3a;
+    border-color: #4a8;
+}
+
+.toolbar label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #999;
+    font-size: 13px;
+}
+
+.toolbar input[type="range"] {
+    width: 100px;
+}
+
+.toolbar-sep {
+    width: 1px;
+    height: 20px;
+    background: #444;
+}
+
+.empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: #555;
+    font-size: 18px;
+    position: relative;
+}
+
+/* Toolbar brand */
+.toolbar-brand {
+    font-weight: 700;
+    font-size: 15px;
+    color: #eee;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+/* Title center area — two-row layout: row 1 = status + filename, row 2 = info/CC */
+.toolbar-title-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    min-width: 0; /* allow shrinking */
+    overflow: visible;
+    gap: 1px;
+}
+
+.toolbar-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.toolbar-info-row,
+.toolbar-badge-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    position: relative;
+    flex-wrap: wrap;
+}
+
+.toolbar-status-icons {
+    flex-shrink: 0;
+    font-size: 14px;
+    line-height: 1;
+    min-width: 20px; /* reserve space so filename doesn't shift */
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+
+/* CSS-rendered recording dot for the heading (cross-platform, pulsing) */
+.toolbar-rec-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #e44;
+    flex-shrink: 0;
+    animation: toolbar-rec-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes toolbar-rec-pulse {
+    0%, 100% { opacity: 1.0; }
+    50% { opacity: 0.4; }
+}
+
+.toolbar-title-filename {
+    color: #bbb;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    direction: ltr;
+    text-align: center;
+}
+
+.toolbar-info-btn {
+    flex-shrink: 0;
+    background: none !important;
+    border: none !important;
+    color: #888;
+    font-size: 16px;
+    padding: 2px 4px !important;
+    cursor: pointer;
+    line-height: 1;
+    border-radius: 3px;
+}
+
+.toolbar-info-btn:hover {
+    color: #ccc;
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.toolbar-cc-badge {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: #888;
+    font-size: 10px;
+    padding: 2px 6px !important;
+    cursor: pointer;
+    border-radius: 3px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 160px;
+}
+
+.toolbar-cc-badge:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: #ccc;
+}
+
+.toolbar-cc-icon {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    vertical-align: middle;
+    background-color: currentColor;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' stroke='white' stroke-width='1.5' fill='none'/%3E%3Ctext x='10' y='13.5' text-anchor='middle' font-size='10' font-weight='700' font-family='Arial,sans-serif' fill='white'%3ECC%3C/text%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' stroke='white' stroke-width='1.5' fill='none'/%3E%3Ctext x='10' y='13.5' text-anchor='middle' font-size='10' font-weight='700' font-family='Arial,sans-serif' fill='white'%3ECC%3C/text%3E%3C/svg%3E");
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+}
+
+.toolbar-cc-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Mode group — radio-style buttons */
+.mode-group {
+    display: flex;
+    gap: 0;
+}
+
+.mode-btn {
+    background: #2a2a2a !important;
+    border: 1px solid #444 !important;
+    border-radius: 0 !important;
+    padding: 4px 14px !important;
+    font-size: 12px !important;
+    font-weight: 600;
+    color: #888 !important;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.mode-btn:first-child {
+    border-radius: 3px 0 0 3px !important;
+}
+
+.mode-btn:last-child {
+    border-radius: 0 3px 3px 0 !important;
+}
+
+.mode-btn:not(:first-child) {
+    border-left: none !important;
+}
+
+.mode-btn:hover {
+    background: #383838 !important;
+    color: #bbb !important;
+}
+
+.mode-btn.active {
+    background: #1a5a3a !important;
+    border-color: #4a8 !important;
+    color: #fff !important;
+}
+
+/* Play/Stop button */
+.play-btn {
+    min-width: 60px;
+    font-weight: 600 !important;
+}
+
+.play-btn.playing {
+    background: #5a2020 !important;
+    border-color: #a44 !important;
+    color: #fff !important;
+}
+
+/* Mode-specific parameter controls */
+.mode-param {
+    color: #aaa !important;
+    font-variant-numeric: tabular-nums;
+    min-width: 120px;
+}
+
+.mode-param-value {
+    display: inline-block;
+    min-width: 52px;
+    text-align: right;
+}
+
+.mode-hint {
+    color: #666;
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* File item details */
+.file-item-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.file-item-name {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.file-item-close {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.file-item:hover .file-item-close {
+    color: #999;
+}
+
+.file-item.active .file-item-close {
+    color: #88a;
+}
+
+.file-item-close:hover {
+    background: #c33;
+    color: #fff;
+}
+
+.file-item-info {
+    font-size: 11px;
+    color: #777;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.file-item.active .file-item-info {
+    color: #99b;
+}
+
+.file-preview-canvas {
+    display: block;
+    width: 100%;
+    height: 40px;
+    border-radius: 2px;
+    margin-bottom: 4px;
+    image-rendering: pixelated;
+}
+
+/* Loading indicator */
+.file-item.loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #888;
+    font-size: 12px;
+    cursor: default;
+}
+
+.loading-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #444;
+    border-top-color: #4a8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
+.loading-name {
+    font-size: 11px;
+    color: #aaa;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.loading-stage {
+    font-size: 11px;
+    color: #888;
+}
+.loading-bar {
+    height: 3px;
+    background: #333;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 1px;
+}
+.loading-bar-fill {
+    height: 100%;
+    background: #4a8;
+    transition: width 0.3s ease;
+}
+
+/* Inline loading indicator inside a file item */
+.file-item-loading {
+    padding: 2px 8px 4px;
+    font-size: 11px;
+    color: #888;
+}
+.file-item-loading .loading-bar {
+    margin-top: 2px;
+}
+
+/* Filter panel */
+.filter-band-mode {
+    display: flex;
+    gap: 0;
+    padding: 4px 16px;
+}
+
+.filter-band-mode .mode-btn {
+    flex: 1;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+}
+
+.filter-set-btn {
+    display: block;
+    width: calc(100% - 32px);
+    margin: 4px 16px;
+    padding: 5px 8px;
+    background: #2a2a2a;
+    color: #aaa;
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.filter-set-btn:hover:not(:disabled) {
+    background: #383838;
+    color: #ccc;
+}
+
+.filter-set-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.filter-freq-display {
+    padding: 3px 16px;
+    font-size: 12px;
+    color: #777;
+    font-variant-numeric: tabular-nums;
+}
+
+.filter-mode-info {
+    padding: 4px 16px;
+    font-size: 12px;
+    color: #777;
+}
+
+/* About dialog */
+.about-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.about-dialog {
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 24px 28px;
+    max-width: 380px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.about-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    margin-bottom: 12px;
+}
+
+.about-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #eee;
+    letter-spacing: 0.5px;
+}
+
+.about-version {
+    font-size: 13px;
+    color: #666;
+}
+
+.about-desc {
+    font-size: 13px;
+    color: #999;
+    margin-bottom: 18px;
+    line-height: 1.5;
+}
+
+.about-modes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.about-mode {
+    font-size: 12px;
+    color: #888;
+    line-height: 1.4;
+}
+
+.about-mode-tag {
+    display: inline-block;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #aaa;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.about-close {
+    display: block;
+    margin-left: auto;
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 5px 18px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.about-close:hover {
+    background: #444;
+    color: #fff;
+}
+
+/* ── Reusable modal ────────────────────────────────────────────────── */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-dialog {
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 8px;
+    max-width: min(90vw, 420px);
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+}
+
+.modal-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e0e0e0;
+    display: flex;
+    align-items: center;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: #fff;
+}
+
+.modal-body {
+    padding: 16px 18px 18px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* ── CC license modal ──────────────────────────────────────────────── */
+
+.cc-species {
+    font-size: 15px;
+    font-weight: 600;
+    color: #e0e0e0;
+    margin-bottom: 14px;
+}
+
+.cc-sci-name {
+    font-weight: 400;
+    font-style: italic;
+    color: #aaa;
+}
+
+.cc-fields {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 5px 12px;
+    margin-bottom: 14px;
+    font-size: 12px;
+}
+
+.cc-row {
+    display: contents;
+}
+
+.cc-label {
+    color: #888;
+    white-space: nowrap;
+}
+
+.cc-value {
+    color: #ccc;
+    word-break: break-word;
+}
+
+.cc-attribution {
+    font-size: 11px;
+    color: #999;
+    background: #252530;
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+    user-select: all;
+}
+
+.cc-license-link {
+    margin-bottom: 14px;
+    font-size: 12px;
+}
+
+.cc-license-link a {
+    color: #8cf;
+    text-decoration: none;
+}
+
+.cc-license-link a:hover {
+    text-decoration: underline;
+}
+
+.cc-links {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.cc-link-btn {
+    display: inline-block;
+    background: #2a2a35;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: #bbb;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.cc-link-btn:hover {
+    background: #353545;
+    color: #eee;
+}
+
+.cc-demo-notice {
+    font-size: 11px;
+    color: #777;
+    border-top: 1px solid #333;
+    padding-top: 10px;
+    line-height: 1.5;
+}
+
+.cc-demo-notice a {
+    color: #8cf;
+    text-decoration: none;
+}
+
+.cc-demo-notice a:hover {
+    text-decoration: underline;
+}
+
+/* ── Overview strip ─────────────────────────────────────────────────────── */
+
+.overview-strip {
+    height: clamp(50px, 9vh, 100px);
+    flex-shrink: 0;
+    position: relative;
+    background: #000;
+    border-bottom: 10px solid #000;
+    touch-action: none;
+    /* overflow: visible so the View panel can extend upward into the toolbar area */
+    overflow: visible;
+    cursor: crosshair;
+    /* z-index creates stacking context so the panel paints above the toolbar */
+    z-index: 5;
+}
+
+.overview-strip canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+}
+
+/* ── Overview toolbar — owns the spectrogram/waveform toggle, sits flush
+   beneath the overview (shared black) so it reads as part of it. ────────── */
+.overview-toolbar {
+    display: flex;
+    align-items: center;
+    height: 24px;
+    flex-shrink: 0;
+    padding: 0 8px;
+    background: #000;
+    border-bottom: 1px solid #161616;
+    gap: 8px;
+}
+.overview-toolbar-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: #4a4a4a;
+    margin-right: auto; /* push the toggle to the right end */
+    user-select: none;
+}
+.overview-layer-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    padding: 2px 9px;
+    color: #b0b0b0;
+    background: #161616;
+    border: 1px solid #2c2c2c;
+    border-radius: 5px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.overview-layer-btn:hover {
+    color: #e6e6e6;
+    background: #232323;
+    border-color: #3a3a3a;
+}
+.overview-layer-btn .ov-preview {
+    font-size: 13px;
+    line-height: 1;
+    color: #7fd0c0; /* subtle teal so the preview glyph reads as an icon */
+}
+
+/* ── HFR Bar (between Overview and main view) ──────────────────────────── */
+
+/* ── Bar primitives — shared between .hearing-bar and .view-bar ──────────
+   These let the two bars stay structurally identical so adding new
+   buttons later is a one-liner. New bars can reuse the same primitives. */
+
+.hearing-bar,
+.view-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    padding: 4px 8px;
+    background: #181818;
+    border-bottom: 1px solid #333;
+    position: relative;
+    z-index: 6;
+}
+
+/* Hearing bar leaves its left edge flush so the BAND cell can sit
+   exactly above the band gutter column. Internal spacing is provided
+   by the bar-controls.
+   flex-wrap: wrap lets Gain/NR/Notch drop to a second row on narrow
+   viewports rather than forcing the band-affected group to break up
+   internally. */
+.hearing-bar {
+    padding-left: 0;
+    gap: 0;
+    align-items: stretch;
+    min-height: 44px;
+    flex-wrap: wrap;
+}
+
+/* The view-bar is a half-step lighter and a touch thinner to signal a
+   different conceptual category (visualization, not audio). */
+.view-bar {
+    background: #1d1d1d;
+    padding: 3px 8px;
+    align-items: center;
+}
+
+/* When any combo dropdown is open, lift the bar above .main-overlays
+   (z-index: 20) so the panel renders on top of canvas overlays.
+   Matches the .bottom-toolbar.panel-open pattern. */
+.hearing-bar.panel-open,
+.view-bar.panel-open,
+.hearing-bar:has(.combo-btn-row.open),
+.view-bar:has(.combo-btn-row.open) {
+    z-index: 25;
+}
+
+/* Tiny uppercase label at the start of each bar identifying its
+   conceptual group. Hidden on narrow viewports where vertical space is
+   precious. */
+.bar-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: #666;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    padding: 0 4px 0 0;
+}
+
+/* ── BAND cell — leftmost column of the hearing bar ───────────────────
+   Width and right edge mirror the band-gutter column directly below
+   (64px + 3px margin + 2px border). The cell is now a clickable button
+   that toggles HFR; the label is the literal "HFR" with per-letter
+   brightness encoding HFR state (grey off, amber on, "H" dimmed when
+   the active band sits entirely below 24 kHz). */
+.band-cell {
+    flex: 0 0 64px;
+    margin-right: 3px;
+    border-right: 2px solid #2a2a2a;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+    background: #0d0d0d;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    user-select: none;
+    cursor: pointer;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    transition: background 0.15s;
+}
+.band-cell:hover {
+    background: #141414;
+}
+.band-cell.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+.band-cell-hfr-label {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #555;
+    transition: color 0.15s;
+}
+.band-cell.hfr-on .band-cell-hfr-label {
+    color: #f0c050;
+}
+/* "FR" stays bright but the leading "H" dims when the active band is
+   audible-only (entirely < 24 kHz) — same rule as the old HfrButton. */
+.band-cell.hfr-on.hfr-h-dim .band-cell-hfr-label::first-letter {
+    color: #555;
+}
+
+/* On mobile the gutter widens to 84px — match it here too. */
+.app.mobile .band-cell {
+    flex: 0 0 84px;
+}
+
+/* Mute-blink: blinks the selected mode radio button's label when
+   listening with the output muted. step-end snaps the color (no fade). */
+@keyframes mute-blink-flash {
+    0%, 49.99%  { color: #ffffff; }
+    50%, 100%   { color: #f0c050; }
+}
+.mute-blink .mode-radio-label,
+.mute-blink .layer-btn-value {
+    animation: mute-blink-flash 1s step-end infinite;
+    font-weight: 700;
+}
+
+/* Bandpass popup range readout — was 10px and gray, now legible. */
+.bandpass-range-readout {
+    padding: 4px 8px 6px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: #ddd;
+    display: flex;
+    align-items: center;
+}
+.bandpass-lock-icon {
+    font-size: 13px;
+    line-height: 1;
+    filter: saturate(2) brightness(1.2);
+    margin-left: 2px;
+}
+
+/* Main row of buttons inside a bar. Wraps on narrow viewports so new
+   buttons don't shove existing ones off-screen. */
+.bar-controls {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+
+/* Hearing-bar's controls sit after the BAND cell (which provides its
+   own border separator), so add a touch of breathing room and keep
+   buttons centered vertically since the bar uses align-items: stretch. */
+.hearing-bar .bar-controls {
+    padding: 0 0 0 8px;
+}
+
+/* Thin vertical divider between button sub-groups. */
+.bar-sep {
+    width: 1px;
+    height: 22px;
+    background: #2c2c2c;
+    flex-shrink: 0;
+    margin: 0 4px;
+}
+
+/* Flex spacer that pushes subsequent items to the right end of the bar. */
+.bar-spacer {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.hearing-bar .layer-btn,
+.view-bar .layer-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+/* ── Band-affected row ────────────────────────────────────────────────
+   Wraps the HFR cell + Range dropdown + Mode radio group + PASS combo.
+   A single horizontal overline above them communicates "all of these
+   are slaved to the active band". The overline turns amber when HFR is
+   on, grey when off; the slice above PASS additionally goes grey when
+   PASS is locked (range not following the band). */
+.band-affected-row {
+    display: flex;
+    align-items: stretch;
+    position: relative;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    margin-right: 10px;
+    /* Pin the *used* width (not just a min-width floor) to the intrinsic
+       content size. Firefox doesn't reliably propagate a nested flex
+       container's max-content up to this row's border box, so with only
+       `min-width: max-content` the border-top (the amber HFR overline)
+       stopped partway across the PASS combo. `width: max-content` makes the
+       row's border box equal its content in both engines. */
+    width: max-content;
+    min-width: max-content;
+    /* Overline is a real border on the row — extends exactly the box's
+       width (including all flex children) without depending on
+       absolute-positioning math or min-width propagation. */
+    border-top: 2px solid rgba(120, 120, 120, 0.28);
+    transition: border-top-color 0.2s;
+}
+.band-affected-row.band-on {
+    border-top-color: rgba(240, 192, 80, 0.62);
+}
+/* When the bandpass range is locked (not following the active band),
+   paint a grey patch over the section of border-top above PASS to
+   signal that the PASS filter is *not* tracking the rest of the group.
+   The patch is an absolutely-positioned ::before pinned to top:-2px so
+   it sits exactly where the row's border-top is drawn. */
+.band-affected-row.pass-locked .band-affected-controls > :last-child {
+    position: relative;
+}
+.band-affected-row.pass-locked .band-affected-controls > :last-child::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(120, 120, 120, 0.45);
+    pointer-events: none;
+}
+/* Inner controls row — like .bar-controls but never wraps. Keeping
+   Range / Mode radios / PASS on a single line is the whole point of
+   the band-affected group; if the viewport is too narrow, the entire
+   hearing bar wraps as a unit instead (see .hearing-bar below). */
+.band-affected-controls {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+    padding: 0 0 0 6px;
+    /* Override .bar-controls' min-width: 0 — we want intrinsic width so the
+       parent row knows how wide it needs to be (and the overline above can
+       span all the way to PASS). `width: max-content` (not just min-width)
+       makes Firefox include this nested flex row's full size in the parent's
+       border box. */
+    width: max-content;
+    min-width: max-content;
+}
+/* Children of band-affected-controls must never flex-shrink — otherwise
+   the PASS combo's right half (AUTO) can be allocated less space than
+   its content needs, the inner buttons (which are lock-grow locked at
+   their high-water-mark widths) overflow visually, and the border-top
+   overline ends short of where the visible AUTO text ends. */
+.band-affected-controls > * {
+    flex-shrink: 0;
+}
+
+/* ── Range dropdown — replaces the old HfrButton.
+   Sits to the right of the HFR cell. Shows "OFF" (dim) when HFR is off,
+   or the active band range (amber) when on. Click opens band-presets. */
+.range-btn-row {
+    display: flex;
+    position: relative;
+    flex-shrink: 0;
+}
+.range-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 18px 5px 9px;
+    min-height: 32px;
+    color: #888;
+    position: relative;
+    font-variant-numeric: tabular-nums;
+}
+.range-btn-label {
+    font-weight: 500;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.range-btn.hfr-off .range-btn-label {
+    color: #888;
+    letter-spacing: 0.6px;
+}
+.range-btn.hfr-on .range-btn-label {
+    color: #f0c050;
+}
+.range-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+.range-btn.open {
+    background: rgba(45, 45, 45, 0.95);
+    border-color: rgba(130, 130, 130, 0.6);
+}
+.range-btn .combo-btn-arrow {
+    position: absolute;
+    right: 1px;
+    bottom: -1px;
+    font-size: 10px;
+    opacity: 0.55;
+    line-height: 1;
+}
+
+/* ── Mode radio group — 5 joined buttons.
+   The group is a single outlined container with thin internal dividers
+   between buttons (no per-button borders), making it visually obvious
+   that the five buttons are one cohesive picker rather than five loose
+   buttons that happen to sit side-by-side. Inactive buttons are
+   transparent; the selected one fills with the "active" tint and
+   shows a corner ◢ when it has additional settings. */
+.mode-radio-group {
+    display: flex;
+    align-items: stretch;
+    flex-shrink: 0;
+    position: relative;
+    background: rgba(20, 20, 20, 0.85);
+    border: 1px solid rgba(80, 80, 80, 0.45);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.mode-radio-btn {
+    border: none;
+    border-right: 1px solid rgba(80, 80, 80, 0.45);
+    border-radius: 0;
+    background: transparent;
+    margin: 0;
+    position: relative;
+    min-width: 40px;
+    min-height: 30px;
+    padding: 4px 8px 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #bbb;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.mode-radio-btn:last-child {
+    border-right: none;
+}
+.mode-radio-btn:hover:not(.selected) {
+    background: rgba(255, 255, 255, 0.04);
+    color: #ddd;
+}
+.mode-radio-btn.selected {
+    background: rgba(26, 60, 40, 0.92);
+    color: #8fc;
+}
+.mode-radio-btn.selected:hover {
+    background: rgba(32, 72, 50, 0.95);
+}
+.mode-radio-btn.open {
+    background: rgba(32, 72, 50, 0.95);
+}
+.mode-radio-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+/* Inaudible-band warning — amber wavy underline on the 1:1 label when
+   the active band sits entirely above human hearing (so playing in
+   Normal mode would produce nothing audible). Matches the underline
+   the Play button gets in the same situation. */
+.mode-radio-btn.inaudible-warning .mode-radio-label {
+    text-decoration: underline wavy rgba(240, 160, 60, 0.9);
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1.5px;
+}
+/* Same treatment on the Play button's ▶ glyph when current playback
+   mode is 1:1 with an ultrasound-only band. Applied via a wrapping div
+   with the .inaudible-warning class. */
+.inaudible-warning .combo-btn-left .layer-btn-value,
+.layer-btn.play-mode-extra.inaudible-warning .layer-btn-value {
+    /* border, not text-decoration: the play glyph is an inline SVG */
+    border-bottom: 2px dotted rgba(240, 160, 60, 0.9);
+    padding-bottom: 1px;
+}
+
+/* Multi-selected (but not the live mode) — the bucket appears in the
+   user's ctrl-click selection but isn't what's currently playing.
+   Lighter green tint than .selected.active-mode so the live mode
+   stays the obvious focal point. */
+.mode-radio-btn.multi-selected:not(.active-mode) {
+    background: rgba(26, 60, 40, 0.45);
+    color: #9d9;
+}
+.mode-radio-btn.multi-selected:not(.active-mode):hover {
+    background: rgba(32, 72, 50, 0.6);
+}
+
+/* Per-mode Play button (rendered before the main Play combo when the
+   user has ctrl-clicked extra modes). Uses the same stacked face as the
+   main Play combo's left half — mode label (small) over the ▶ glyph — so
+   the whole play cluster reads as one consistent set of buttons. */
+.layer-btn.play-mode-extra {
+    padding: 4px 9px 5px;
+    min-height: 38px;
+}
+/* Don't uppercase the mode label, matching .combo-btn-left. */
+.layer-btn.play-mode-extra .layer-btn-category {
+    text-transform: none;
+    color: #c8c8c8;
+}
+.layer-btn.play-mode-extra .layer-btn-value {
+    font-size: 13px;
+    line-height: 1;
+}
+.layer-btn.play-mode-extra.active {
+    background: rgba(26, 60, 40, 0.92);
+    border-color: rgba(80, 180, 130, 0.6);
+    color: #8fc;
+}
+.layer-btn.play-mode-extra.active .layer-btn-category {
+    color: #8fc;
+}
+.mode-radio-label {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+}
+/* Corner indicator — hidden by default, shown on the selected button
+   when it has additional settings (HET/TE/PS/ZC). */
+.mode-radio-corner {
+    display: none;
+    position: absolute;
+    right: 1px;
+    bottom: -1px;
+    font-size: 9px;
+    line-height: 1;
+    opacity: 0.7;
+    color: #8fc;
+    pointer-events: none;
+}
+.mode-radio-btn.selected.has-settings .mode-radio-corner {
+    display: block;
+}
+
+/* The PS settings popup has an Algorithm row with PS / PV toggles. */
+.algo-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* ── Main view area ─────────────────────────────────────────────────────── */
+
+.main-view {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    /* overflow: visible so layer-panels can extend above this container */
+    overflow: visible;
+    min-height: 0;
+}
+
+/* VU meter — red level indicator on right edge during recording/listening */
+.vu-meter {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 3px;
+    background: #f44;
+    z-index: 25;
+    pointer-events: none;
+    transition: height 0.05s linear;
+    border-radius: 1px 1px 0 0;
+}
+
+/* When waveform is the main panel (not the sub-strip below spectrogram),
+   wrap it in this to override the max-height cap */
+.main-waveform-full {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.main-waveform-full .waveform-container {
+    max-height: none;
+    flex: 1;
+    min-height: 0;
+}
+
+.main-overlays {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    /* Floating controls/panels must render above the bottom toolbar without
+       lifting the entire main view above it. */
+    z-index: 20;
+    /* Allow panels to overflow upward into the overview strip area */
+    overflow: visible;
+}
+
+/* ── Layer buttons (shared pattern) ────────────────────────────────────── */
+
+.layer-btn {
+    pointer-events: auto;
+    background: rgba(20, 20, 20, 0.85);
+    border: 1px solid rgba(80, 80, 80, 0.45);
+    border-radius: 6px;
+    color: #bbb;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 9px 5px;
+    backdrop-filter: blur(4px);
+    user-select: none;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+}
+
+.combo-btn-text {
+    display: grid;
+    grid-template-rows: 10px 14px;
+    align-items: end;
+    justify-items: center;
+    min-height: 24px;
+}
+
+.layer-btn-category {
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: #c8c8c8;
+    opacity: 0.8;
+    line-height: 1;
+    min-height: 10px;
+}
+
+.layer-btn-value {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    color: #c8c8c8;
+}
+
+/* Don't force uppercase on combo-left categories (e.g. "with" for DSP) */
+.combo-btn-left .layer-btn-category {
+    text-transform: none;
+}
+
+/* Compact icon-only tool selector (Hand / Selection). The icon replaces the
+   word so the button stays small; the dropdown keeps the full labels. */
+.tool-combo-btn {
+    min-width: 0;
+    padding-left: 9px;
+    padding-right: 9px;
+}
+.tool-combo-icon {
+    font-size: 15px;
+}
+
+/* Stacked overlay checkboxes (Annotations / Bat book) in the View Bar. */
+.overlay-toggles {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 6px;
+}
+.overlay-check {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    line-height: 1.1;
+    color: #c8c8c8;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+.overlay-check input {
+    accent-color: #4a8;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    cursor: pointer;
+}
+.overlay-check.disabled {
+    color: #666;
+    cursor: default;
+}
+.overlay-check.disabled input {
+    cursor: default;
+}
+
+/* ── Combo button (split toggle + dropdown) ──────────────────────────── */
+
+.combo-btn-row {
+    position: relative;
+    display: flex;
+}
+
+.combo-btn-row.open {
+    z-index: 60;
+}
+
+.combo-btn-left {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    min-height: 38px;
+}
+
+.combo-btn-right {
+    position: relative;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 18px 5px 7px;
+    min-width: 0;
+    min-height: 38px;
+}
+
+.combo-btn-right.dim .layer-btn-value {
+    opacity: 0.55;
+}
+
+.combo-btn-right .combo-btn-text {
+    justify-items: end;
+}
+
+.combo-btn-arrow {
+    position: absolute;
+    right: 1px;
+    bottom: -1px;
+    font-size: 10px;
+    opacity: 0.55;
+    line-height: 1;
+}
+
+.layer-btn:hover {
+    background: rgba(45, 45, 45, 0.95);
+    border-color: rgba(130, 130, 130, 0.6);
+    color: #eee;
+}
+
+.layer-btn.active, .layer-btn.open {
+    background: rgba(26, 60, 40, 0.92);
+    border-color: rgba(80, 180, 130, 0.6);
+    color: #8fc;
+}
+
+.layer-btn.mic-armed {
+    background: rgba(40, 40, 20, 0.92);
+    border-color: rgba(200, 180, 60, 0.6);
+    color: #fc8;
+}
+
+.layer-btn.mic-recording {
+    background: rgba(60, 20, 20, 0.92);
+    border-color: rgba(220, 60, 60, 0.6);
+    color: #f66;
+    animation: mic-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%, 100% { border-color: rgba(220, 60, 60, 0.6); }
+    50% { border-color: rgba(220, 60, 60, 1.0); }
+}
+
+/* Record button circle — CSS-rendered dot replaces Unicode ● for cross-platform consistency */
+.rec-btn:not(.mic-recording) .layer-btn-value {
+    font-size: 0; /* hide the Unicode ● character */
+    position: relative;
+}
+.rec-btn:not(.mic-recording) .layer-btn-value::before {
+    content: '';
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background-color: #e44;
+}
+.rec-btn.mic-recording .layer-btn-value {
+    color: #f66;
+}
+
+/* Show "?" text next to the CSS red dot when mic selection is needed */
+.rec-btn.mic-ask:not(.mic-recording) .layer-btn-value {
+    font-size: 12px;
+    color: #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+
+.layer-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Mobile: slightly larger record dot */
+.bottom-toolbar.mobile .rec-btn:not(.mic-recording) .layer-btn-value::before {
+    width: 20px;
+    height: 20px;
+}
+
+/* ── Capture group: Mic | Record | Listen | + New ───────────────────────
+   Frames the four capture-related buttons together so Mic on the left
+   and "+ New" on the right read as bookends — the prerequisite steps
+   that gate Record / Listen in the middle. */
+.capture-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 4px;
+    border: 1px dashed rgba(120, 120, 120, 0.3);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.015);
+}
+
+/* When any capture-group descendant is active (recording / listening / armed),
+   the dashed frame brightens to confirm "yes, capture is hot". */
+.capture-group:has(.mic-recording),
+.capture-group:has(.mic-armed),
+.capture-group:has(.mic-select-btn.active) {
+    border-color: rgba(200, 180, 60, 0.45);
+    background: rgba(40, 40, 20, 0.18);
+}
+.capture-group:has(.mic-recording) {
+    border-color: rgba(220, 60, 60, 0.45);
+    background: rgba(60, 20, 20, 0.18);
+}
+
+/* Mic select button — left bookend of the capture group.
+   Pill-shaped, single horizontal row: [icon] [led] [name]. Fixed width
+   prevents the chip from shifting size when the device name or label
+   changes; the inner value text auto-shrinks via .fit-text. */
+.mic-select-btn {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 5px;
+    min-height: 0;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 15px;
+    flex-shrink: 0;
+    width: 158px;
+    box-sizing: border-box;
+}
+.mic-select-btn .layer-btn-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    white-space: nowrap;
+    line-height: 1;
+}
+
+/* "Chosen" — a mic is selected and we're idle. Reads as a low-key info
+   capsule rather than a primary action: muted border, no hover lift,
+   lighter weight on the name. */
+.mic-select-btn.mic-chosen {
+    background: rgba(255, 255, 255, 0.025);
+    border-color: rgba(110, 110, 110, 0.3);
+    color: #aaa;
+}
+.mic-select-btn.mic-chosen:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(140, 140, 140, 0.42);
+    color: #c8c8c8;
+}
+.mic-select-btn.mic-chosen .layer-btn-value {
+    font-weight: 500;
+    color: #c0c0c0;
+}
+.mic-select-btn.mic-chosen .mic-icon {
+    opacity: 0.55;
+}
+
+/* "Empty" state — no mic chosen yet: amber/dim border to nudge the user. */
+.mic-select-btn.mic-empty {
+    border-color: rgba(200, 160, 60, 0.5);
+    color: #d9b86b;
+}
+.mic-select-btn.mic-empty .layer-btn-value {
+    color: #e9c878;
+    font-style: italic;
+    font-weight: 500;
+}
+/* "Off" state — mic strategy is explicitly None. Dimmer than empty. */
+.mic-select-btn.mic-off {
+    opacity: 0.55;
+}
+/* Tiny chevron inside the mic name signals "click to open chooser". */
+.mic-select-btn .mic-chevron {
+    font-size: 9px;
+    opacity: 0.5;
+    margin-left: 3px;
+}
+
+/* Right half of the Mic combo: narrow caret-only button hosting the
+   options popup. Visually lighter than the left identity chip.
+   Matches the pill-shaped mic chip: flat where it joins the chip,
+   rounded on the outer (right) edge. */
+.mic-options-btn {
+    min-width: 20px;
+    padding: 0 10px 0 6px;
+    height: 30px;
+    min-height: 0;
+    border-radius: 0 15px 15px 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.mic-options-btn .combo-btn-arrow {
+    position: static;
+    font-size: 9px;
+    opacity: 0.6;
+}
+.mic-options-btn.open .combo-btn-arrow {
+    opacity: 1;
+    color: #6da;
+}
+
+/* Joint highlight when listening / recording — match left half's tint. */
+.mic-options-btn.active {
+    border-color: rgba(200, 180, 60, 0.45);
+}
+
+/* Mic icon — inline SVG silhouette. Small and dim so the chip stays
+   less prominent than Record / Listen. Uses currentColor so it inherits
+   the chip text colour (mic-chosen / mic-empty / mic-off variants
+   recolour the whole chip). */
+.mic-select-btn .mic-icon {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    opacity: 0.7;
+    display: block;
+}
+
+/* LED dot — small status pip rendered next to the mic icon. Color tells
+   the user whether the mic is ready, listening, or recording, without
+   any text label changing. */
+.mic-led {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #555;
+    margin-right: 4px;
+    vertical-align: middle;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3) inset;
+    flex-shrink: 0;
+}
+/* Inside the mic chip the LED sits in a flex row with gap, so cancel
+   the legacy margin-right and let `gap` handle spacing. */
+.mic-select-btn .mic-led {
+    margin-right: 0;
+}
+.mic-led.ready {
+    background: #2ec46b;
+    box-shadow: 0 0 4px rgba(46, 196, 107, 0.55);
+}
+.mic-led.listening {
+    background: #38d6ff;
+    box-shadow: 0 0 4px rgba(56, 214, 255, 0.6);
+    animation: mic-led-pulse 1.4s ease-in-out infinite;
+}
+.mic-led.rec {
+    background: #e44;
+    box-shadow: 0 0 4px rgba(228, 68, 68, 0.7);
+    animation: mic-led-pulse 0.9s ease-in-out infinite;
+}
+.mic-led.off,
+.mic-led.idle {
+    background: #555;
+    opacity: 0.55;
+}
+@keyframes mic-led-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+/* "Mic detected" chip in the file panel — appears when a USB mic is
+   plugged in but not yet selected. Subtle, dismissable, clickable. */
+.mic-detected-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    margin: 6px 8px 4px;
+    background: rgba(46, 196, 107, 0.08);
+    border: 1px solid rgba(46, 196, 107, 0.35);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #cfe;
+    user-select: none;
+    transition: background 0.12s ease;
+}
+.mic-detected-chip:hover {
+    background: rgba(46, 196, 107, 0.14);
+}
+.mic-detected-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.mic-detected-hint {
+    opacity: 0.7;
+    font-size: 11px;
+}
+.mic-detected-close {
+    background: transparent;
+    border: none;
+    color: #cfe;
+    opacity: 0.6;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.mic-detected-close:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* On mobile the capture-group flattens into the 3-col grid so its children
+   land in their own cells, otherwise the whole group would occupy a single
+   1fr slot and bunch the buttons together. */
+.bottom-toolbar.mobile .capture-group {
+    display: contents;
+}
+
+/* Portrait packs 5 buttons into 3 columns, which auto-flows as
+   [Play][Channel][Mic] / [Record][Listen] — stranding the Mic chip up on
+   the Play/Channel row, away from the Record/Listen actions it gates.
+   Force the Mic chip (first capture-group child) onto a fresh grid row so
+   the three capture buttons share the bottom row: [Play][Channel][·] /
+   [Mic][Record][Listen]. Record + Listen auto-flow into the cells beside
+   it. Landscape/desktop use the wrapping flex layout (no .mobile), so this
+   only affects the narrow portrait grid. */
+.bottom-toolbar.mobile .mic-combo-row {
+    grid-column-start: 1;
+}
+
+/* Mobile mic chip — stay pill-shaped, single row. Match touch target
+   height of other mobile buttons (48px) but keep the rounded radius. */
+.bottom-toolbar.mobile .mic-select-btn {
+    height: 40px;
+    min-height: 0;
+    border-radius: 20px;
+    padding: 0 12px;
+    width: auto;
+    flex-direction: row;
+    align-items: center;
+}
+.bottom-toolbar.mobile .mic-options-btn {
+    height: 40px;
+    min-height: 0;
+    border-radius: 0 20px 20px 0;
+    padding: 0 10px 0 6px;
+}
+
+/* ── Mobile bottom toolbar ─────────────────────────────────────────────── */
+
+.bottom-toolbar.mobile {
+    display: grid;
+    /* minmax(0, 1fr) prevents grid tracks from expanding to fit min-content of
+       nowrap button text (e.g. "🎤 Listen" + "HET"). Without this, cells exceed
+       their fractional share, making the toolbar wider than the viewport —
+       which cascades up the layout and clips right-edge content on iOS. */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    overflow: visible;
+}
+
+.bottom-toolbar.mobile .layer-btn {
+    padding: 6px 8px 7px;
+    min-height: 48px;
+    font-size: 13px;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* Combo buttons fill their grid cell */
+.bottom-toolbar.mobile .combo-btn-row {
+    min-width: 0;
+}
+
+.bottom-toolbar.mobile .combo-btn-left {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.bottom-toolbar.mobile .combo-btn-text {
+    grid-template-rows: 10px 17px;
+    min-height: 27px;
+}
+
+.bottom-toolbar.mobile .layer-btn-category {
+    font-size: 9px;
+}
+
+.bottom-toolbar.mobile .layer-btn-value {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    white-space: nowrap;
+}
+
+.bottom-toolbar.mobile .combo-btn-right {
+    padding: 6px 20px 7px 8px;
+    min-height: 48px;
+}
+
+.bottom-toolbar.mobile .combo-btn-arrow {
+    right: 2px;
+    bottom: 0px;
+    font-size: 12px;
+}
+
+/* Hide separators on mobile — grid handles row layout */
+.bottom-toolbar.mobile .bottom-toolbar-sep {
+    display: none;
+}
+
+/* Drag handle spans full grid width */
+.bottom-toolbar.mobile .bottom-toolbar-drag-handle {
+    grid-column: 1 / -1;
+    height: 14px;
+}
+
+.bottom-toolbar.mobile .bottom-toolbar-drag-grip {
+    width: 50px;
+    height: 4px;
+}
+
+/* Bar labels (HEARING / VIEW) are hidden on narrow viewports to reclaim
+   horizontal space — the bars themselves carry the conceptual grouping. */
+@media (max-width: 640px) {
+    .bar-label {
+        display: none;
+    }
+    /* Tighten bar padding too — every pixel counts on phone screens. */
+    .hearing-bar,
+    .view-bar {
+        padding-left: 4px;
+        padding-right: 4px;
+    }
+
+    /* ── Mobile: horizontal-scroll the dense button rows ──────────────
+       On phones the hearing bar (HFR · Range · modes · PASS · Gain · NR
+       · Notch) and the view radio row are wider than the viewport. Rather
+       than wrap (which eats vertical space the spectrogram needs) or clip
+       (PASS scrolling off-screen), let each row scroll sideways. */
+    .hearing-bar {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; /* Firefox — hide the bar, swipe to scroll */
+    }
+    .hearing-bar::-webkit-scrollbar { height: 0; width: 0; }
+    /* Gain/NR/Notch group rides the same horizontal scroll. */
+    .hearing-bar .bar-controls {
+        flex-wrap: nowrap;
+    }
+    /* The band-affected group no longer needs its trailing margin to
+       separate from Gain on a wrapped row — the sep handles it inline. */
+    .band-affected-row {
+        margin-right: 6px;
+    }
+
+    .view-bar .bar-controls {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    .view-bar .bar-controls::-webkit-scrollbar { height: 0; width: 0; }
+    /* The flex spacer that right-aligns the Tool combo on desktop would
+       expand oddly inside a scroll container — neutralise it on mobile. */
+    .view-bar .bar-spacer {
+        flex: 0 0 6px;
+        min-width: 6px;
+    }
+
+    /* Bigger touch targets for the radio buttons on phones. */
+    .mode-radio-btn {
+        min-height: 38px;
+        min-width: 44px;
+    }
+
+    /* Horizontal drag anywhere in these rows — including starting on a
+       button — pans the scroller. Without `touch-action: pan-x` the
+       browser treats a drag that begins on a button (or inside the
+       mode-radio-group, whose `overflow: hidden` makes it a scroll
+       boundary) as a tap-in-progress and the row feels "sticky" /
+       refuses to scroll. pan-x keeps taps working (a stationary touch
+       still fires click) while routing horizontal drags to the parent
+       scroll container. Popups are portalled to <body>, so their
+       sliders are unaffected by this. */
+    .hearing-bar,
+    .view-bar .bar-controls,
+    .band-affected-row,
+    .band-affected-controls,
+    .mode-radio-group,
+    .range-btn-row,
+    .hearing-bar .layer-btn,
+    .hearing-bar .mode-radio-btn,
+    .view-bar .bar-controls .layer-btn,
+    .view-bar .mode-radio-btn {
+        touch-action: pan-x;
+    }
+}
+
+/* ── Touch-friendly mode menus ─────────────────────────────────────────────
+ * On touch devices (coarse pointer) and narrow viewports, the layer-panel
+ * popups (Mode, Listen, Gain, etc.) need larger tap targets. Defaults are
+ * tuned for mouse precision — too small for fingers in the field.
+ *
+ * Apple HIG recommends 44pt minimum; Material 48dp. We aim ~40px height on
+ * options, ~32px on small inline preset/auto-toggle controls, since the
+ * popups themselves have limited vertical space on phones.
+ */
+@media (pointer: coarse), (max-width: 640px) {
+    /* Wider gap between rows so fingers don't fat-finger neighbors. */
+    .layer-panel {
+        padding: 10px 6px;
+    }
+    .layer-panel hr {
+        margin: 8px 0;
+    }
+    .layer-panel-opt {
+        padding: 10px 12px;
+        font-size: 14px;
+        min-height: 40px;
+        box-sizing: border-box;
+    }
+    .layer-panel-title {
+        font-size: 12px;
+        padding: 4px 10px;
+    }
+    .layer-panel-slider-row {
+        padding: 6px 10px 6px 12px;
+        gap: 8px;
+        min-height: 40px;
+    }
+    .layer-panel-slider-row label {
+        font-size: 13px;
+        min-width: 70px;
+    }
+    .layer-panel-slider-row span {
+        font-size: 13px;
+        min-width: 52px;
+    }
+    .layer-panel-slider-row input[type="range"] {
+        height: 28px; /* taller hit zone for the thumb */
+    }
+    /* Carriers row, factor preset row, etc. — small inline buttons. */
+    .factor-preset {
+        font-size: 13px;
+        padding: 8px 6px;
+        min-height: 32px;
+        min-width: 32px;
+    }
+    .factor-presets {
+        gap: 4px;
+        padding: 4px 10px 6px 12px;
+    }
+    .auto-toggle {
+        width: 32px;
+        height: 32px;
+        font-size: 13px;
+        margin-left: 6px;
+    }
+    .factor-input {
+        font-size: 13px;
+        padding: 6px 6px;
+        min-height: 32px;
+        width: 44px;
+        min-width: 44px;
+    }
+}
+
+/* Popups positioned above multi-row toolbar on mobile */
+/* Panel uses JS-computed bottom via toolbar height; fallback to safe estimate */
+.bottom-toolbar.mobile .layer-panel {
+    position: fixed !important;
+    bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 8px !important;
+    right: auto !important;
+    z-index: 1000 !important;
+}
+
+/* Toolbar listen/record controls */
+.toolbar-listen-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.toolbar-listen-btn {
+    background: transparent;
+    color: #bbb;
+    border: none;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.toolbar-listen-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #eee;
+}
+
+.toolbar-listen-btn.active {
+    background: rgba(200, 180, 60, 0.15);
+    color: #fc8;
+}
+
+.toolbar-het-slider {
+    width: 80px;
+    accent-color: #fc8;
+}
+
+.toolbar-record-btn {
+    background: transparent;
+    color: #bbb;
+    border: none;
+    padding: 6px 14px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.toolbar-record-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #eee;
+}
+
+.toolbar-record-btn.active {
+    background: rgba(220, 60, 60, 0.15);
+    color: #f66;
+    animation: rec-pulse 1s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+    0%, 100% { background: rgba(220, 60, 60, 0.1); }
+    50% { background: rgba(220, 60, 60, 0.22); }
+}
+
+/* File badges (track groups, streaming) */
+.file-badge {
+    font-size: 10px;
+    padding: 0 3px;
+    margin-right: 4px;
+    border-radius: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.file-badge-track {
+    color: #668;
+    background: #222;
+}
+.file-badge-track.highlighted {
+    color: #adf;
+    background: #1a3a5a;
+}
+.file-item.active .file-badge-track {
+    color: #adf;
+    background: #255080;
+}
+.file-badge-seq {
+    color: #7a7;
+    background: #1a2a1a;
+}
+.file-item.active .file-badge-seq {
+    color: #afa;
+    background: #254025;
+}
+.file-badge-streaming {
+    color: #a90;
+    background: #221800;
+}
+.file-item.active .file-badge-streaming {
+    color: #fc8;
+    background: #332200;
+}
+
+/* Sequence gap indicators */
+.seq-gap-row {
+    font-size: 10px;
+    color: #666;
+    text-align: center;
+    padding: 1px 8px;
+    border-left: 2px solid #2a4a2a;
+    margin-left: 8px;
+}
+.seq-gap-row.continuous {
+    color: #4a8;
+    border-left-color: #4a8;
+}
+.seq-gap-row.large-gap {
+    color: #a86;
+    border-left-color: #6a4a2a;
+}
+.seq-gap-row.unknown {
+    color: #555;
+    border-left-color: #333;
+}
+
+/* Unsaved asterisk indicator */
+.file-unsaved-asterisk {
+    color: #f80;
+    font-weight: bold;
+    margin-right: 2px;
+    flex-shrink: 0;
+}
+
+/* Sample rate badge (bordered) */
+.badge-sample-rate {
+    border: 1px solid #555;
+    border-radius: 3px;
+    color: #aaa;
+}
+.toolbar-badge-row .badge-sample-rate {
+    font-size: 11px;
+}
+.file-item.active .badge-sample-rate {
+    border-color: #6688aa;
+    color: #cde;
+}
+
+/* Bit depth badge (bordered) */
+.badge-bit-depth {
+    border: 1px solid #555;
+    border-radius: 3px;
+    color: #aaa;
+}
+.file-item.active .badge-bit-depth {
+    border-color: #6688aa;
+    color: #cde;
+}
+
+/* Duration text in badge row */
+.badge-duration {
+    color: #888;
+    white-space: nowrap;
+}
+.toolbar-badge-row .badge-duration {
+    color: #999;
+}
+.file-item.active .badge-duration {
+    color: #aac;
+}
+
+/* Download button in badge row (file menu) */
+.badge-download-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0 2px;
+    line-height: 1;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.badge-download-btn.unsaved {
+    color: #fc8;
+    opacity: 1;
+}
+.badge-download-btn.saved {
+    color: #888;
+    opacity: 0.4;
+}
+.badge-download-btn:hover {
+    opacity: 1 !important;
+    color: #fc8;
+}
+
+/* CC mini badge (file menu, non-clickable) */
+.badge-cc-mini {
+    display: inline-flex;
+    align-items: center;
+    color: #999;
+    margin-left: 2px;
+    flex-shrink: 0;
+}
+.badge-cc-icon {
+    width: 12px;
+    height: 12px;
+}
+
+/* Clickable badges (toolbar dropdowns) */
+.badge-clickable {
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-size: 10px;
+    padding: 0 3px;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+.badge-clickable:hover {
+    filter: brightness(1.3);
+}
+
+/* Toolbar unsaved badge */
+.toolbar-unsaved-badge {
+    font-size: 10px;
+    color: #f80;
+    background: rgba(255, 136, 0, 0.12);
+    border: 1px solid rgba(255, 136, 0, 0.4);
+    border-radius: 3px;
+    padding: 0 5px;
+    white-space: nowrap;
+}
+
+/* Toolbar download button */
+.toolbar-download-btn {
+    font-size: 11px;
+    color: #fc8;
+    background: rgba(255, 200, 100, 0.1);
+    border: 1px solid rgba(255, 200, 100, 0.3);
+    border-radius: 3px;
+    padding: 1px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.toolbar-download-btn:hover {
+    background: rgba(255, 200, 100, 0.2);
+}
+
+/* Sequence/track dropdown panels */
+.badge-dropdown-panel {
+    position: absolute;
+    z-index: 50;
+    background: rgba(16, 16, 16, 0.97);
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    padding: 6px 0;
+    min-width: 180px;
+    max-width: 320px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+.badge-dropdown-item {
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #ccc;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.badge-dropdown-item:hover {
+    background: #2a2a2a;
+}
+.badge-dropdown-item.active {
+    color: #fff;
+    background: #1a3a5a;
+}
+
+.unsaved-banner {
+    position: absolute;
+    top: 4px;
+    right: 60px;
+    background: rgba(180, 130, 0, 0.85);
+    color: #fff;
+    font-size: 11px;
+    padding: 2px 10px;
+    border-radius: 3px;
+    z-index: 20;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.unsaved-banner:hover {
+    background: rgba(200, 150, 0, 0.95);
+}
+
+/* Debug-build banner — only rendered when cfg!(debug_assertions) is true at
+   compile time. Pinned to bottom-center of the viewport so it overlays whatever
+   view is active without stealing toolbar space. Striking yellow/black stripes
+   to make sure the user can't mistake a debug build for a release build. */
+.debug-build-banner {
+    position: fixed;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    pointer-events: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #1a1a00;
+    background: repeating-linear-gradient(
+        45deg,
+        #ffd23a,
+        #ffd23a 10px,
+        #1a1a1a 10px,
+        #1a1a1a 20px
+    );
+    background-clip: padding-box;
+    border: 2px solid #1a1a1a;
+    text-shadow: 0 0 3px #ffd23a, 0 0 3px #ffd23a, 0 0 3px #ffd23a;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+}
+
+.debug-build-banner code {
+    background: rgba(0, 0, 0, 0.7);
+    color: #ffd23a;
+    text-shadow: none;
+    padding: 1px 4px;
+    border-radius: 2px;
+    font-size: 10px;
+    margin-left: 4px;
+}
+
+.app-toast-container {
+    position: absolute;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    pointer-events: none;
+}
+.app-toast-container .status-toast {
+    pointer-events: auto;
+}
+
+.status-toast {
+    padding: 4px 10px;
+    background: rgba(180, 60, 40, 0.9);
+    border: 1px solid rgba(220, 80, 60, 0.6);
+    border-radius: 4px;
+    color: #fcc;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.status-toast.status-toast-info {
+    background: rgba(180, 150, 40, 0.9);
+    border: 1px solid rgba(220, 190, 60, 0.6);
+    color: #ffe;
+}
+
+/* ── Layer panels (shared popover style) ────────────────────────────────── */
+
+.layer-panel {
+    pointer-events: auto;
+    position: absolute;
+    z-index: 50;
+    background: rgba(16, 16, 16, 0.97);
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 8px 6px;
+    backdrop-filter: blur(10px);
+    min-width: 170px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.layer-panel-divider {
+    height: 1px;
+    background: #333;
+    margin: 4px 0;
+}
+
+/* Floating annotation label editor (appears on double-click) */
+.annotation-inline-label-editor {
+    z-index: 30;
+    pointer-events: auto;
+    min-width: 80px;
+    max-width: 260px;
+    padding: 1px 4px;
+    background: rgba(15, 20, 15, 0.92);
+    border: 1px solid rgba(100, 230, 160, 0.8);
+    border-radius: 2px;
+    color: #e0ffe8;
+    font: 11px monospace;
+    outline: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.annotation-inline-label-editor:focus {
+    border-color: rgba(255, 220, 120, 1.0);
+    background: rgba(20, 18, 10, 0.95);
+}
+
+.layer-panel-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 2px 8px 5px;
+}
+
+.layer-panel hr {
+    border: none;
+    border-top: 1px solid #2a2a2a;
+    margin: 5px 2px;
+}
+
+.layer-panel-opt {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 5px 10px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #999;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.layer-panel-opt:hover {
+    background: #202020;
+    color: #ddd;
+}
+
+.layer-panel-opt.sel {
+    color: #6da;
+    font-weight: 600;
+}
+
+.layer-panel-opt.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Two-line band-preset entries: species/range on top, the metadata source
+   ("Xeno-Canto: species", "GUANO: …", "Bat book: current page") indented and
+   dimmed beneath. The sub-line stays dim/regular weight even when the entry is
+   selected (.sel). */
+.layer-panel-opt .preset-main {
+    display: block;
+}
+.layer-panel-opt .preset-sub {
+    display: block;
+    font-size: 10px;
+    font-weight: 400;
+    color: #7a7a7a;
+    margin-top: 1px;
+    padding-left: 10px;
+}
+.layer-panel-opt.sel .preset-sub {
+    color: #8a8a8a;
+}
+
+.layer-panel-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px 3px 10px;
+}
+
+.layer-panel-slider-row label {
+    font-size: 11px;
+    color: #777;
+    min-width: 70px;
+}
+
+.layer-panel-slider-row input[type="range"] {
+    flex: 1;
+    min-width: 0;
+}
+
+.layer-panel-slider-row span {
+    font-size: 11px;
+    color: #888;
+    min-width: 42px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Peak source segmented radio buttons */
+.peak-source-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 4px 10px;
+}
+.peak-source-label {
+    font-size: 11px;
+    color: #777;
+    margin-right: 6px;
+    white-space: nowrap;
+}
+.peak-src-btn {
+    padding: 2px 8px;
+    font-size: 11px;
+    border: 1px solid #444;
+    background: #1a1a1a;
+    color: #999;
+    cursor: pointer;
+    margin-left: -1px;
+}
+.peak-src-btn:first-of-type {
+    border-radius: 3px 0 0 3px;
+    margin-left: 0;
+}
+.peak-src-btn:last-of-type {
+    border-radius: 0 3px 3px 0;
+}
+.peak-src-btn:hover {
+    background: #252525;
+    color: #ddd;
+}
+.peak-src-btn.sel {
+    background: #234;
+    color: #6da;
+    border-color: #6da;
+    z-index: 1;
+    position: relative;
+}
+.peak-src-btn.disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Boost slider label */
+.slider-label {
+    font-size: 11px;
+    color: #666;
+    margin-right: 2px;
+}
+
+.het-text-row {
+    cursor: pointer;
+}
+.het-text-row:hover .het-value {
+    color: #0cf;
+}
+.het-value {
+    font-size: 11px;
+    color: #aaa;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Per-parameter auto toggle */
+.auto-toggle {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+    color: #666;
+    background: rgba(255,255,255,0.06);
+    cursor: pointer;
+    margin-left: 4px;
+    flex-shrink: 0;
+}
+.auto-toggle:hover {
+    color: #aaa;
+    background: rgba(255,255,255,0.12);
+}
+.auto-toggle.on {
+    color: #0cf;
+    background: rgba(0,200,255,0.15);
+}
+
+/* Factor text input (editable value next to slider) */
+.factor-input {
+    all: unset;
+    width: 36px;
+    min-width: 36px;
+    font-size: 11px;
+    color: #ccc;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 3px;
+    padding: 1px 4px;
+    cursor: text;
+}
+.factor-input:focus {
+    outline: 1px solid rgba(0,200,255,0.4);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+}
+
+/* Factor preset buttons row */
+.factor-presets {
+    display: flex;
+    gap: 2px;
+    padding: 2px 8px 4px 10px;
+}
+.factor-preset {
+    all: unset;
+    font-size: 10px;
+    color: #888;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    cursor: pointer;
+    text-align: center;
+    flex: 1;
+}
+.factor-preset:hover {
+    color: #ccc;
+    background: rgba(255,255,255,0.12);
+}
+.factor-preset.sel {
+    color: #0cf;
+    background: rgba(0,200,255,0.15);
+}
+
+/* Frequency summary (Input/Output display) */
+.freq-summary {
+    padding: 2px 10px 4px;
+    font-size: 10px;
+    color: #888;
+    line-height: 1.4;
+}
+.freq-summary-output {
+    cursor: default;
+}
+.freq-summary-output:hover {
+    color: #6cf;
+}
+
+/* Layer panel container: wraps button + panel for positioning */
+.layer-anchor {
+    position: absolute;
+    pointer-events: none;
+}
+
+.layer-anchor > * {
+    pointer-events: auto;
+}
+
+/* ── Play controls (floating) ───────────────────────────────────────────── */
+
+.play-controls {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    display: flex;
+    gap: 5px;
+    pointer-events: auto;
+    z-index: 10;
+}
+
+/* ── Bookmark popup ─────────────────────────────────────────────────────── */
+
+.bookmark-popup {
+    position: absolute;
+    bottom: 50px;
+    right: 12px;
+    background: rgba(16, 16, 16, 0.97);
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    padding: 10px;
+    pointer-events: auto;
+    z-index: 20;
+    min-width: 160px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+}
+
+.bookmark-popup-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.bookmark-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: #aaa;
+    font-size: 12px;
+    padding: 4px 6px;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+}
+
+.bookmark-item:hover {
+    background: #222;
+    color: #eee;
+}
+
+.bookmark-popup-close {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin-top: 6px;
+    padding: 4px;
+    background: none;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #666;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.bookmark-popup-close:hover {
+    color: #aaa;
+    border-color: #555;
+}
+
+/* ── Mobile / Android ──────────────────────────────────────────────── */
+
+.toolbar-overflow-wrap {
+    position: relative;
+}
+
+button.toolbar-overflow-btn {
+    width: 28px;
+    height: 28px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    color: #555;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    letter-spacing: 2px;
+}
+
+.toolbar-overflow-btn:hover {
+    color: #bbb;
+    background: #252525;
+    border-color: #444;
+}
+
+/* Toolbar sidebar tab buttons */
+.toolbar-sidebar-tab {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    background: #282828;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 16px;
+    color: #777;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.toolbar-sidebar-tab:hover {
+    color: #ddd;
+    background: #333;
+}
+
+.toolbar-sidebar-tab.active {
+    background: #1a3a2a;
+    border-color: #4a8;
+    color: #aaa;
+}
+
+.toolbar-right-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.toolbar-overflow-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+}
+
+.toolbar-overflow-menu {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    min-width: 120px;
+    padding: 4px 0;
+}
+
+.toolbar-overflow-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    background: none;
+    border: none;
+    color: #ddd;
+    font-size: 14px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.toolbar-overflow-item:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.toolbar-overflow-item:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.toolbar-overflow-icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+}
+
+.toolbar-overflow-separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 4px 0;
+}
+
+.sidebar.mobile-overlay {
+    position: fixed;
+    top: var(--toolbar-h, 44px);
+    left: 0;
+    width: 280px;
+    height: calc(100% - var(--toolbar-h, 44px));
+    z-index: 200;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+    transition: transform 0.2s ease;
+}
+
+.sidebar.mobile-overlay.collapsed {
+    transform: translateX(-100%);
+    pointer-events: none;
+    box-shadow: none;
+}
+
+.sidebar.mobile-overlay .sidebar-tabs {
+    padding-top: 4px;
+}
+
+.sidebar-backdrop {
+    display: none;
+    grid-row: 2;
+    grid-column: 1 / -1;
+}
+
+.sidebar-backdrop.open {
+    display: block;
+    position: fixed;
+    top: var(--toolbar-h, 44px);
+    left: 0;
+    width: 100%;
+    height: calc(100% - var(--toolbar-h, 44px));
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 199;
+}
+
+/* ── Left sidebar header tab labels ────────────────────────────────── */
+.sidebar-header-label {
+    flex: 1;
+    padding: 10px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #777;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.sidebar-header-label:hover {
+    color: #bbb;
+}
+
+.sidebar-header-label.active {
+    color: #eee;
+    border-bottom-color: #4a8;
+}
+
+/* ── Project panel ────────────────────────────────────────────────── */
+.project-panel {
+    padding: 12px 10px;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.project-panel-empty {
+    color: #888;
+    font-size: 12px;
+    text-align: center;
+    padding-top: 24px;
+}
+
+.project-panel-hint {
+    color: #666;
+    font-size: 11px;
+    margin-top: 8px;
+}
+
+.project-panel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+    justify-content: center;
+}
+
+.project-btn {
+    padding: 5px 12px;
+    font-size: 11px;
+    background: #2a5a3a;
+    color: #cec;
+    border: 1px solid #3a6a4a;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.project-btn:hover { background: #3a6a4a; }
+.project-btn:disabled { opacity: 0.4; cursor: default; }
+.project-btn-secondary {
+    background: #2a2a3a;
+    color: #aac;
+    border-color: #3a3a5a;
+}
+.project-btn-secondary:hover { background: #3a3a5a; }
+.project-btn-danger {
+    background: #3a2222;
+    color: #daa;
+    border-color: #5a3333;
+}
+.project-btn-danger:hover { background: #5a3333; }
+
+.project-view {
+    font-size: 12px;
+}
+
+.project-name-row {
+    margin-bottom: 8px;
+}
+.project-name-input {
+    width: 100%;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #1a1a1a;
+    color: #eee;
+    border: 1px solid #333;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+.project-name-input:focus {
+    border-color: #4a8;
+    outline: none;
+}
+
+.project-meta {
+    color: #888;
+    font-size: 11px;
+    margin-bottom: 6px;
+}
+.project-meta-sep { margin: 0 4px; }
+.project-unsaved { color: #da5; }
+
+.project-tauri-hint {
+    font-size: 10px;
+    color: #886;
+    background: #1a1a10;
+    border: 1px solid #332;
+    border-radius: 3px;
+    padding: 4px 6px;
+    margin-bottom: 8px;
+}
+
+.project-section-header {
+    font-size: 10px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 6px 0 3px;
+}
+.project-section-hint {
+    font-weight: 400;
+    text-transform: none;
+    color: #555;
+    font-size: 9px;
+}
+
+.project-file-list {
+    border-top: 1px solid #333;
+    margin-top: 6px;
+}
+
+.project-file-item {
+    padding: 4px 0;
+    border-bottom: 1px solid #222;
+    cursor: pointer;
+}
+.project-file-item:hover:not(.missing) {
+    background: #1a1a2a;
+}
+.project-file-item.selected {
+    background: #1a2a3a;
+    border-left: 2px solid #4a8;
+    padding-left: 4px;
+}
+.project-file-item.missing {
+    opacity: 0.5;
+    cursor: default;
+}
+.project-file-name {
+    color: #ccc;
+    font-size: 11px;
+    word-break: break-all;
+}
+.project-file-status {
+    color: #555;
+    font-size: 9px;
+}
+.project-file-status.loaded {
+    color: #4a8;
+}
+.project-file-info {
+    color: #777;
+    font-size: 10px;
+    margin-top: 1px;
+    padding-left: 14px;
+}
+
+.project-timeline-delete {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 4px;
+    margin-left: 6px;
+}
+.project-timeline-delete:hover {
+    color: #f66;
+}
+
+.project-save-status {
+    color: #888;
+    font-style: italic;
+}
+.project-save-status.saved {
+    color: #4a8;
+}
+.project-timeline-item {
+    padding: 4px 0;
+    border-bottom: 1px solid #222;
+}
+.project-timeline-item.clickable {
+    cursor: pointer;
+}
+.project-timeline-item.clickable:hover {
+    background: #282828;
+}
+.project-timeline-name {
+    color: #aad;
+    font-size: 11px;
+}
+.project-timeline-icon {
+    color: #68a;
+    font-size: 8px;
+    margin-right: 4px;
+}
+.project-tab-dot {
+    color: #4a8;
+    font-size: 7px;
+    margin-left: 3px;
+    vertical-align: super;
+}
+.project-timelines-section {
+    border-top: 1px solid #333;
+    margin-top: 6px;
+}
+
+.project-meta-warn {
+    color: #da5;
+}
+
+.project-groupings {
+    font-size: 11px;
+    color: #7a7;
+    margin-bottom: 4px;
+}
+
+.project-new-files-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #aad;
+    background: #1a1a2a;
+    border: 1px solid #2a2a4a;
+    border-radius: 3px;
+    padding: 4px 6px;
+    margin-bottom: 6px;
+}
+.project-btn-inline {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: #2a3a5a;
+    color: #aac;
+    border: 1px solid #3a4a6a;
+    border-radius: 3px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 6px;
+}
+.project-btn-inline:hover { background: #3a4a6a; }
+
+.project-notes-section {
+    margin-top: 8px;
+}
+.project-notes-input {
+    width: 100%;
+    min-height: 48px;
+    padding: 4px 6px;
+    font-size: 11px;
+    background: #1a1a1a;
+    color: #ccc;
+    border: 1px solid #333;
+    border-radius: 3px;
+    resize: vertical;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+.project-notes-input:focus {
+    border-color: #4a8;
+    outline: none;
+}
+
+.project-merge-section {
+    margin-top: 8px;
+}
+.project-merge-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.project-merge-count {
+    font-size: 10px;
+    color: #666;
+}
+.project-merge-status {
+    font-size: 10px;
+    color: #8a8;
+    margin-top: 2px;
+}
+
+.project-list-picker {
+    margin-top: 8px;
+    border: 1px solid #333;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.project-list-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #ccc;
+    background: #1a1a1a;
+    border: none;
+    border-bottom: 1px solid #222;
+    cursor: pointer;
+    text-align: left;
+}
+.project-list-item:last-child { border-bottom: none; }
+.project-list-item:hover { background: #252530; }
+.project-list-item-name {
+    font-size: 11px;
+    color: #ccc;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.project-list-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #777;
+    white-space: nowrap;
+}
+.project-list-item-date {
+    color: #666;
+}
+.project-list-item-delete {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0 2px;
+    line-height: 1;
+}
+.project-list-item-delete:hover {
+    color: #f66;
+}
+
+.file-badge-tauri {
+    color: #a8d;
+    background: #2a1a3a;
+    font-size: 9px;
+    padding: 0 3px;
+    margin-left: 3px;
+    border-radius: 2px;
+}
+
+/* ── Right sidebar overrides ───────────────────────────────────────── */
+.right-sidebar {
+    border-right: none;
+    border-left: 1px solid #333;
+}
+
+.right-sidebar.collapsed {
+    border-left: none;
+}
+
+.right-sidebar .sidebar-collapse-btn {
+    display: none;
+}
+
+.right-sidebar .sidebar-resize-handle {
+    right: auto;
+    left: -3px;
+}
+
+.right-sidebar.mobile-overlay {
+    left: auto;
+    right: 0;
+    top: var(--toolbar-h, 44px);
+    height: calc(100% - var(--toolbar-h, 44px));
+    box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+}
+
+.right-sidebar.mobile-overlay.collapsed {
+    transform: translateX(100%);
+}
+
+/* ── XC Browser Modal ───────────────────────────────────────────── */
+
+.xc-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.xc-modal {
+    background: #1e1e2e;
+    border: 1px solid #444;
+    border-radius: 8px;
+    width: min(90vw, 700px);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.xc-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #333;
+}
+
+.xc-modal-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e0e0e0;
+}
+
+.xc-modal-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.xc-modal-close:hover {
+    color: #fff;
+}
+
+/* ── Privacy Settings Modal ─────────────────────────────────────── */
+
+.privacy-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2a3a;
+}
+
+.privacy-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ccc;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.privacy-section-desc {
+    font-size: 11px;
+    color: #888;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.privacy-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #1a1a2a;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-size: 12px;
+}
+
+.privacy-refresh-btn {
+    margin-left: auto;
+    font-size: 11px;
+    color: #8cf;
+    background: none;
+    border: 1px solid #446;
+    border-radius: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.privacy-refresh-btn:hover {
+    background: #223;
+    border-color: #668;
+}
+
+.privacy-btn {
+    font-size: 13px;
+    color: #8cf;
+    background: none;
+    border: 1px solid #446;
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.privacy-btn:hover {
+    background: #223;
+    border-color: #668;
+}
+
+.privacy-btn:disabled {
+    color: #666;
+    border-color: #333;
+    cursor: default;
+}
+
+.privacy-btn.danger {
+    color: #f88;
+    border-color: #644;
+}
+
+.privacy-btn.danger:hover {
+    background: #322;
+    border-color: #866;
+}
+
+.privacy-ssid-list {
+    font-size: 12px;
+    color: #aaa;
+    padding: 4px 0;
+    margin-bottom: 8px;
+}
+
+.privacy-ssid-item {
+    padding: 6px 8px;
+    background: #252535;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.xc-section {
+    padding: 10px 16px;
+    border-bottom: 1px solid #2a2a3a;
+}
+
+.xc-info {
+    color: #aaa;
+    font-size: 12px;
+    margin: 0 0 10px;
+    line-height: 1.5;
+}
+
+.xc-info a {
+    color: #6ea8fe;
+}
+
+.xc-key-form {
+    display: flex;
+    gap: 8px;
+}
+
+.xc-input {
+    background: #2a2a3a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    padding: 6px 10px;
+    font-size: 12px;
+    outline: none;
+}
+
+.xc-input:focus {
+    border-color: #6ea8fe;
+}
+
+.xc-search-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.xc-search-input {
+    flex: 1;
+}
+
+.xc-btn {
+    background: #3a3a4a;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #e0e0e0;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.xc-btn:hover {
+    background: #4a4a5a;
+}
+
+.xc-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.xc-btn-small {
+    padding: 3px 8px;
+    font-size: 11px;
+}
+
+.xc-btn-back {
+    margin-bottom: 8px;
+}
+
+.xc-btn-load {
+    padding: 3px 10px;
+}
+
+.xc-filters {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.xc-filters label {
+    color: #aaa;
+    font-size: 12px;
+}
+
+.xc-select {
+    background: #2a2a3a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+.xc-country-input {
+    width: 120px;
+    border-radius: 4px 0 0 4px;
+    border-right: none;
+}
+
+.xc-combobox {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.xc-combobox-toggle {
+    background: #2a2a3a;
+    border: 1px solid #444;
+    border-left: none;
+    border-radius: 0 4px 4px 0;
+    color: #888;
+    padding: 6px 6px;
+    font-size: 10px;
+    cursor: pointer;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+}
+
+.xc-combobox-toggle:hover {
+    color: #e0e0e0;
+    background: #3a3a4a;
+}
+
+.xc-combobox-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 200px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #2a2a3a;
+    border: 1px solid #444;
+    border-radius: 0 0 4px 4px;
+    z-index: 50;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.xc-combobox-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 5px 10px;
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.xc-combobox-option:hover,
+.xc-combobox-option.highlight {
+    background: #3a3a5a;
+    color: #fff;
+}
+
+.xc-combobox-option.sel {
+    color: #6ea8fe;
+    font-weight: 600;
+}
+
+.xc-cache-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.xc-cache-age {
+    color: #888;
+    font-size: 11px;
+}
+
+.xc-error {
+    background: #3a1a1a;
+    color: #ff8888;
+    padding: 8px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid #5a2a2a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.xc-error-dismiss {
+    background: none;
+    border: none;
+    color: #ff8888;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+.xc-error-dismiss:hover {
+    opacity: 1;
+}
+
+.xc-downloading {
+    color: #8ac;
+    padding: 8px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid #334;
+    animation: xc-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes xc-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.xc-loading {
+    color: #aaa;
+    padding: 16px;
+    text-align: center;
+    font-size: 12px;
+}
+
+/* Species list */
+
+.xc-species-list {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.xc-list-header, .xc-species-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 60px;
+    gap: 8px;
+    padding: 6px 16px;
+    font-size: 12px;
+    align-items: center;
+}
+
+.xc-list-header {
+    color: #888;
+    border-bottom: 1px solid #333;
+    position: sticky;
+    top: 0;
+    background: #1e1e2e;
+}
+
+.xc-species-row {
+    background: none;
+    border: none;
+    border-bottom: 1px solid #2a2a3a;
+    color: #ccc;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+}
+
+.xc-species-row:hover {
+    background: #2a2a4a;
+}
+
+.xc-col-sci {
+    color: #999;
+    font-style: italic;
+}
+
+.xc-col-count {
+    text-align: right;
+    color: #888;
+}
+
+/* Recordings list */
+
+.xc-recordings-header {
+    padding: 8px 16px;
+    color: #ccc;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid #333;
+}
+
+.xc-recordings-list {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.xc-rec-header, .xc-rec-main {
+    display: grid;
+    grid-template-columns: 70px 1fr 24px 42px 1fr 56px;
+    gap: 6px;
+    padding: 5px 16px;
+    font-size: 11px;
+    align-items: center;
+}
+
+.xc-rec-header {
+    color: #888;
+    border-bottom: 1px solid #333;
+    position: sticky;
+    top: 0;
+    background: #1e1e2e;
+}
+
+.xc-rec-row {
+    border-bottom: 1px solid #2a2a3a;
+    color: #ccc;
+}
+
+.xc-rec-row:hover {
+    background: #2a2a4a;
+}
+
+.xc-rec-id {
+    font-size: 11px;
+}
+
+.xc-rec-link {
+    color: #6ea8fe;
+    text-decoration: none;
+}
+
+.xc-rec-link:hover {
+    text-decoration: underline;
+}
+
+.xc-rec-quality {
+    text-align: center;
+}
+
+.xc-q-a { color: #4caf50; font-weight: 600; }
+.xc-q-b { color: #8bc34a; }
+.xc-q-c { color: #ffc107; }
+.xc-q-d { color: #ff9800; }
+.xc-q-e { color: #f44336; }
+
+.xc-rec-length {
+    text-align: right;
+}
+
+.xc-rec-loc {
+    color: #999;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.xc-rec-action {
+    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+}
+
+.xc-rec-cached {
+    color: #4caf50;
+    font-size: 12px;
+}
+
+.xc-rec-detail {
+    display: flex;
+    gap: 6px;
+    padding: 0 16px 4px 16px;
+    flex-wrap: wrap;
+}
+
+.xc-rec-tag {
+    font-size: 10px;
+    color: #888;
+    background: #2a2a3a;
+    padding: 1px 6px;
+    border-radius: 3px;
+}
+
+.xc-rec-smp {
+    color: #9d8aef;
+}
+
+.xc-rec-recordist {
+    color: #7aa;
+}
+
+.xc-result-count {
+    color: #888;
+    font-size: 11px;
+    font-weight: 400;
+}
+
+.xc-result-summary {
+    color: #888;
+    font-size: 11px;
+    padding: 4px 16px;
+}
+
+.xc-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 16px;
+    border-top: 1px solid #333;
+}
+
+.xc-page-info {
+    color: #888;
+    font-size: 11px;
+}
+
+/* ── Bat Book ─────────────────────────────────────────────────────────────── */
+
+/* Tab handle on the right edge; hidden while strip is open */
+/* Strip (horizontal scrolling area) */
+.bat-book-strip {
+    flex-shrink: 0;
+    background: #141414;
+    border-top: 1px solid #2a2a2a;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    position: relative;
+}
+
+.bat-book-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-bottom: 1px solid #222;
+    min-height: 22px;
+}
+
+.bat-book-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    user-select: none;
+}
+
+.bat-book-region-label {
+    font-size: 10px;
+    color: #4a8;
+    user-select: none;
+}
+
+.bat-book-config-wrap {
+    position: relative;
+}
+
+.bat-book-config-btn,
+.bat-book-close-btn {
+    background: none;
+    border: none;
+    color: #555;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.bat-book-config-btn:hover,
+.bat-book-close-btn:hover {
+    color: #ccc;
+}
+
+/* Invisible full-screen backdrop to dismiss region menu on outside click */
+.bat-book-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+}
+
+/* Region dropdown menu */
+.bat-book-region-menu {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 0;
+    min-width: 160px;
+    max-height: 60vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    background: rgba(16, 16, 16, 0.97);
+    backdrop-filter: blur(10px);
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 4px 0;
+    z-index: 30;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.bat-book-region-opt {
+    display: block;
+    width: 100%;
+    background: none;
+    border: none;
+    border-left: 2px solid transparent;
+    color: #aaa;
+    font-size: 12px;
+    padding: 5px 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.bat-book-region-opt:hover {
+    background: #222;
+    color: #eee;
+}
+
+.bat-book-region-opt.active {
+    border-left-color: #4a8;
+    background: #1f2f25;
+    color: #8fc;
+}
+
+/* Scrollable chip area */
+.bat-book-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+    -webkit-overflow-scrolling: touch;
+}
+
+.bat-book-scroll::-webkit-scrollbar {
+    height: 4px;
+}
+
+.bat-book-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.bat-book-scroll::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 2px;
+}
+
+/* Bat family chip */
+.bat-book-chip {
+    flex-shrink: 0;
+    background: rgba(25, 25, 25, 0.9);
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 80px;
+    min-height: 36px;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+}
+
+.bat-book-chip:hover {
+    background: #2a2a2a;
+    border-color: #555;
+}
+
+.bat-book-chip.selected {
+    background: rgba(26, 60, 40, 0.92);
+    border-color: rgba(80, 180, 130, 0.6);
+}
+
+.bat-book-chip-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #ccc;
+    white-space: nowrap;
+}
+
+.bat-book-chip.selected .bat-book-chip-name {
+    color: #8fc;
+}
+
+.bat-book-chip-freq {
+    font-size: 9px;
+    color: #777;
+    white-space: nowrap;
+}
+
+/* Divider between echolocating and non-echolocating entries */
+.bat-book-divider {
+    flex-shrink: 0;
+    width: 1px;
+    height: 24px;
+    background: #444;
+    margin: 0 6px;
+    align-self: center;
+}
+
+/* Auto-matched species chip — distinct styling */
+.bat-book-chip.auto-matched {
+    border-color: rgba(100, 200, 255, 0.5);
+    background: rgba(20, 40, 60, 0.9);
+}
+.bat-book-chip.auto-matched:hover {
+    background: rgba(30, 55, 80, 0.95);
+}
+.bat-book-chip.auto-matched.selected {
+    border-color: rgba(100, 200, 255, 0.7);
+    background: rgba(20, 50, 70, 0.95);
+}
+
+/* Vertical divider between auto-matched species and regional book */
+.bat-book-auto-divider {
+    flex-shrink: 0;
+    width: 2px;
+    background: rgba(100, 200, 255, 0.25);
+    margin: 4px 6px;
+    align-self: stretch;
+    border-radius: 1px;
+}
+
+/* Star toggle in region dropdown */
+.bat-book-star {
+    cursor: pointer;
+    margin-right: 4px;
+    opacity: 0.3;
+    font-size: 11px;
+    transition: opacity 0.15s;
+}
+.bat-book-star:hover { opacity: 0.7; }
+.bat-book-star.active { opacity: 1; color: #fc0; }
+
+/* Separator in region dropdown */
+.bat-book-region-separator {
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 3px 0;
+}
+
+/* Reference panel (floating overlay, right side of main view). Right-
+   offset clears the waveform's band-gutter column (64px + 2px border +
+   3px margin ≈ 69px) so the panel doesn't overlap it when extended to
+   full height. Must stay in sync with gutter_renderer::BAND_GUTTER_WIDTH. */
+.bat-book-ref-panel {
+    position: absolute;
+    top: 8px;
+    right: 80px;
+    width: 160px;
+    max-height: calc(100% - 16px);
+    background: rgba(14, 14, 14, 0.93);
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    z-index: 25;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+.ref-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-bottom: 1px solid #2a2a2a;
+    gap: 4px;
+    cursor: ns-resize;
+}
+
+.ref-panel-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #ccc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.ref-panel-count {
+    font-weight: 400;
+    color: #888;
+    font-size: 10px;
+}
+
+.ref-panel-close {
+    background: none;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.ref-panel-close:hover {
+    color: #eee;
+}
+
+.ref-panel-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.ref-panel-family {
+    font-size: 10px;
+    color: #888;
+    font-style: italic;
+}
+
+.ref-panel-freq {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4a8;
+}
+
+.ref-panel-call-type {
+    font-size: 10px;
+    color: #777;
+}
+
+.ref-panel-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ref-panel-entry + .ref-panel-entry {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #2a2a2a;
+}
+
+.ref-panel-entry-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #ccc;
+}
+
+.ref-panel-sci {
+    font-size: 10px;
+    color: #aaa;
+    margin-top: -1px;
+}
+
+.ref-panel-commonness {
+    font-size: 9px;
+    color: #8a8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ref-panel-desc {
+    font-size: 10px;
+    color: #666;
+    line-height: 1.4;
+    margin-top: 2px;
+}
+.ref-panel-draft-notice {
+    font-size: 9px;
+    color: #887755;
+    font-style: italic;
+    padding-top: 6px;
+    border-top: 1px solid #333;
+    margin-top: 6px;
+}
+
+/* ── DSP Display Filter Panel ──────────────────────────────────────────────── */
+
+.dsp-filter-row {
+    display: grid;
+    grid-template-columns: 42px 1fr 16px;
+    gap: 4px 6px;
+    align-items: center;
+    padding: 2px 6px;
+}
+
+.dsp-filter-header {
+    padding-bottom: 0;
+    margin-bottom: -2px;
+}
+
+.dsp-filter-header .dsp-filter-seg span {
+    font-size: 8px;
+    text-transform: uppercase;
+    color: #555;
+    text-align: center;
+    flex: 1;
+}
+
+.dsp-filter-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #999;
+    letter-spacing: 0.5px;
+}
+
+.dsp-filter-seg {
+    display: flex;
+    gap: 1px;
+}
+
+.dsp-filter-seg button {
+    flex: 1;
+    font-size: 9px;
+    padding: 3px 4px;
+    background: rgba(40, 40, 40, 0.9);
+    color: #777;
+    border: 1px solid rgba(70, 70, 70, 0.5);
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: center;
+    font-family: inherit;
+    line-height: 1;
+    transition: background 0.1s, color 0.1s;
+}
+
+.dsp-filter-seg button:hover {
+    background: rgba(60, 60, 60, 0.9);
+    color: #ccc;
+}
+
+.dsp-filter-seg button.sel {
+    background: rgba(40, 80, 60, 0.9);
+    color: #6da;
+    border-color: rgba(100, 200, 160, 0.4);
+    font-weight: 700;
+}
+
+.dsp-filter-seg button.disabled {
+    opacity: 0.25;
+    pointer-events: none;
+    cursor: default;
+}
+
+.dsp-filter-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    justify-self: center;
+}
+
+.dsp-filter-indicator.active {
+    background: #6da;
+    box-shadow: 0 0 4px rgba(102, 221, 170, 0.6);
+}
+
+.dsp-filter-indicator.inactive {
+    background: #333;
+}
+
+.sam-dot {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    margin-left: 2px;
+    vertical-align: middle;
+}
+.sam-dot.active {
+    background: #6da;
+    box-shadow: 0 0 3px rgba(102, 221, 170, 0.6);
+}
+.sam-dot.inactive {
+    background: #555;
+}
+.sam-dot.browser-resample {
+    background: #f0a030;
+    box-shadow: 0 0 3px rgba(240, 160, 48, 0.6);
+}
+
+.dsp-filter-indicator-header {
+    font-size: 8px;
+    text-align: center;
+    line-height: 1;
+}
+
+.dsp-custom-section {
+    padding: 6px 8px 4px;
+    border-top: 1px solid rgba(80, 80, 80, 0.3);
+    margin-top: 4px;
+}
+
+.dsp-custom-title {
+    font-size: 9px;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+}
+
+/* XForm popup help blurb: a short dynamic description of what the
+   transformed spectrogram is currently showing. */
+.xform-blurb {
+    font-size: 11px;
+    line-height: 1.35;
+    color: #9aa;
+    padding: 2px 8px 6px;
+    border-bottom: 1px solid #2a2a2a;
+    margin-bottom: 4px;
+}
+
+.dsp-custom-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dsp-custom-slider-row .setting-range {
+    flex: 1;
+}
+
+.dsp-custom-value {
+    font-size: 10px;
+    color: #aaa;
+    min-width: 40px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.dsp-slider-label {
+    font-size: 9px;
+    color: #888;
+    min-width: 42px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Export section ──────────────────────────────────────────────── */
+.export-section {
+    margin: 4px 0;
+}
+
+.export-section-header {
+    padding: 6px 16px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.export-section-header:hover {
+    color: #bbb;
+}
+
+.export-toggle-arrow {
+    display: inline-block;
+    font-size: 11px;
+    transition: transform 0.15s ease;
+}
+.export-toggle-arrow.open {
+    transform: rotate(90deg);
+}
+
+.export-section-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.2s ease;
+}
+.export-section-body.open {
+    max-height: 400px;
+}
+
+.export-format-row {
+    padding: 4px 16px;
+    gap: 10px;
+    justify-content: flex-start;
+}
+.export-format-label {
+    font-size: 11px;
+    color: #999;
+    margin-right: 2px;
+}
+.export-radio {
+    font-size: 11px;
+    color: #ccc;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.export-radio.disabled {
+    color: #666;
+    cursor: not-allowed;
+}
+.export-radio input[type="radio"] {
+    margin: 0;
+    accent-color: #4a8a5a;
+}
+
+.export-mp4-options {
+    padding: 2px 0;
+}
+.export-option-label {
+    font-size: 11px;
+    color: #999;
+    min-width: 70px;
+    padding-left: 16px;
+}
+
+.export-tooltip {
+    font-size: 10px;
+    color: #888;
+    cursor: help;
+}
+
+.export-progress {
+    padding: 4px 16px;
+}
+.export-progress-bar {
+    height: 6px;
+    background: #1a2a1a;
+    border: 1px solid #3a5a3a;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.export-progress-fill {
+    height: 100%;
+    background: #4a8a5a;
+    transition: width 0.15s ease;
+}
+.export-progress-text {
+    font-size: 10px;
+    color: #888;
+    margin-top: 2px;
+    text-align: center;
+}
+.export-progress-text.export-error {
+    color: #e88;
+}
+.export-duration-label {
+    font-size: 10px;
+    color: #888;
+    text-align: right;
+    padding: 2px 0;
+}
+
+/* ── Zoom-out button (shown when viewport is pinch-zoomed) ─────────────── */
+/* Uses position:absolute with JS-computed top/left from visualViewport
+   so it stays in the visible area when the layout viewport is scrolled. */
+.zoom-out-btn {
+    position: absolute;
+    z-index: 10000;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: 2px solid rgba(255,255,255,0.5);
+    background: rgba(30, 30, 30, 0.9);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    touch-action: manipulation;
+}
+.zoom-out-btn:active {
+    background: rgba(80, 80, 80, 0.95);
+    transform: scale(0.92);
+}
+.zoom-out-btn svg {
+    pointer-events: none;
+}
+
+/* When viewport is pinch-zoomed, allow native pinch on elements with static
+   touch-action: none so the user can zoom back out */
+body.viewport-zoomed .overview-strip,
+body.viewport-zoomed .bottom-toolbar-drag-handle {
+    touch-action: pinch-zoom !important;
+}
+
+/* ── Canvas overflow menus (selection / annotation "..." buttons) ── */
+
+.canvas-overflow-anchor {
+    position: absolute;
+}
+
+button.canvas-overflow-btn {
+    width: 22px;
+    height: 22px;
+    background: rgba(30, 30, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    pointer-events: auto;
+    backdrop-filter: blur(4px);
+}
+
+button.canvas-overflow-btn:hover {
+    color: #ddd;
+    background: rgba(50, 50, 50, 0.9);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.canvas-overflow-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+}
+
+.canvas-overflow-menu {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 4px);
+    background: rgba(26, 26, 26, 0.97);
+    border: 1px solid #3a3a3a;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    min-width: 160px;
+    padding: 4px 0;
+    backdrop-filter: blur(10px);
+}
+
+.canvas-overflow-info {
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #aaa;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.canvas-overflow-btn-row {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Freq range row: text on the left, buttons right-aligned in a fixed position. */
+.canvas-overflow-freq-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    color: #aaa;
+}
+.canvas-overflow-freq-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.canvas-overflow-btn-group {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+button.canvas-overflow-action-btn {
+    width: 28px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    color: #ccc;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+button.canvas-overflow-action-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+button.canvas-overflow-action-btn:disabled,
+button.canvas-overflow-action-btn.disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
+.canvas-overflow-item {
+    display: block;
+    width: 100%;
+    padding: 6px 12px;
+    background: none;
+    border: none;
+    color: #ddd;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.canvas-overflow-item:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.canvas-overflow-item.danger {
+    color: #e66;
+}
+
+.canvas-overflow-item.danger:hover {
+    background: rgba(220, 60, 60, 0.15);
+}
+
+.canvas-overflow-separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 2px 0;
+}
+
+/* ── Output Range button (single, with dropdown chevron) ───────────────
+   Skinnier than the combo split-button — it's a single trigger that
+   opens the popup; nothing to toggle on the left half. */
+.out-range-btn-wrap {
+    display: inline-flex;
+    align-items: stretch;
+}
+.out-range-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px 2px 8px;
+}
+.out-range-btn-label {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.1;
+    min-width: 0;
+}
+.out-range-btn .combo-btn-arrow {
+    margin-left: 2px;
+    opacity: 0.6;
+    font-size: 8px;
+}
+.out-range-btn.open .combo-btn-arrow {
+    opacity: 1;
+}
+
+/* ── Output Range popup ────────────────────────────────────────────────
+   Two-column layout: mode-aware controls on the left, vertical 0–10 kHz
+   gutter on the right. Mirrors how the existing mode popups feel but
+   adds the output-side gutter visualisation. */
+.output-range-popup {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 10px;
+    padding: 6px 8px 8px;
+    min-height: 220px;
+}
+.output-range-controls {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.output-range-section-label {
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 4px 2px;
+    cursor: help;
+}
+.output-range-help {
+    margin-left: 4px;
+    opacity: 0.5;
+    font-size: 9px;
+}
+.output-range-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 4px;
+}
+.output-range-presets .factor-preset.auto.on {
+    background: rgba(80, 160, 255, 0.18);
+    border-color: rgba(80, 160, 255, 0.5);
+    color: #8cf;
+}
+.output-range-shift-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+}
+.output-range-num {
+    width: 60px;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 3px;
+    color: #ddd;
+    font-size: 12px;
+    padding: 2px 6px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+.output-range-num-suffix {
+    font-size: 11px;
+    color: #777;
+}
+.output-range-snap-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 6px 4px;
+    font-size: 11px;
+    color: #aaa;
+}
+.output-range-snap-label {
+    font-size: 10px;
+    color: #777;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.output-range-snap-group {
+    display: inline-flex;
+    gap: 0;
+}
+.snap-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #999;
+    cursor: pointer;
+    margin-left: -1px;
+    font-family: inherit;
+}
+.snap-btn:first-of-type {
+    border-radius: 3px 0 0 3px;
+    margin-left: 0;
+}
+.snap-btn:last-of-type {
+    border-radius: 0 3px 3px 0;
+}
+.snap-btn:hover {
+    background: #252525;
+    color: #ccc;
+}
+.snap-btn.sel {
+    background: #2a3a4a;
+    color: #8cf;
+    border-color: #4a6a8a;
+    z-index: 1;
+}
+.output-range-summary {
+    margin-top: auto;
+    padding: 6px 6px 2px;
+    font-size: 11px;
+    color: #bbb;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+}
+.output-range-summary .dim {
+    color: #666;
+    margin-right: 6px;
+}
+.output-range-empty {
+    padding: 8px 6px;
+    font-size: 11px;
+    color: #888;
+    line-height: 1.5;
+}
+
+/* ── Vertical 0–2000 Hz "output gutter" ─────────────────────────────────
+   Coordinate system: 0 Hz at bottom, GUTTER_MAX_HZ at top. The .band
+   uses `bottom` + `height` percentages so it grows upward like the
+   spectrogram's frequency axis. */
+.output-gutter-wrap {
+    flex: 0 0 90px;
+    display: flex;
+    align-items: stretch;
+}
+.output-gutter {
+    position: relative;
+    flex: 1;
+    background: linear-gradient(to top, #111 0%, #181818 100%);
+    border: 1px solid #333;
+    border-radius: 3px;
+    cursor: ns-resize;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+.output-gutter-ticks {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.output-gutter-tick {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.output-gutter-tick-label {
+    position: absolute;
+    left: 4px;
+    bottom: 1px;
+    font-size: 9px;
+    color: #666;
+    font-variant-numeric: tabular-nums;
+}
+.output-gutter-band {
+    position: absolute;
+    left: 0;
+    right: 0;
+    background: rgba(140, 200, 255, 0.18);
+    border-top: 1px solid rgba(140, 200, 255, 0.6);
+    border-bottom: 1px solid rgba(140, 200, 255, 0.6);
+    cursor: grab;
+    box-sizing: border-box;
+}
+.output-gutter-band:active { cursor: grabbing; }
+.output-gutter-band-label {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: rgba(220, 240, 255, 0.85);
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    white-space: nowrap;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.7);
+}
+.output-gutter-handle {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 26px;
+    height: 8px;
+    border-radius: 3px;
+    background: rgba(180, 220, 255, 0.9);
+    cursor: ns-resize;
+    z-index: 2;
+}
+.output-gutter-handle:hover {
+    background: rgba(220, 240, 255, 1.0);
+    box-shadow: 0 0 4px rgba(140, 200, 255, 0.7);
+}
+.output-gutter-handle-hi { top: -4px; }
+.output-gutter-handle-lo { bottom: -4px; }
+.output-gutter:hover .output-gutter-band {
+    background: rgba(140, 200, 255, 0.26);
+}
+
+/* ── Wikimedia Commons import ───────────────────────────────────────── */
+
+.wiki-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 16px;
+    font-size: 12px;
+    border-bottom: 1px solid #2a2a3a;
+}
+
+.wiki-row:hover {
+    background: #262636;
+}
+
+.wiki-row-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.wiki-row-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Declared time expansion factor (P14424) — corrected on load. */
+.wiki-te-badge {
+    flex: none;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #3a5f3a;
+    color: #b6e5b6;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+.wiki-row-detail {
+    color: #888;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.wiki-row-link {
+    color: #7aa7d8;
+    font-size: 11px;
+    text-decoration: none;
+}
+
+.wiki-row-link:hover {
+    text-decoration: underline;
+}
+
+/* Inline stroke-SVG icons (src/components/icons.rs). Sized by font-size. */
+.icon {
+    display: inline-block;
+    vertical-align: -0.15em;
+    flex: none;
+}
+
+/* ── Hear chip + sheet (phone replacement for the Hearing Bar) ──────────
+   On narrow viewports the hearing bar collapses to one chip showing the
+   mode in effect; the sheet lists every mode with a full name and stacks
+   the band / output / bandpass / gain / NR / notch combos beneath it.
+   z-order: backdrop 44 < sheet 45 < .layer-panel 50, so popups opened
+   from rows inside the sheet still render above it. */
+.hear-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    min-height: 38px;
+    padding: 4px 12px 5px;
+    line-height: 1.15;
+}
+
+.hear-chip .layer-btn-value {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 13px;
+    color: #ddd;
+}
+
+.hear-chip-abbr {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: #999;
+    padding: 0 4px;
+    border: 1px solid #444;
+    border-radius: 3px;
+}
+
+.hear-chip.open {
+    border-color: #4a8;
+    color: #dff5ea;
+}
+
+.hear-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 44;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.hear-sheet-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.hear-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 72vh;
+    overflow-y: auto;
+    background: rgba(22, 22, 22, 0.98);
+    border: 1px solid #3a3a3a;
+    border-bottom: 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.7);
+    padding: 0 8px calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 45;
+    transform: translateY(105%);
+    transition: transform 0.2s ease;
+}
+
+.hear-sheet.open {
+    transform: translateY(0);
+}
+
+.hear-sheet-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: #444;
+    margin: 10px auto 4px;
+}
+
+.hear-sheet-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 6px 2px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #eee;
+}
+
+.hear-sheet-hint {
+    font-size: 12px;
+    font-weight: 400;
+    color: #999;
+}
+
+.hear-sheet-sec {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: #777;
+    text-transform: uppercase;
+    padding: 14px 6px 4px;
+}
+
+.hear-sheet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 48px;
+    padding: 2px 6px;
+}
+
+.hear-sheet-key {
+    font-size: 14px;
+    color: #ddd;
+}
+
+.hear-sheet-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hear-mode-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hear-mode-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 48px;
+    padding: 6px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #ddd;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+}
+
+.hear-mode-row.sel {
+    background: #244f3b;
+}
+
+.hear-mode-row.multi-selected {
+    background: #1e2e26;
+}
+
+.hear-mode-row.disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.hear-mode-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.hear-mode-name {
+    font-size: 14px;
+}
+
+.hear-mode-row.sel .hear-mode-name {
+    color: #dff5ea;
+    font-weight: 600;
+}
+
+.hear-mode-desc {
+    font-size: 12px;
+    color: #888;
+}
+
+.hear-mode-row.sel .hear-mode-desc {
+    color: #9c9;
+}
+
+.hear-mode-abbr {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #999;
+    padding: 2px 6px;
+    border: 1px solid #444;
+    border-radius: 4px;
+}
+
+.hear-mode-row.sel .hear-mode-abbr {
+    color: #dff5ea;
+    border-color: #4a8;
+}
